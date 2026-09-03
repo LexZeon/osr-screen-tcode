@@ -8,7 +8,7 @@
 
 Current version: `1.0.1`
 
-![Step 5 output type](screenshots/guide-en-05-output-type.png)
+
 
 ## Download
 
