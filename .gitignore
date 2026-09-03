@@ -1,0 +1,14 @@
+.venv/
+build/
+dist/
+logs/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.pyo
+*.zip
+*.mp4
+*.funscript
+*.spec.log
+*.egg-info/
+osr_settings.json

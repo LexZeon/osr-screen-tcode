@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "osr-screen-tcode"
+version = "1.0.0"
+description = "Realtime screen motion to TCode for OSR/TCode devices"
+requires-python = ">=3.10"
+dependencies = [
+  "mss>=9.0.1",
+  "numpy>=1.26",
+  "opencv-python>=4.9",
+  "pyserial>=3.5",
+  "bleak>=0.22",
+  "Pillow>=10.0",
+  "sounddevice>=0.4.6",
+  "soundcard>=0.4.3",
+  "websockets>=12.0",
+]
+
+[project.scripts]
+osr-screen-tcode = "osr_screen_tcode.app:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+osr_screen_tcode = ["assets/*.html"]
