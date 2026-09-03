@@ -155,6 +155,8 @@ UI_TEXT_EN = {
     "Pose L0 权重": "Pose L0 Weight",
     "Pose 倾向六轴": "Pose Bias for Six Axis",
     "Pose 六轴权重": "Pose Six-Axis Weight",
+    "基础分析 L0 权重": "Base L0 Weight",
+    "基础分析六轴权重": "Base Six-Axis Weight",
     "轴": "Axis",
     "实时输出与测试会按每个轴自己的范围映射。滑块交叉时会自动整理。": "Realtime output and tests are mapped through each axis limit. Crossed sliders are fixed automatically.",
     "测量模式": "Measurement Mode",
@@ -365,6 +367,8 @@ TOOLTIPS = {
     "Pose 倾向六轴": "让横摆、扭腰、重复舞蹈更多体现在 L1/L2/R0/R1/R2 上。",
     "Pose L0 权重": "越大越偏向完整人物舞蹈/扭腰横摆理解，L0 越不容易把左右摆动误判成上下。",
     "Pose 六轴权重": "越大越像显示完整人物的舞蹈，横摆、扭腰和身体角度会更多分配给六轴辅助。",
+    "基础分析 L0 权重": "显示 L0 基础分析方法还占多少。开启 Pose 倾向 L0 时等于 100 - Pose L0 权重；关闭时为 100%。",
+    "基础分析六轴权重": "显示六轴基础分析方法还占多少。开启 Pose 倾向六轴时等于 100 - Pose 六轴权重；关闭时为 100%。",
     "框选屏幕区域": "启动前重新选择实时读取范围，减少无关画面干扰。",
     "FPS": "每秒分析帧数，越高越跟手也越吃性能。",
     "间隔 ms": "TCode 命令的 I 时间，通常和输出刷新速度相关。",
@@ -484,6 +488,8 @@ TOOLTIPS_EN = {
     "Pose 倾向六轴": "Map sway, twist, and body angle more strongly to auxiliary axes.",
     "Pose L0 权重": "Higher values favor full-body dance interpretation and reduce false L0 extremes.",
     "Pose 六轴权重": "Higher values make full-body dance, sway, and angle drive auxiliary axes more.",
+    "基础分析 L0 权重": "Shows how much the original L0 analysis still contributes. With Pose L0 enabled, it is 100 minus Pose L0 weight; when disabled, it is 100%.",
+    "基础分析六轴权重": "Shows how much the original six-axis analysis still contributes. With Pose Six-Axis enabled, it is 100 minus Pose Six-Axis weight; when disabled, it is 100%.",
     "框选屏幕区域": "Select the realtime capture region before starting.",
     "FPS": "Frames analyzed per second. Higher is more responsive and uses more CPU.",
     "间隔 ms": "The TCode I time, usually related to output refresh speed.",
@@ -844,6 +850,8 @@ class OsrScreenApp(tk.Tk):
         self.pose_six_axis_analysis = tk.BooleanVar(value=bool(cfg.extra.get("pose_six_axis_analysis", legacy_pose)))
         self.pose_l0_weight = tk.IntVar(value=int(cfg.extra.get("pose_l0_weight", 60)))
         self.pose_six_axis_weight = tk.IntVar(value=int(cfg.extra.get("pose_six_axis_weight", 60)))
+        self.pose_l0_base_weight_text = tk.StringVar()
+        self.pose_six_axis_base_weight_text = tk.StringVar()
         self.tracker_mode = tk.StringVar(value=self._tracker_display(cfg.tracker_mode))
         self.response_curve = tk.StringVar(value=cfg.response_curve)
         self.motion_gain = tk.DoubleVar(value=cfg.motion_gain)
@@ -917,6 +925,9 @@ class OsrScreenApp(tk.Tk):
         self.l0_travel_scale.trace_add("write", lambda *_args: self._sync_travel_slider(self.l0_travel_scale, self.l0_travel_slider, self.l0_travel_text))
         self.global_travel_scale.trace_add("write", lambda *_args: self._sync_travel_slider(self.global_travel_scale, self.global_travel_slider, self.global_travel_text))
         self.show_more_settings.trace_add("write", lambda *_args: self._refresh_more_settings())
+        for variable in (self.pose_l0_analysis, self.pose_six_axis_analysis, self.pose_l0_weight, self.pose_six_axis_weight):
+            variable.trace_add("write", lambda *_args: self._refresh_pose_base_weight_texts())
+        self._refresh_pose_base_weight_texts()
         for axis in SIX_AXES:
             self.axis_min_vars[axis].trace_add("write", lambda *_args, axis_name=axis: self._refresh_axis_limit_text(axis_name))
             self.axis_max_vars[axis].trace_add("write", lambda *_args, axis_name=axis: self._refresh_axis_limit_text(axis_name))
@@ -992,6 +1003,31 @@ class OsrScreenApp(tk.Tk):
         variables.extend(self.six_axis_gain_vars.values())
         variables.extend(self.six_axis_invert_vars.values())
         return variables
+
+    def _clamped_percent(self, value: object, default: int = 0) -> int:
+        try:
+            return max(0, min(100, int(round(float(value)))))
+        except (tk.TclError, TypeError, ValueError):
+            return default
+
+    def _pose_base_weight_label(self, enabled: bool, pose_weight: object, label_key: str) -> str:
+        pose_value = self._clamped_percent(pose_weight)
+        base_value = 100 - pose_value if enabled else 100
+        return f"{self._t(label_key)}: {base_value}%"
+
+    def _refresh_pose_base_weight_texts(self) -> None:
+        if hasattr(self, "pose_l0_base_weight_text"):
+            self.pose_l0_base_weight_text.set(
+                self._pose_base_weight_label(self.pose_l0_analysis.get(), self.pose_l0_weight.get(), "基础分析 L0 权重")
+            )
+        if hasattr(self, "pose_six_axis_base_weight_text"):
+            self.pose_six_axis_base_weight_text.set(
+                self._pose_base_weight_label(
+                    self.pose_six_axis_analysis.get(),
+                    self.pose_six_axis_weight.get(),
+                    "基础分析六轴权重",
+                )
+            )
 
     def _schedule_config_save(self) -> None:
         if self._config_autosave_suspended:
@@ -1255,11 +1291,14 @@ class OsrScreenApp(tk.Tk):
         except tk.TclError:
             text = ""
         tooltip_key = UI_TEXT_REVERSE_EN.get(text, text)
-        tooltip_text = TOOLTIPS_EN.get(tooltip_key) if self.ui_language == "en" else TOOLTIPS.get(tooltip_key)
+        tooltip_text = self._tooltip_text(tooltip_key)
         if tooltip_text:
             Tooltip(widget, tooltip_text)
         for child in widget.winfo_children():
             self._install_tooltips(child)
+
+    def _tooltip_text(self, key: str) -> str:
+        return (TOOLTIPS_EN if self.ui_language == "en" else TOOLTIPS).get(key, "")
 
     def _localize_widget_tree(self, widget: tk.Widget) -> None:
         if self.ui_language != "en":
@@ -1522,10 +1561,16 @@ class OsrScreenApp(tk.Tk):
         ttk.Label(pose_box, text="Pose L0 权重").grid(row=1, column=0, sticky="w", pady=2)
         ttk.Scale(pose_box, from_=0, to=100, variable=self.pose_l0_weight).grid(row=1, column=1, sticky="ew", pady=2)
         ttk.Label(pose_box, textvariable=self.pose_l0_weight, width=4, anchor="e").grid(row=1, column=2, sticky="e")
-        ttk.Checkbutton(pose_box, text="Pose 倾向六轴", variable=self.pose_six_axis_analysis).grid(row=2, column=0, columnspan=3, sticky="w", pady=(5, 2))
-        ttk.Label(pose_box, text="Pose 六轴权重").grid(row=3, column=0, sticky="w", pady=2)
-        ttk.Scale(pose_box, from_=0, to=100, variable=self.pose_six_axis_weight).grid(row=3, column=1, sticky="ew", pady=2)
-        ttk.Label(pose_box, textvariable=self.pose_six_axis_weight, width=4, anchor="e").grid(row=3, column=2, sticky="e")
+        pose_l0_base_label = ttk.Label(pose_box, textvariable=self.pose_l0_base_weight_text, foreground="#555")
+        pose_l0_base_label.grid(row=2, column=0, columnspan=3, sticky="w", pady=(0, 5))
+        Tooltip(pose_l0_base_label, self._tooltip_text("基础分析 L0 权重"))
+        ttk.Checkbutton(pose_box, text="Pose 倾向六轴", variable=self.pose_six_axis_analysis).grid(row=3, column=0, columnspan=3, sticky="w", pady=(5, 2))
+        ttk.Label(pose_box, text="Pose 六轴权重").grid(row=4, column=0, sticky="w", pady=2)
+        ttk.Scale(pose_box, from_=0, to=100, variable=self.pose_six_axis_weight).grid(row=4, column=1, sticky="ew", pady=2)
+        ttk.Label(pose_box, textvariable=self.pose_six_axis_weight, width=4, anchor="e").grid(row=4, column=2, sticky="e")
+        pose_six_base_label = ttk.Label(pose_box, textvariable=self.pose_six_axis_base_weight_text, foreground="#555")
+        pose_six_base_label.grid(row=5, column=0, columnspan=3, sticky="w", pady=(0, 2))
+        Tooltip(pose_six_base_label, self._tooltip_text("基础分析六轴权重"))
         pose_box.grid(row=row, column=0, columnspan=3, sticky="ew", pady=(0, 8))
         row += 1
         row = self._measurement_controls(parent, row)
@@ -1976,7 +2021,17 @@ class OsrScreenApp(tk.Tk):
         pose_l0_weight = tk.IntVar(value=self.pose_l0_weight.get())
         pose_six_weight = tk.IntVar(value=self.pose_six_axis_weight.get())
         compression_latency = tk.IntVar(value=self.compression_latency.get())
+        pose_l0_base_text = tk.StringVar()
+        pose_six_base_text = tk.StringVar()
         result = {"ok": False}
+
+        def refresh_pose_base_texts(*_args: object) -> None:
+            pose_l0_base_text.set(self._pose_base_weight_label(pose_l0.get(), pose_l0_weight.get(), "基础分析 L0 权重"))
+            pose_six_base_text.set(self._pose_base_weight_label(pose_six.get(), pose_six_weight.get(), "基础分析六轴权重"))
+
+        for variable in (pose_l0, pose_six, pose_l0_weight, pose_six_weight):
+            variable.trace_add("write", refresh_pose_base_texts)
+        refresh_pose_base_texts()
 
         body = ttk.Frame(dialog, padding=14)
         body.grid(row=0, column=0, sticky="nsew")
@@ -2039,15 +2094,21 @@ class OsrScreenApp(tk.Tk):
         ttk.Label(analysis, text="Pose L0 权重").grid(row=2, column=0, sticky="w", pady=2)
         ttk.Scale(analysis, from_=0, to=100, variable=pose_l0_weight).grid(row=2, column=1, sticky="ew", pady=2)
         ttk.Label(analysis, textvariable=pose_l0_weight, width=4, anchor="e").grid(row=2, column=2, sticky="e")
-        ttk.Checkbutton(analysis, text="Pose 倾向六轴", variable=pose_six).grid(row=3, column=0, columnspan=3, sticky="w", pady=(6, 2))
-        ttk.Label(analysis, text="Pose 六轴权重").grid(row=4, column=0, sticky="w", pady=2)
-        ttk.Scale(analysis, from_=0, to=100, variable=pose_six_weight).grid(row=4, column=1, sticky="ew", pady=2)
-        ttk.Label(analysis, textvariable=pose_six_weight, width=4, anchor="e").grid(row=4, column=2, sticky="e")
-        ttk.Label(analysis, text="压缩延迟").grid(row=5, column=0, sticky="w", pady=(8, 2))
-        ttk.Scale(analysis, from_=-5, to=5, variable=compression_latency).grid(row=5, column=1, sticky="ew", pady=(8, 2))
-        ttk.Label(analysis, textvariable=compression_latency, width=4, anchor="e").grid(row=5, column=2, sticky="e", pady=(8, 2))
+        pose_l0_popup_base_label = ttk.Label(analysis, textvariable=pose_l0_base_text, foreground="#555")
+        pose_l0_popup_base_label.grid(row=3, column=0, columnspan=3, sticky="w", pady=(0, 4))
+        Tooltip(pose_l0_popup_base_label, self._tooltip_text("基础分析 L0 权重"))
+        ttk.Checkbutton(analysis, text="Pose 倾向六轴", variable=pose_six).grid(row=4, column=0, columnspan=3, sticky="w", pady=(6, 2))
+        ttk.Label(analysis, text="Pose 六轴权重").grid(row=5, column=0, sticky="w", pady=2)
+        ttk.Scale(analysis, from_=0, to=100, variable=pose_six_weight).grid(row=5, column=1, sticky="ew", pady=2)
+        ttk.Label(analysis, textvariable=pose_six_weight, width=4, anchor="e").grid(row=5, column=2, sticky="e")
+        pose_six_popup_base_label = ttk.Label(analysis, textvariable=pose_six_base_text, foreground="#555")
+        pose_six_popup_base_label.grid(row=6, column=0, columnspan=3, sticky="w", pady=(0, 2))
+        Tooltip(pose_six_popup_base_label, self._tooltip_text("基础分析六轴权重"))
+        ttk.Label(analysis, text="压缩延迟").grid(row=7, column=0, sticky="w", pady=(8, 2))
+        ttk.Scale(analysis, from_=-5, to=5, variable=compression_latency).grid(row=7, column=1, sticky="ew", pady=(8, 2))
+        ttk.Label(analysis, textvariable=compression_latency, width=4, anchor="e").grid(row=7, column=2, sticky="e", pady=(8, 2))
         ttk.Label(analysis, text="-5 最准确 / 0 默认 / 5 延迟最低", wraplength=360, foreground="#555").grid(
-            row=6, column=0, columnspan=3, sticky="ew", pady=(0, 2)
+            row=8, column=0, columnspan=3, sticky="ew", pady=(0, 2)
         )
 
         limits_text = tk.StringVar()

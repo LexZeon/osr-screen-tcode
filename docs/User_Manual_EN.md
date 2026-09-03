@@ -1,6 +1,6 @@
 # OSR6 Realtime Screen TCode User Manual
 
-Current version: `1.0.2`. For version history, see `version log` / `版本日志.txt` in the app folder.
+Current version: `1.0.3`. For version history, see `version log` / `版本日志.txt` in the app folder.
 
 > **Adults only: this software is intended for adults. Minors are prohibited.**
 >
