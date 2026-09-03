@@ -6,20 +6,24 @@
 >
 > **Important six-axis warning:** Six Axis mode is only recommended when lighting is good, the main subject is clear, and the selected screen region is clean. If the image is unclear, crowded, dark, or unstable, start with `L0 Only` or `Log only` preview.
 
-Current version: `1.0.0`
+Current version: `1.0.1`
 
 ![Step 5 output type](screenshots/guide-en-05-output-type.png)
 
 ## Download
 
-- Windows ready-to-run package: `OSR6-Realtime-Screen-v1.0.0-Windows.zip`
-- Source package: `osr-screen-tcode-source-v1.0.0.zip`
+- Windows ready-to-run package: `OSR6-Realtime-Screen-v1.0.1-Windows.zip`
+- Source package: `osr-screen-tcode-source-v1.0.1.zip`
 - English quick start: `Quick_Start.md`
 - Chinese quick start: `简易教程.md`
 - Full English manual: `User_Manual_EN.md`
 - Full Chinese manual: `用户使用手册.md`
 
 Extract the whole Windows zip before running. Do not run the exe directly from inside the zip preview window.
+
+## Run From Source
+
+After cloning the repository on Windows, double-click `Start.cmd` or `Start-Source.cmd`. It creates a local `.venv`, installs the required Python packages, and starts the app from `src`.
 
 ## Main Features
 
@@ -70,18 +74,22 @@ For infringement concerns, license corrections, suggestions, or collaboration: a
 >
 > **六轴模式重要警告：六轴只建议在光线好、主体清晰、框选区域干净的画面里使用。** 画面太暗、主体不清楚、无关运动太多或画面不稳定时，请先使用 `L0 Only` 或 `Log only` 预览。
 
-当前版本：`1.0.0`
+当前版本：`1.0.1`
 
 ## 下载
 
-- Windows 免安装包：`OSR6-Realtime-Screen-v1.0.0-Windows.zip`
-- 源码包：`osr-screen-tcode-source-v1.0.0.zip`
+- Windows 免安装包：`OSR6-Realtime-Screen-v1.0.1-Windows.zip`
+- 源码包：`osr-screen-tcode-source-v1.0.1.zip`
 - 英文简易教程：`Quick_Start.md`
 - 中文简易教程：`简易教程.md`
 - 英文完整手册：`User_Manual_EN.md`
 - 中文完整手册：`用户使用手册.md`
 
 请先完整解压 Windows 压缩包，再运行软件。不要直接在压缩包预览窗口里双击 exe。
+
+## 从源码运行
+
+在 Windows 上 clone 仓库后，双击 `Start.cmd` 或 `Start-Source.cmd`。它会自动创建本地 `.venv`、安装 Python 依赖，并从 `src` 启动软件。
 
 ## 主要功能
 
