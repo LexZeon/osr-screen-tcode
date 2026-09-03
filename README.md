@@ -34,6 +34,10 @@ Extract the whole Windows zip before running. Do not run the exe directly from i
 - Live output curve and 3D OSR6 preview based on the final limited output.
 - Local settings persistence across launches.
 
+## Works With USB Screen Stream
+
+This tool can be used together with [usb-screen-stream](https://github.com/LexZeon/usb-screen-stream). For example, use usb-screen-stream to mirror a USB-connected phone or other device screen to the PC, then select that streamed window or region in OSR6 Realtime Screen TCode for realtime TCode output.
+
 ## First Use
 
 For hardware use, read `Quick_Start.md` first. Before your first real session, use Measurement Mode to save comfortable safe upper and lower limits. These limits are stored locally. If the app works normally next time, you do not need to restore defaults again.
@@ -91,6 +95,10 @@ For infringement concerns, license corrections, suggestions, or collaboration: a
 - 测量模式可以手动遥控并保存本地安全上限/下限。
 - 可查看实时脚本曲线和基于最终限制后输出的 3D 预览。
 - 所有主要设置会保存到本地，下次打开继续使用。
+
+## 可联动 USB Screen Stream
+
+本工具也可以和 [usb-screen-stream](https://github.com/LexZeon/usb-screen-stream) 搭配使用。比如先用 usb-screen-stream 把 USB 连接的手机或其他设备画面投到电脑上，再在本工具里框选该窗口或区域进行实时 TCode 输出。
 
 ## 第一次使用
 
