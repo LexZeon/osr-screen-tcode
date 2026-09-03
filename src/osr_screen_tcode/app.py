@@ -110,6 +110,8 @@ UI_TEXT_EN = {
     "活动阈值": "Activity Threshold",
     "增益": "Gain",
     "视觉行程": "Visual Travel",
+    "压缩延迟": "Compression / Latency",
+    "-5 最准确 / 0 默认 / 5 延迟最低": "-5 most accurate / 0 default / 5 lowest latency",
     "响应曲线": "Response Curve",
     "空闲": "Idle",
     "启用启动渐入": "Enable Startup Ramp",
@@ -378,6 +380,7 @@ TOOLTIPS = {
     "活动阈值": "低于这个活动量时视为无有效运动。",
     "增益": "放大视觉运动，越大越敏感。",
     "视觉行程": "控制画面动作映射到 L0 行程的幅度。",
+    "压缩延迟": "默认 0 不压缩画面。调到 1..5 会降低分析分辨率以减少延迟；-5..0 保持原始画面，优先准确。",
     "响应曲线": "改变中段和两端的响应手感。",
     "空闲": "无有效运动时保持当前位置或回中。",
     "启用启动渐入": "开始输出时逐渐进入动作，避免突然跳动。",
@@ -496,6 +499,7 @@ TOOLTIPS_EN = {
     "活动阈值": "Activity below this value is treated as no useful motion.",
     "增益": "Amplify visual motion sensitivity.",
     "视觉行程": "How much visual motion maps to L0 travel.",
+    "压缩延迟": "Default 0 keeps the original frame. 1..5 lowers analysis resolution for less latency; -5..0 keeps original detail for accuracy.",
     "响应曲线": "Change response feel around center and endpoints.",
     "空闲": "What to do when there is no useful motion.",
     "启用启动渐入": "Ramp in at start to avoid a sudden jump.",
@@ -844,6 +848,7 @@ class OsrScreenApp(tk.Tk):
         self.response_curve = tk.StringVar(value=cfg.response_curve)
         self.motion_gain = tk.DoubleVar(value=cfg.motion_gain)
         self.visual_stroke_scale = tk.DoubleVar(value=cfg.visual_stroke_scale)
+        self.compression_latency = tk.IntVar(value=max(-5, min(5, int(cfg.extra.get("compression_latency", 0)))))
         self.l0_travel_scale = tk.DoubleVar(value=float(cfg.extra.get("l0_travel_scale", cfg.global_travel_scale)))
         self.global_travel_scale = tk.DoubleVar(value=cfg.global_travel_scale)
         self._travel_slider_syncing = False
@@ -953,6 +958,7 @@ class OsrScreenApp(tk.Tk):
             self.response_curve,
             self.motion_gain,
             self.visual_stroke_scale,
+            self.compression_latency,
             self.l0_travel_scale,
             self.global_travel_scale,
             self.play_preset_level,
@@ -1380,6 +1386,14 @@ class OsrScreenApp(tk.Tk):
         row += 1
         ttk.Label(parent, text="视觉行程").grid(row=row, column=0, sticky="w", pady=2)
         ttk.Scale(parent, from_=0.35, to=1.2, variable=self.visual_stroke_scale).grid(row=row, column=1, columnspan=2, sticky="ew")
+        row += 1
+        ttk.Label(parent, text="压缩延迟").grid(row=row, column=0, sticky="w", pady=2)
+        ttk.Scale(parent, from_=-5, to=5, variable=self.compression_latency).grid(row=row, column=1, sticky="ew", pady=2)
+        ttk.Label(parent, textvariable=self.compression_latency, width=6, anchor="e").grid(row=row, column=2, sticky="e")
+        row += 1
+        ttk.Label(parent, text="-5 最准确 / 0 默认 / 5 延迟最低", wraplength=300, foreground="#555").grid(
+            row=row, column=0, columnspan=3, sticky="ew", pady=(0, 4)
+        )
         row += 1
         ttk.Label(parent, text="响应曲线").grid(row=row, column=0, sticky="w", pady=2)
         ttk.Combobox(
@@ -1961,6 +1975,7 @@ class OsrScreenApp(tk.Tk):
         pose_six = tk.BooleanVar(value=self.pose_six_axis_analysis.get())
         pose_l0_weight = tk.IntVar(value=self.pose_l0_weight.get())
         pose_six_weight = tk.IntVar(value=self.pose_six_axis_weight.get())
+        compression_latency = tk.IntVar(value=self.compression_latency.get())
         result = {"ok": False}
 
         body = ttk.Frame(dialog, padding=14)
@@ -2028,6 +2043,12 @@ class OsrScreenApp(tk.Tk):
         ttk.Label(analysis, text="Pose 六轴权重").grid(row=4, column=0, sticky="w", pady=2)
         ttk.Scale(analysis, from_=0, to=100, variable=pose_six_weight).grid(row=4, column=1, sticky="ew", pady=2)
         ttk.Label(analysis, textvariable=pose_six_weight, width=4, anchor="e").grid(row=4, column=2, sticky="e")
+        ttk.Label(analysis, text="压缩延迟").grid(row=5, column=0, sticky="w", pady=(8, 2))
+        ttk.Scale(analysis, from_=-5, to=5, variable=compression_latency).grid(row=5, column=1, sticky="ew", pady=(8, 2))
+        ttk.Label(analysis, textvariable=compression_latency, width=4, anchor="e").grid(row=5, column=2, sticky="e", pady=(8, 2))
+        ttk.Label(analysis, text="-5 最准确 / 0 默认 / 5 延迟最低", wraplength=360, foreground="#555").grid(
+            row=6, column=0, columnspan=3, sticky="ew", pady=(0, 2)
+        )
 
         limits_text = tk.StringVar()
 
@@ -2059,6 +2080,7 @@ class OsrScreenApp(tk.Tk):
             self.pose_six_axis_analysis.set(pose_six.get())
             self.pose_l0_weight.set(pose_l0_weight.get())
             self.pose_six_axis_weight.set(pose_six_weight.get())
+            self.compression_latency.set(max(-5, min(5, int(compression_latency.get()))))
             result["ok"] = True
             dialog.destroy()
 
@@ -2153,6 +2175,7 @@ class OsrScreenApp(tk.Tk):
             self.response_curve.set(defaults.response_curve)
             self.motion_gain.set(defaults.motion_gain)
             self.visual_stroke_scale.set(defaults.visual_stroke_scale)
+            self.compression_latency.set(0)
             self.l0_travel_scale.set(defaults.global_travel_scale)
             self.global_travel_scale.set(defaults.global_travel_scale)
             self.six_axis_intensity.set(65)
@@ -2974,7 +2997,7 @@ class OsrScreenApp(tk.Tk):
         frame: object,
         last_preview: float,
     ) -> float:
-        result = analyzer.process(frame)
+        result = analyzer.process(self._prepare_analysis_frame(frame))
         positions = self._apply_six_axis_tuning(result.positions)
         command = output.next_command(positions, result.activity)
         command_text = self._emit_command(command)
@@ -2991,6 +3014,29 @@ class OsrScreenApp(tk.Tk):
             )
             return now
         return last_preview
+
+    def _prepare_analysis_frame(self, frame: object) -> object:
+        scale = self._analysis_frame_scale()
+        if scale >= 0.999:
+            return frame
+        try:
+            height, width = frame.shape[:2]
+        except AttributeError:
+            return frame
+        target_width = max(64, int(round(width * scale)))
+        target_height = max(64, int(round(height * scale)))
+        if target_width == width and target_height == height:
+            return frame
+        return cv2.resize(frame, (target_width, target_height), interpolation=cv2.INTER_AREA)
+
+    def _analysis_frame_scale(self) -> float:
+        try:
+            value = max(-5, min(5, int(round(float(self.compression_latency.get())))))
+        except (tk.TclError, ValueError):
+            return 1.0
+        if value <= 0:
+            return 1.0
+        return max(0.60, 1.0 - value * 0.08)
 
     def _active_axes(self) -> list[str]:
         return ["L0"] if self.output_mode.get() != "Six Axis" else SIX_AXES.copy()
@@ -3366,6 +3412,7 @@ class OsrScreenApp(tk.Tk):
         cfg.extra["pose_l0_weight"] = self.pose_l0_weight.get()
         cfg.extra["pose_six_axis_weight"] = self.pose_six_axis_weight.get()
         cfg.extra["l0_travel_scale"] = self.l0_travel_scale.get()
+        cfg.extra["compression_latency"] = max(-5, min(5, int(self.compression_latency.get())))
         cfg.extra["measure_axis"] = self.measure_axis.get()
         cfg.extra["measure_value"] = self.measure_value.get()
         cfg.extra["measure_live"] = self.measure_live.get()

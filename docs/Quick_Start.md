@@ -10,7 +10,7 @@ Tip: hover your mouse over buttons, sliders, and parameter names in the app. Sma
 
 ## Download
 
-Download `OSR6-Realtime-Screen-v1.0.1-Windows.zip`, extract the whole folder, then run the app from the extracted folder. Do not run the exe directly from inside the zip preview window.
+Download `OSR6-Realtime-Screen-v1.0.2-Windows.zip`, extract the whole folder, then run the app from the extracted folder. Do not run the exe directly from inside the zip preview window.
 
 For source code users, clone the repository and double-click `Start.cmd` or `Start-Source.cmd`.
 

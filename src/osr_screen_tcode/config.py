@@ -99,6 +99,7 @@ class AppConfig:
         extra.setdefault("pose_l0_weight", 60)
         extra.setdefault("pose_six_axis_weight", 60)
         extra.setdefault("l0_travel_scale", data.get("global_travel_scale", 1.0))
+        extra.setdefault("compression_latency", 0)
         extra.setdefault("show_more_settings", False)
         extra.setdefault("six_axis_intensity", 65)
         extra.setdefault("six_axis_jitter_reduction", 55)
@@ -142,6 +143,7 @@ class AppConfig:
         extra["pose_l0_weight"] = max(0, min(100, int(extra.get("pose_l0_weight", 60))))
         extra["pose_six_axis_weight"] = max(0, min(100, int(extra.get("pose_six_axis_weight", 60))))
         extra["l0_travel_scale"] = max(0.0, min(3.0, float(extra.get("l0_travel_scale", data.get("global_travel_scale", 1.0)))))
+        extra["compression_latency"] = max(-5, min(5, int(extra.get("compression_latency", 0))))
         data["global_travel_scale"] = max(0.0, min(3.0, float(data.get("global_travel_scale", 1.0))))
         extra["show_more_settings"] = bool(extra.get("show_more_settings", False))
         allowed = {field.name for field in cls.__dataclass_fields__.values()}

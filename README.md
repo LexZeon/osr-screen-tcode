@@ -6,14 +6,14 @@
 >
 > **Important six-axis warning:** Six Axis mode is only recommended when lighting is good, the main subject is clear, and the selected screen region is clean. If the image is unclear, crowded, dark, or unstable, start with `L0 Only` or `Log only` preview.
 
-Current version: `1.0.1`
+Current version: `1.0.2`
 
 ![Step 5 output type](screenshots/guide-en-05-output-type.png)
 
 ## Download
 
-- Windows ready-to-run package: `OSR6-Realtime-Screen-v1.0.1-Windows.zip`
-- Source package: `osr-screen-tcode-source-v1.0.1.zip`
+- Windows ready-to-run package: `OSR6-Realtime-Screen-v1.0.2-Windows.zip`
+- Source package: `osr-screen-tcode-source-v1.0.2.zip`
 - English quick start: `Quick_Start.md`
 - Chinese quick start: `简易教程.md`
 - Full English manual: `User_Manual_EN.md`
@@ -74,12 +74,12 @@ For infringement concerns, license corrections, suggestions, or collaboration: a
 >
 > **六轴模式重要警告：六轴只建议在光线好、主体清晰、框选区域干净的画面里使用。** 画面太暗、主体不清楚、无关运动太多或画面不稳定时，请先使用 `L0 Only` 或 `Log only` 预览。
 
-当前版本：`1.0.1`
+当前版本：`1.0.2`
 
 ## 下载
 
-- Windows 免安装包：`OSR6-Realtime-Screen-v1.0.1-Windows.zip`
-- 源码包：`osr-screen-tcode-source-v1.0.1.zip`
+- Windows 免安装包：`OSR6-Realtime-Screen-v1.0.2-Windows.zip`
+- 源码包：`osr-screen-tcode-source-v1.0.2.zip`
 - 英文简易教程：`Quick_Start.md`
 - 中文简易教程：`简易教程.md`
 - 英文完整手册：`User_Manual_EN.md`
