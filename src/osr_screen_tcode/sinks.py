@@ -38,6 +38,7 @@ class SerialSink:
     port: str
     baudrate: int = 115200
     timeout: float = 0.01
+    write_timeout: float = 0.25
 
     def __post_init__(self) -> None:
         self._serial = None
@@ -47,7 +48,13 @@ class SerialSink:
 
         if not self.port:
             raise ValueError("请选择串口")
-        self._serial = serial.Serial(self.port, self.baudrate, timeout=self.timeout)
+        self._serial = serial.Serial(
+            self.port,
+            self.baudrate,
+            timeout=self.timeout,
+            write_timeout=self.write_timeout,
+            exclusive=True,
+        )
 
     def write(self, payload: bytes) -> None:
         if self._serial is None:

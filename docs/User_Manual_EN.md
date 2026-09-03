@@ -1,6 +1,6 @@
 # OSR6 Realtime Screen TCode User Manual
 
-Current version: `1.0.3`. For version history, see `version log` / `版本日志.txt` in the app folder.
+Current version: `1.1.0`. For version history, see `version log` / `版本日志.txt` in the app folder.
 
 > **Adults only: this software is intended for adults. Minors are prohibited.**
 >
@@ -14,7 +14,7 @@ OSR6 Realtime Screen TCode is a local Windows tool for OSR/SR6/OSR6-style TCode-
 
 The app saves the main settings locally, including limits, travel scales, play preset, six-axis sensitivity, serial/BLE information, audio settings, and advanced tuning. On the next launch, the app keeps your previous values.
 
-The recommended analysis mode is `Hybrid Analysis (Recommended)`. It uses a lightweight mixed ROI optical-flow approach: it focuses on the main moving region, then estimates direction and strength. In practice, it tends to feel more responsive than simple motion-center tracking and less likely to slam every movement to the extremes than a pure direction detector.
+The recommended non-dance analysis mode is `Hybrid Analysis (Recommended - Non-Dance)`. It uses a lightweight mixed ROI optical-flow approach: it focuses on the main moving region, then estimates direction and strength. In practice, it tends to feel more responsive than simple motion-center tracking and less likely to slam every movement to the extremes than a pure direction detector.
 
 Recommended first-use flow:
 
@@ -101,7 +101,7 @@ Presets adjust feel parameters such as speed, smoothing, deadzone, activity thre
 
 ## Six-Axis Tuning
 
-`Six-Axis Sensitivity 1..10` switches to `Six Axis` and adjusts how strongly `L1/L2/R0/R1/R2` follow the L0 rhythm and visual side motion.
+`Six-Axis Tuning (Hybrid Analysis Only)` is recommended for `Hybrid Analysis (Recommended - Non-Dance)`. `Six-Axis Sensitivity 1..10` switches to `Six Axis` and adjusts how strongly `L1/L2/R0/R1/R2` follow the L0 rhythm and visual side motion. RTM Pose 3D output does not use these helper sliders.
 
 - `1`: steadiest and least sensitive.
 - `5`: current default.
@@ -259,7 +259,7 @@ Pose bias is useful for full-body dance or side-to-side movement. Higher pose we
 
 When pose bias is enabled, the right side of the captured screen preview can show a black skeleton estimate: white bones and blue joints. This is a fast visual trend estimate, not a slow human keypoint model.
 
-### Hybrid Analysis (Recommended)
+### Hybrid Analysis (Recommended - Non-Dance)
 
 Default recommended mode. It uses ROI optical-flow style analysis and is suitable for most realtime screen and video analysis.
 
@@ -320,7 +320,7 @@ When visual activity is below the threshold, the app holds or centers instead of
 - `Sharp`: more sensitive near the middle and more likely to reach endpoints.
 - `Ease In`: more restrained near the middle.
 
-`Hybrid Analysis (Recommended)` with `Linear` is the default recommendation.
+`Hybrid Analysis (Recommended - Non-Dance)` with `Linear` is the default non-dance recommendation.
 
 ### Idle Mode
 
@@ -340,7 +340,7 @@ Reverses L0 direction if the perceived direction is wrong.
 1. Set input source to `Video File`.
 2. Click `Browse` and choose a video.
 3. Choose `L0 Only` or `Six Axis`.
-4. Use `Hybrid Analysis (Recommended)` first.
+4. Use `Hybrid Analysis (Recommended - Non-Dance)` first.
 5. Click `Analyze Video + Save Script`.
 
 Six Axis exports companion funscript files:

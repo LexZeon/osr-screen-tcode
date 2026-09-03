@@ -20,6 +20,17 @@ def _keep_mss_from_changing_process_dpi() -> None:
 _keep_mss_from_changing_process_dpi()
 
 
+def virtual_screen_bounds() -> dict[str, int]:
+    with mss.mss() as sct:
+        monitor = sct.monitors[0]
+        return {
+            "left": int(monitor.get("left", 0)),
+            "top": int(monitor.get("top", 0)),
+            "width": int(monitor.get("width", 0)),
+            "height": int(monitor.get("height", 0)),
+        }
+
+
 @dataclass(frozen=True)
 class ScreenRegion:
     x: int

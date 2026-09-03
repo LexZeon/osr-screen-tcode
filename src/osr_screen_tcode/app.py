@@ -4,6 +4,7 @@ import asyncio
 import argparse
 from collections.abc import Callable
 from collections import deque
+import ctypes
 import os
 import queue
 import re
@@ -11,18 +12,38 @@ import sys
 import locale
 import threading
 import time
-import tkinter as tk
+import urllib.request
 from pathlib import Path
+
+
+def _configure_windows_dpi_awareness() -> None:
+    if not sys.platform.startswith("win"):
+        return
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(1)
+        return
+    except Exception:
+        pass
+    try:
+        ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
+
+
+_configure_windows_dpi_awareness()
+
+import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 import cv2
+import numpy as np
 from PIL import Image, ImageTk
 
 from .analyzer import SIX_AXES, RealtimeAnalyzer
 from .audio import AudioAnalyzer, AudioCapture, list_audio_devices
 from . import __version__
-from .capture import ScreenCapture, ScreenRegion
-from .config import AppConfig, DEFAULT_SIX_AXIS_GAINS, DEFAULT_SIX_AXIS_INVERTS
+from .capture import ScreenCapture, ScreenRegion, virtual_screen_bounds
+from .config import AppConfig, DEFAULT_SIX_AXIS_GAINS, DEFAULT_SIX_AXIS_INVERTS, DEFAULT_SIX_AXIS_TRAVEL_SCALES
 from .preview import PreviewBridge
 from .recorder import MultiAxisFunscriptRecorder
 from .sinks import (
@@ -37,8 +58,12 @@ from .sinks import (
 from .tcode import MultiAxisSafeOutput
 
 
+RTM_POSE_3D_MODEL_URL = "https://huggingface.co/Soykaf/RTMW3D-x/resolve/main/onnx/rtmw3d-x_8xb64_cocktail14-384x288-b0a0eab7_20240626.onnx"
+RTM_POSE_3D_MODEL_NAME = "rtmw3d-x_8xb64_cocktail14-384x288-b0a0eab7_20240626.onnx"
+
+
 TRACKER_MODE_CHOICES = (
-    "混合分析（推荐）",
+    "混合分析（推荐-非舞蹈）",
     "Stroke Phase（内测用）",
     "Motion Center（内测用）",
     "Optical Flow（内测用）",
@@ -47,7 +72,7 @@ TRACKER_MODE_CHOICES = (
 )
 
 TRACKER_MODE_EN = {
-    "混合分析（推荐）": "Hybrid Analysis (Recommended)",
+    "混合分析（推荐-非舞蹈）": "Hybrid Analysis (Recommended - Non-Dance)",
     "Stroke Phase（内测用）": "Stroke Phase (Beta)",
     "Motion Center（内测用）": "Motion Center (Beta)",
     "Optical Flow（内测用）": "Optical Flow (Beta)",
@@ -70,6 +95,7 @@ UI_TEXT_EN = {
     "急停回中": "Emergency Center",
     "全行程": "Full Travel",
     "连接并回中": "Connect + Center",
+    "连接中...": "Connecting...",
     "实时输出由下限/上限滑块决定。想要更大更快，点全行程。": "Realtime output follows the lower/upper limit sliders. For larger/faster motion, use Full Travel.",
     "收起更多设置": "Hide More Settings",
     "展开更多设置": "Show More Settings",
@@ -150,6 +176,13 @@ UI_TEXT_EN = {
     "六轴独立上下限": "Per-Axis Limits",
     "L0 总行程倍率": "L0 Travel Scale",
     "六轴总行程倍率": "Six-Axis Travel Scale",
+    "展开六轴单轴行程倍率": "Show Per-Axis Travel Scale",
+    "收起六轴单轴行程倍率": "Hide Per-Axis Travel Scale",
+    "L1 行程倍率": "L1 Travel Scale",
+    "L2 行程倍率": "L2 Travel Scale",
+    "R0 行程倍率": "R0 Travel Scale",
+    "R1 行程倍率": "R1 Travel Scale",
+    "R2 行程倍率": "R2 Travel Scale",
     "Pose 倾向": "Pose Bias",
     "Pose 倾向 L0": "Pose Bias for L0",
     "Pose L0 权重": "Pose L0 Weight",
@@ -157,6 +190,24 @@ UI_TEXT_EN = {
     "Pose 六轴权重": "Pose Six-Axis Weight",
     "基础分析 L0 权重": "Base L0 Weight",
     "基础分析六轴权重": "Base Six-Axis Weight",
+    "Pose v2 舞蹈六轴测试": "Pose v2 Dance Six-Axis Test",
+    "Pose v2 倾向 L0": "Pose v2 Bias for L0",
+    "Pose v2 L0 权重": "Pose v2 L0 Weight",
+    "Pose v2 倾向六轴": "Pose v2 Bias for Six Axis",
+    "Pose v2 六轴权重": "Pose v2 Six-Axis Weight",
+    "基础分析 v2 L0 权重": "Base v2 L0 Weight",
+    "基础分析 v2 六轴权重": "Base v2 Six-Axis Weight",
+    "RTM Pose 3D 骨架标注": "RTM Pose 3D Skeleton Overlay",
+    "RTM Pose 3D 模型": "RTM Pose 3D Model",
+    "RTM Pose 3D 权重": "RTM Pose 3D Weight",
+    "基础分析 RTM 权重": "Base RTM Weight",
+    "选择模型": "Choose Model",
+    "下载模型": "Download Model",
+    "下载中...": "Downloading...",
+    "模型下载中...": "Downloading model...",
+    "模型下载完成": "Model downloaded",
+    "模型下载失败": "Model download failed",
+    "来源：OpenMMLab MMPose / rtmlib，需要本地 ONNX 模型。": "Source: OpenMMLab MMPose / rtmlib. Requires a local ONNX model.",
     "轴": "Axis",
     "实时输出与测试会按每个轴自己的范围映射。滑块交叉时会自动整理。": "Realtime output and tests are mapped through each axis limit. Crossed sliders are fixed automatically.",
     "测量模式": "Measurement Mode",
@@ -167,13 +218,19 @@ UI_TEXT_EN = {
     "当前轴回中": "Center Axis",
     "保存为上限": "Save as Upper",
     "用于找机械安全范围：先低档、慢慢滑，确认位置后保存上下限。": "Use this to find your safe mechanical range: start low, slide slowly, then save upper/lower limits.",
-    "六轴辅助调节（不影响 L0）": "Six-Axis Tuning (L0 unchanged)",
+    "六轴辅助调节（仅混合分析推荐）": "Six-Axis Tuning (Hybrid Analysis Only)",
+    "展开测量模式和轴上下限": "Show Measurement + Axis Limits",
+    "收起测量模式和轴上下限": "Hide Measurement + Axis Limits",
+    "展开六轴辅助调节（仅混合分析）": "Show Six-Axis Tuning (Hybrid Only)",
+    "收起六轴辅助调节（仅混合分析）": "Hide Six-Axis Tuning (Hybrid Only)",
+    "展开 RTM Pose 3D 设置": "Show RTM Pose 3D Settings",
+    "收起 RTM Pose 3D 设置": "Hide RTM Pose 3D Settings",
     "总强度": "Overall Strength",
     "六轴降抖": "Six-Axis Stabilizer",
     "一键稳六轴": "Stable Six-Axis Preset",
     "六轴敏感度": "Six-Axis Sensitivity",
     "反": "Inv",
-    "建议先把其它轴限位收窄，再逐个放大强度；L0 主轴不会被这些滑块改变。": "Start with narrower auxiliary limits, then increase strength gradually. These sliders do not change L0.",
+    "这组滑块只推荐用于混合分析（推荐-非舞蹈）；RTM Pose 3D 输出不会接入这里。": "Recommended only for Hybrid Analysis (Recommended - Non-Dance). RTM Pose 3D output does not use these sliders.",
     "连接失败": "Connection Failed",
     "正在运行": "Running",
     "请先停止实时输出，再查询设备轴。": "Stop realtime output before querying device axes.",
@@ -208,7 +265,11 @@ UI_TEXT_EN = {
     "未连接": "Not connected",
     "日志模式": "Log mode",
     "连接失败": "Connection failed",
+    "连接超时": "Connection timed out",
     "已连接并回中": "Connected and centered",
+    "回中失败": "Center failed",
+    "正在连接，请稍候...": "Connecting, please wait...",
+    "正在连接，连接成功后请再试一次。": "Connecting. Try again after the connection succeeds.",
     "实时输出中": "Realtime output running",
     "已停止": "Stopped",
     "已急停并回中": "Emergency centered",
@@ -280,6 +341,7 @@ TOOLTIPS = {
     "急停回中": "立即停止实时输出，并把当前启用的轴回到中间位置。",
     "全行程": "把 L0 切到更大更快的全行程测试参数。",
     "连接并回中": "连接当前选择的设备，并发送回中命令。",
+    "连接中...": "正在连接设备；如果端口异常，窗口也会保持可操作。",
     "开始实时输出前确认": "启动设备前最后确认输出模式和上下限。",
     "L0 Only：只上下": "只输出 L0 上下轴，最适合先测试。",
     "Six Axis：六轴": "同时输出 L0/L1/L2/R0/R1/R2。",
@@ -317,6 +379,13 @@ TOOLTIPS = {
     "总行程倍率": "围绕中点缩放所有轴行程，不会越过每轴上下限。",
     "L0 总行程倍率": "只缩放 L0 上下轴行程，不改变 L0 的机械上下限。",
     "六轴总行程倍率": "只缩放 L1/L2/R0/R1/R2 辅助轴行程，不影响 L0。",
+    "展开六轴单轴行程倍率": "展开后可以分别缩放 L1/L2/R0/R1/R2；最终幅度 = 六轴总行程倍率 × 单轴倍率。",
+    "收起六轴单轴行程倍率": "收起 L1/L2/R0/R1/R2 单轴行程倍率。",
+    "L1 行程倍率": "L1 前后轴的单独行程倍率，会再乘以六轴总行程倍率。",
+    "L2 行程倍率": "L2 左右轴的单独行程倍率，会再乘以六轴总行程倍率。",
+    "R0 行程倍率": "R0 扭转轴的单独行程倍率，会再乘以六轴总行程倍率。",
+    "R1 行程倍率": "R1 横滚轴的单独行程倍率，会再乘以六轴总行程倍率。",
+    "R2 行程倍率": "R2 俯仰轴的单独行程倍率，会再乘以六轴总行程倍率。",
     "轴": "当前要查看或调整的 TCode 通道。",
     "测量模式": "用滑块手动遥控单个轴，方便保存安全上下限。",
     "滑动即发送": "打开后拖动测量滑块会立刻发送到设备。",
@@ -325,7 +394,13 @@ TOOLTIPS = {
     "保存为下限": "把当前测量位置保存为该轴下限。",
     "当前轴回中": "把当前测量轴发送到 5000。",
     "保存为上限": "把当前测量位置保存为该轴上限。",
-    "六轴辅助调节（不影响 L0）": "只调整 L1/L2/R0/R1/R2，不改变 L0 主轴。",
+    "六轴辅助调节（仅混合分析推荐）": "只推荐用于混合分析（推荐-非舞蹈）的 L1/L2/R0/R1/R2 辅助微调；RTM Pose 3D 不接入这里。",
+    "展开测量模式和轴上下限": "展开测量模式和每个轴的安全上下限。",
+    "收起测量模式和轴上下限": "收起测量模式和每个轴的安全上下限。",
+    "展开六轴辅助调节（仅混合分析）": "展开混合分析用的六轴辅助微调。",
+    "收起六轴辅助调节（仅混合分析）": "收起混合分析用的六轴辅助微调。",
+    "展开 RTM Pose 3D 设置": "展开 RTM Pose 3D 的骨架标注、权重、模型路径和模型下载设置。",
+    "收起 RTM Pose 3D 设置": "收起 RTM Pose 3D 设置，保持主界面更清爽。",
     "总强度": "整体放大或缩小非 L0 五个辅助轴。",
     "六轴降抖": "越往右，辅助轴越不敏感、越平滑、越不容易抖。",
     "一键稳六轴": "把辅助轴调成低敏稳态，适合先解决抖动。",
@@ -369,6 +444,17 @@ TOOLTIPS = {
     "Pose 六轴权重": "越大越像显示完整人物的舞蹈，横摆、扭腰和身体角度会更多分配给六轴辅助。",
     "基础分析 L0 权重": "显示 L0 基础分析方法还占多少。开启 Pose 倾向 L0 时等于 100 - Pose L0 权重；关闭时为 100%。",
     "基础分析六轴权重": "显示六轴基础分析方法还占多少。开启 Pose 倾向六轴时等于 100 - Pose 六轴权重；关闭时为 100%。",
+    "Pose v2 舞蹈六轴测试": "测试版功能：在压缩延迟后的分析画面中拟合胯部平行四边形，用它的中心、角度、边长和面积辅助输出六轴。关闭后完全使用原逻辑。",
+    "Pose v2 倾向 L0": "启用 Pose v2 对 L0 的辅助权重。开启 V2 时会自动关闭 V1 Pose 倾向。",
+    "Pose v2 倾向六轴": "启用 Pose v2 对 L1/L2/R0/R1/R2 的辅助权重。开启 V2 时会自动关闭 V1 Pose 倾向。",
+    "Pose v2 L0 权重": "越大越偏向 Pose v2 的胯部上下判断；建议先保持较低或关闭，保护原 L0 稳定手感。",
+    "Pose v2 六轴权重": "越大越偏向 Pose v2 的胯部核心区、平行四边形和防卡边判断。",
+    "基础分析 v2 L0 权重": "显示 L0 基础分析方法还占多少。开启 Pose v2 倾向 L0 时等于 100 - Pose v2 L0 权重；关闭时为 100%。",
+    "基础分析 v2 六轴权重": "显示六轴基础分析方法还占多少。开启 Pose v2 倾向六轴时等于 100 - Pose v2 六轴权重；关闭时为 100%。",
+    "RTM Pose 3D 骨架标注": "测试版功能：使用 RTM Pose 3D 感知到的人体骨架进行标注和可调权重辅助；权重 100% 时跳过基础分析。",
+    "RTM Pose 3D 模型": "填写本地 RTMPose3D / RTMW3D ONNX 模型路径。没有模型时程序仍会运行，只显示等待模型路径。",
+    "RTM Pose 3D 权重": "RTM 权重大于 0 时会用 3D 骨架辅助输出；100% 时跳过基础画面分析，只运行 RTM。没有模型或识别失败时保持当前输出。",
+    "基础分析 RTM 权重": "显示基础分析方法还占多少。RTM 权重 100% 时基础分析不会运行。",
     "框选屏幕区域": "启动前重新选择实时读取范围，减少无关画面干扰。",
     "FPS": "每秒分析帧数，越高越跟手也越吃性能。",
     "间隔 ms": "TCode 命令的 I 时间，通常和输出刷新速度相关。",
@@ -401,6 +487,7 @@ TOOLTIPS_EN = {
     "急停回中": "Stop realtime output immediately and move active axes back to center.",
     "全行程": "Use larger and faster L0 travel for full-range testing.",
     "连接并回中": "Connect the selected device and send a center command.",
+    "连接中...": "Connecting in the background; the window stays usable if the port is bad.",
     "开始实时输出前确认": "Final check for output mode and limits before starting.",
     "L0 Only：只上下": "Only output the L0 vertical axis. Best for first tests.",
     "Six Axis：六轴": "Output L0/L1/L2/R0/R1/R2 together.",
@@ -438,6 +525,13 @@ TOOLTIPS_EN = {
     "总行程倍率": "Scale all axis travel around center without crossing saved limits.",
     "L0 总行程倍率": "Scale only L0 travel without changing its mechanical limits.",
     "六轴总行程倍率": "Scale L1/L2/R0/R1/R2 travel without affecting L0.",
+    "展开六轴单轴行程倍率": "Adjust L1/L2/R0/R1/R2 separately. Final travel = Six-Axis Travel Scale x per-axis scale.",
+    "收起六轴单轴行程倍率": "Hide per-axis travel scales for L1/L2/R0/R1/R2.",
+    "L1 行程倍率": "Per-axis travel scale for L1 surge, multiplied by the six-axis travel scale.",
+    "L2 行程倍率": "Per-axis travel scale for L2 sway, multiplied by the six-axis travel scale.",
+    "R0 行程倍率": "Per-axis travel scale for R0 twist, multiplied by the six-axis travel scale.",
+    "R1 行程倍率": "Per-axis travel scale for R1 roll, multiplied by the six-axis travel scale.",
+    "R2 行程倍率": "Per-axis travel scale for R2 pitch, multiplied by the six-axis travel scale.",
     "轴": "The TCode channel being viewed or adjusted.",
     "测量模式": "Manually control one axis with a slider and save safe limits.",
     "滑动即发送": "Send commands immediately while dragging the measurement slider.",
@@ -446,7 +540,13 @@ TOOLTIPS_EN = {
     "保存为下限": "Save the current measurement value as this axis lower limit.",
     "当前轴回中": "Move the selected measurement axis to 5000.",
     "保存为上限": "Save the current measurement value as this axis upper limit.",
-    "六轴辅助调节（不影响 L0）": "Tune L1/L2/R0/R1/R2 only. L0 is unchanged.",
+    "六轴辅助调节（仅混合分析推荐）": "Tune L1/L2/R0/R1/R2 for Hybrid Analysis only. RTM Pose 3D does not use these controls.",
+    "展开测量模式和轴上下限": "Show measurement mode and per-axis safety limits.",
+    "收起测量模式和轴上下限": "Hide measurement mode and per-axis safety limits.",
+    "展开六轴辅助调节（仅混合分析）": "Show six-axis helper tuning for Hybrid Analysis.",
+    "收起六轴辅助调节（仅混合分析）": "Hide six-axis helper tuning for Hybrid Analysis.",
+    "展开 RTM Pose 3D 设置": "Show RTM Pose 3D skeleton, weight, model path, and model download settings.",
+    "收起 RTM Pose 3D 设置": "Hide RTM Pose 3D settings to keep the main controls cleaner.",
     "总强度": "Overall strength for the five non-L0 auxiliary axes.",
     "六轴降抖": "Higher values make auxiliary axes less sensitive, smoother, and steadier.",
     "一键稳六轴": "Apply a low-sensitivity six-axis setup to reduce jitter.",
@@ -490,6 +590,17 @@ TOOLTIPS_EN = {
     "Pose 六轴权重": "Higher values make full-body dance, sway, and angle drive auxiliary axes more.",
     "基础分析 L0 权重": "Shows how much the original L0 analysis still contributes. With Pose L0 enabled, it is 100 minus Pose L0 weight; when disabled, it is 100%.",
     "基础分析六轴权重": "Shows how much the original six-axis analysis still contributes. With Pose Six-Axis enabled, it is 100 minus Pose Six-Axis weight; when disabled, it is 100%.",
+    "Pose v2 舞蹈六轴测试": "Test feature: fits a hip-plane parallelogram on the frame after Compression / Latency, then uses its center, angle, edge length, and area to assist six-axis output. Turn it off to use the original logic.",
+    "Pose v2 倾向 L0": "Enable Pose v2 assist for L0. Turning on V2 automatically turns off V1 Pose bias.",
+    "Pose v2 倾向六轴": "Enable Pose v2 assist for L1/L2/R0/R1/R2. Turning on V2 automatically turns off V1 Pose bias.",
+    "Pose v2 L0 权重": "Higher values favor Pose v2 hip vertical tracking. Start low or leave it off to preserve stable L0 behavior.",
+    "Pose v2 六轴权重": "Higher values favor Pose v2 hip-core, parallelogram, and anti-stuck side-axis tracking.",
+    "基础分析 v2 L0 权重": "Shows how much the original L0 analysis still contributes. With Pose v2 L0 enabled, it is 100 minus Pose v2 L0 weight; when disabled, it is 100%.",
+    "基础分析 v2 六轴权重": "Shows how much the original six-axis analysis still contributes. With Pose v2 Six-Axis enabled, it is 100 minus Pose v2 Six-Axis weight; when disabled, it is 100%.",
+    "RTM Pose 3D 骨架标注": "Test feature: uses the skeleton perceived by RTM Pose 3D for overlay and adjustable-weight assist. At 100%, base analysis is skipped.",
+    "RTM Pose 3D 模型": "Set the local RTMPose3D / RTMW3D ONNX model path. Without a model, the app still runs and shows a waiting message.",
+    "RTM Pose 3D 权重": "When RTM weight is above 0, 3D skeleton assists output. At 100%, base image analysis is skipped and only RTM runs. If the model is missing or detection fails, output holds.",
+    "基础分析 RTM 权重": "Shows how much base analysis still contributes. At 100% RTM weight, base analysis is not run.",
     "框选屏幕区域": "Select the realtime capture region before starting.",
     "FPS": "Frames analyzed per second. Higher is more responsive and uses more CPU.",
     "间隔 ms": "The TCode I time, usually related to output refresh speed.",
@@ -592,6 +703,9 @@ class OsrScreenApp(tk.Tk):
         self.worker: threading.Thread | None = None
         self.sink = LogSink()
         self.connected = False
+        self._connecting = False
+        self._connect_worker: threading.Thread | None = None
+        self._connect_attempt_id = 0
         self.auto_connect = auto_connect
         self.center_on_connect = center_on_connect
         self._config_save_after_id: str | None = None
@@ -783,16 +897,25 @@ class OsrScreenApp(tk.Tk):
         return tuple(TRACKER_MODE_EN.get(choice, choice) for choice in TRACKER_MODE_CHOICES)
 
     def _tracker_display(self, value: str) -> str:
+        value = self._normalize_tracker_mode(value)
         if self.ui_language != "en":
             return value
         return TRACKER_MODE_EN.get(value, value)
 
     def _tracker_internal(self, value: str) -> str:
         reverse = {display: internal for internal, display in TRACKER_MODE_EN.items()}
-        return reverse.get(value, value)
+        return self._normalize_tracker_mode(reverse.get(value, value))
 
     def _set_tracker_mode(self, value: str) -> None:
         self.tracker_mode.set(self._tracker_display(value))
+
+    @staticmethod
+    def _normalize_tracker_mode(value: str) -> str:
+        aliases = {
+            "混合分析（推荐）": "混合分析（推荐-非舞蹈）",
+            "Hybrid Analysis (Recommended)": "混合分析（推荐-非舞蹈）",
+        }
+        return aliases.get(value, value)
 
     def _startup_actions(self) -> None:
         if not self.auto_connect:
@@ -800,9 +923,7 @@ class OsrScreenApp(tk.Tk):
         self.sink_type.set("Serial COM")
         if not self.serial_port.get():
             self.autodetect_device()
-        self.connect_sink()
-        if self.connected and self.center_on_connect:
-            self.send_center(interval_ms=600)
+        self._start_connection_worker(center_after=self.center_on_connect)
 
     def _build_vars(self) -> None:
         cfg = self.config_model
@@ -850,8 +971,30 @@ class OsrScreenApp(tk.Tk):
         self.pose_six_axis_analysis = tk.BooleanVar(value=bool(cfg.extra.get("pose_six_axis_analysis", legacy_pose)))
         self.pose_l0_weight = tk.IntVar(value=int(cfg.extra.get("pose_l0_weight", 60)))
         self.pose_six_axis_weight = tk.IntVar(value=int(cfg.extra.get("pose_six_axis_weight", 60)))
+        self.pose_v2_dance_six_axis = tk.BooleanVar(value=bool(cfg.extra.get("pose_v2_dance_six_axis", False)))
+        self.pose_v2_l0_analysis = tk.BooleanVar(value=bool(cfg.extra.get("pose_v2_l0_analysis", False)))
+        self.pose_v2_six_axis_analysis = tk.BooleanVar(value=bool(cfg.extra.get("pose_v2_six_axis_analysis", self.pose_v2_dance_six_axis.get())))
+        self.pose_v2_l0_weight = tk.IntVar(value=int(cfg.extra.get("pose_v2_l0_weight", 60)))
+        self.pose_v2_six_axis_weight = tk.IntVar(value=int(cfg.extra.get("pose_v2_six_axis_weight", 60)))
+        if self.pose_v2_dance_six_axis.get() and (self.pose_v2_l0_analysis.get() or self.pose_v2_six_axis_analysis.get()):
+            self.pose_l0_analysis.set(False)
+            self.pose_six_axis_analysis.set(False)
+        elif self.pose_l0_analysis.get() or self.pose_six_axis_analysis.get():
+            self.pose_v2_dance_six_axis.set(False)
+            self.pose_v2_l0_analysis.set(False)
+            self.pose_v2_six_axis_analysis.set(False)
         self.pose_l0_base_weight_text = tk.StringVar()
         self.pose_six_axis_base_weight_text = tk.StringVar()
+        self.pose_v2_l0_base_weight_text = tk.StringVar()
+        self.pose_v2_six_axis_base_weight_text = tk.StringVar()
+        self._pose_mode_syncing = False
+        self.rtm_pose_3d_enabled = tk.BooleanVar(value=bool(cfg.extra.get("rtm_pose_3d_enabled", False)))
+        self.rtm_pose_3d_model_path = tk.StringVar(value=str(cfg.extra.get("rtm_pose_3d_model_path", "")))
+        self.rtm_pose_3d_weight = tk.IntVar(value=int(cfg.extra.get("rtm_pose_3d_weight", 100)))
+        self.rtm_pose_3d_base_weight_text = tk.StringVar()
+        self.rtm_model_download_button_text = tk.StringVar(value=self._t("下载模型"))
+        self.rtm_model_download_status_text = tk.StringVar(value="")
+        self._rtm_pose_3d_downloading = False
         self.tracker_mode = tk.StringVar(value=self._tracker_display(cfg.tracker_mode))
         self.response_curve = tk.StringVar(value=cfg.response_curve)
         self.motion_gain = tk.DoubleVar(value=cfg.motion_gain)
@@ -864,11 +1007,26 @@ class OsrScreenApp(tk.Tk):
         self.global_travel_slider = tk.DoubleVar(value=self._travel_scale_to_slider(self.global_travel_scale.get()))
         self.l0_travel_text = tk.StringVar(value=self._format_travel_scale(self.l0_travel_scale.get()))
         self.global_travel_text = tk.StringVar(value=self._format_travel_scale(self.global_travel_scale.get()))
+        stored_travel_scales = cfg.extra.get("six_axis_travel_scales", {})
+        if not isinstance(stored_travel_scales, dict):
+            stored_travel_scales = {}
+        self.six_axis_travel_scale_vars: dict[str, tk.DoubleVar] = {}
+        self.six_axis_travel_slider_vars: dict[str, tk.DoubleVar] = {}
+        self.six_axis_travel_text_vars: dict[str, tk.StringVar] = {}
+        for axis, default_scale in DEFAULT_SIX_AXIS_TRAVEL_SCALES.items():
+            scale = max(0.0, min(3.0, float(stored_travel_scales.get(axis, default_scale))))
+            self.six_axis_travel_scale_vars[axis] = tk.DoubleVar(value=scale)
+            self.six_axis_travel_slider_vars[axis] = tk.DoubleVar(value=self._travel_scale_to_slider(scale))
+            self.six_axis_travel_text_vars[axis] = tk.StringVar(value=self._format_travel_scale(scale))
         self.play_preset_level = tk.IntVar(value=int(cfg.extra.get("play_preset_level", 3)))
         self.six_axis_intensity = tk.IntVar(value=int(cfg.extra.get("six_axis_intensity", 65)))
         self.six_axis_jitter_reduction = tk.IntVar(value=int(cfg.extra.get("six_axis_jitter_reduction", 55)))
         self.six_axis_sensitivity_level = tk.IntVar(value=int(cfg.extra.get("six_axis_sensitivity_level", 5)))
         self.show_more_settings = tk.BooleanVar(value=bool(cfg.extra.get("show_more_settings", False)))
+        self.show_measurement_limits = tk.BooleanVar(value=bool(cfg.extra.get("show_measurement_limits", False)))
+        self.show_six_axis_tuning = tk.BooleanVar(value=bool(cfg.extra.get("show_six_axis_tuning", False)))
+        self.show_rtm_pose_3d_settings = tk.BooleanVar(value=bool(cfg.extra.get("show_rtm_pose_3d_settings", False)))
+        self.show_six_axis_travel_scales = tk.BooleanVar(value=bool(cfg.extra.get("show_six_axis_travel_scales", False)))
         stored_gains = cfg.extra.get("six_axis_gains", {})
         stored_inverts = cfg.extra.get("six_axis_inverts", {})
         self.six_axis_gain_vars: dict[str, tk.IntVar] = {}
@@ -899,6 +1057,7 @@ class OsrScreenApp(tk.Tk):
         self.ble_write_uuid = tk.StringVar(value=cfg.ble_write_uuid)
         self.status = tk.StringVar(value=self._t("未连接"))
         self.device_status = tk.StringVar(value=f"{self._t('设备')}: {self._t('未连接')}")
+        self.connect_button_text = tk.StringVar(value=self._t("连接并回中"))
         self.output_value = tk.StringVar(value="L05000I20")
         self.l0_status = tk.StringVar(value="L0 5000")
         self.stroke_status = tk.StringVar(value=f"{self._t('中段')} 50%")
@@ -924,8 +1083,39 @@ class OsrScreenApp(tk.Tk):
         self.max_value.trace_add("write", lambda *_args: self._refresh_limit_text())
         self.l0_travel_scale.trace_add("write", lambda *_args: self._sync_travel_slider(self.l0_travel_scale, self.l0_travel_slider, self.l0_travel_text))
         self.global_travel_scale.trace_add("write", lambda *_args: self._sync_travel_slider(self.global_travel_scale, self.global_travel_slider, self.global_travel_text))
+        for axis in self.six_axis_travel_scale_vars:
+            self.six_axis_travel_scale_vars[axis].trace_add(
+                "write",
+                lambda *_args, axis_name=axis: self._sync_travel_slider(
+                    self.six_axis_travel_scale_vars[axis_name],
+                    self.six_axis_travel_slider_vars[axis_name],
+                    self.six_axis_travel_text_vars[axis_name],
+                ),
+            )
         self.show_more_settings.trace_add("write", lambda *_args: self._refresh_more_settings())
-        for variable in (self.pose_l0_analysis, self.pose_six_axis_analysis, self.pose_l0_weight, self.pose_six_axis_weight):
+        self.show_measurement_limits.trace_add("write", lambda *_args: self._refresh_measurement_limits())
+        self.show_six_axis_tuning.trace_add("write", lambda *_args: self._refresh_six_axis_tuning())
+        self.show_rtm_pose_3d_settings.trace_add("write", lambda *_args: self._refresh_rtm_pose_3d_settings())
+        self.show_six_axis_travel_scales.trace_add("write", lambda *_args: self._refresh_six_axis_travel_scales())
+        self.sink_type.trace_add("write", lambda *_args: self._refresh_ble_settings())
+        self.pose_l0_analysis.trace_add("write", lambda *_args: self._sync_pose_mode_selection("v1"))
+        self.pose_six_axis_analysis.trace_add("write", lambda *_args: self._sync_pose_mode_selection("v1"))
+        self.pose_v2_dance_six_axis.trace_add("write", lambda *_args: self._sync_pose_mode_selection("v2_mode"))
+        self.pose_v2_l0_analysis.trace_add("write", lambda *_args: self._sync_pose_mode_selection("v2_bias"))
+        self.pose_v2_six_axis_analysis.trace_add("write", lambda *_args: self._sync_pose_mode_selection("v2_bias"))
+        for variable in (
+            self.pose_l0_analysis,
+            self.pose_six_axis_analysis,
+            self.pose_l0_weight,
+            self.pose_six_axis_weight,
+            self.pose_v2_dance_six_axis,
+            self.pose_v2_l0_analysis,
+            self.pose_v2_six_axis_analysis,
+            self.pose_v2_l0_weight,
+            self.pose_v2_six_axis_weight,
+            self.rtm_pose_3d_enabled,
+            self.rtm_pose_3d_weight,
+        ):
             variable.trace_add("write", lambda *_args: self._refresh_pose_base_weight_texts())
         self._refresh_pose_base_weight_texts()
         for axis in SIX_AXES:
@@ -965,6 +1155,14 @@ class OsrScreenApp(tk.Tk):
             self.pose_six_axis_analysis,
             self.pose_l0_weight,
             self.pose_six_axis_weight,
+            self.pose_v2_dance_six_axis,
+            self.pose_v2_l0_analysis,
+            self.pose_v2_six_axis_analysis,
+            self.pose_v2_l0_weight,
+            self.pose_v2_six_axis_weight,
+            self.rtm_pose_3d_enabled,
+            self.rtm_pose_3d_model_path,
+            self.rtm_pose_3d_weight,
             self.tracker_mode,
             self.response_curve,
             self.motion_gain,
@@ -977,6 +1175,10 @@ class OsrScreenApp(tk.Tk):
             self.six_axis_jitter_reduction,
             self.six_axis_sensitivity_level,
             self.show_more_settings,
+            self.show_measurement_limits,
+            self.show_six_axis_tuning,
+            self.show_rtm_pose_3d_settings,
+            self.show_six_axis_travel_scales,
             self.min_activity,
             self.enable_activity_gate,
             self.max_step,
@@ -1000,6 +1202,7 @@ class OsrScreenApp(tk.Tk):
         ]
         variables.extend(self.axis_min_vars.values())
         variables.extend(self.axis_max_vars.values())
+        variables.extend(self.six_axis_travel_scale_vars.values())
         variables.extend(self.six_axis_gain_vars.values())
         variables.extend(self.six_axis_invert_vars.values())
         return variables
@@ -1015,6 +1218,33 @@ class OsrScreenApp(tk.Tk):
         base_value = 100 - pose_value if enabled else 100
         return f"{self._t(label_key)}: {base_value}%"
 
+    def _sync_pose_mode_selection(self, source: str) -> None:
+        if self._pose_mode_syncing:
+            return
+        self._pose_mode_syncing = True
+        try:
+            if source == "v2_mode":
+                if self.pose_v2_dance_six_axis.get():
+                    self.pose_l0_analysis.set(False)
+                    self.pose_six_axis_analysis.set(False)
+                    if not self.pose_v2_l0_analysis.get() and not self.pose_v2_six_axis_analysis.get():
+                        self.pose_v2_six_axis_analysis.set(True)
+                else:
+                    self.pose_v2_l0_analysis.set(False)
+                    self.pose_v2_six_axis_analysis.set(False)
+            elif source == "v2_bias":
+                if self.pose_v2_l0_analysis.get() or self.pose_v2_six_axis_analysis.get():
+                    self.pose_v2_dance_six_axis.set(True)
+                    self.pose_l0_analysis.set(False)
+                    self.pose_six_axis_analysis.set(False)
+            elif source == "v1" and (self.pose_l0_analysis.get() or self.pose_six_axis_analysis.get()):
+                self.pose_v2_dance_six_axis.set(False)
+                self.pose_v2_l0_analysis.set(False)
+                self.pose_v2_six_axis_analysis.set(False)
+        finally:
+            self._pose_mode_syncing = False
+        self._refresh_pose_base_weight_texts()
+
     def _refresh_pose_base_weight_texts(self) -> None:
         if hasattr(self, "pose_l0_base_weight_text"):
             self.pose_l0_base_weight_text.set(
@@ -1027,6 +1257,22 @@ class OsrScreenApp(tk.Tk):
                     self.pose_six_axis_weight.get(),
                     "基础分析六轴权重",
                 )
+            )
+        if hasattr(self, "pose_v2_l0_base_weight_text"):
+            self.pose_v2_l0_base_weight_text.set(
+                self._pose_base_weight_label(self.pose_v2_l0_analysis.get(), self.pose_v2_l0_weight.get(), "基础分析 v2 L0 权重")
+            )
+        if hasattr(self, "pose_v2_six_axis_base_weight_text"):
+            self.pose_v2_six_axis_base_weight_text.set(
+                self._pose_base_weight_label(
+                    self.pose_v2_six_axis_analysis.get(),
+                    self.pose_v2_six_axis_weight.get(),
+                    "基础分析 v2 六轴权重",
+                )
+            )
+        if hasattr(self, "rtm_pose_3d_base_weight_text"):
+            self.rtm_pose_3d_base_weight_text.set(
+                self._pose_base_weight_label(self.rtm_pose_3d_enabled.get(), self.rtm_pose_3d_weight.get(), "基础分析 RTM 权重")
             )
 
     def _schedule_config_save(self) -> None:
@@ -1107,7 +1353,8 @@ class OsrScreenApp(tk.Tk):
         ttk.Label(monitor, textvariable=self.activity, font=("", 12)).grid(row=4, column=1, sticky="w")
         ttk.Button(monitor, text="急停回中", command=self.estop, style="Danger.TButton").grid(row=1, column=2, sticky="ew")
         ttk.Button(monitor, text="全行程", command=self.apply_full_preset, style="Primary.TButton").grid(row=2, column=2, sticky="ew", pady=4)
-        ttk.Button(monitor, text="连接并回中", command=self.connect_and_center).grid(row=3, column=2, sticky="ew")
+        self.monitor_connect_button = ttk.Button(monitor, textvariable=self.connect_button_text, command=self.connect_and_center)
+        self.monitor_connect_button.grid(row=3, column=2, sticky="ew")
         self.axis_canvas = tk.Canvas(monitor, width=520, height=136, highlightthickness=0, background="#f8f8f8")
         self.axis_canvas.grid(row=5, column=0, columnspan=3, sticky="ew", pady=(10, 0))
         self.curve_canvas = tk.Canvas(monitor, width=520, height=150, highlightthickness=0, background="#101418")
@@ -1264,6 +1511,8 @@ class OsrScreenApp(tk.Tk):
         self.more_settings_frame = ttk.Frame(parent)
         self.more_settings_frame.columnconfigure(1, weight=1)
         inner_row = 0
+        inner_row = self._manual_test_controls(self.more_settings_frame, inner_row)
+        inner_row = self._preset_controls(self.more_settings_frame, inner_row)
         inner_row = self._source_controls(self.more_settings_frame, inner_row)
         inner_row = self._audio_controls(self.more_settings_frame, inner_row)
         inner_row = self._region_controls(self.more_settings_frame, inner_row)
@@ -1282,8 +1531,99 @@ class OsrScreenApp(tk.Tk):
         self.more_settings_button.configure(text=self._t("收起更多设置" if expanded else "展开更多设置"))
         if expanded:
             self.more_settings_frame.grid(row=int(self.more_settings_button.grid_info()["row"]) + 1, column=0, columnspan=3, sticky="ew")
+            self._refresh_ble_settings()
+            self._refresh_measurement_limits()
+            self._refresh_six_axis_tuning()
+            self._refresh_rtm_pose_3d_settings()
         else:
             self.more_settings_frame.grid_remove()
+
+    def _toggle_measurement_limits(self) -> None:
+        self.show_measurement_limits.set(not self.show_measurement_limits.get())
+        self._refresh_measurement_limits()
+
+    def _refresh_measurement_limits(self) -> None:
+        if not hasattr(self, "measurement_limits_button") or not hasattr(self, "measurement_limits_frame"):
+            return
+        expanded = self.show_measurement_limits.get()
+        self.measurement_limits_button.configure(text=self._t("收起测量模式和轴上下限" if expanded else "展开测量模式和轴上下限"))
+        if expanded:
+            self.measurement_limits_frame.grid(row=int(self.measurement_limits_button.grid_info()["row"]) + 1, column=0, columnspan=3, sticky="ew")
+        else:
+            self.measurement_limits_frame.grid_remove()
+
+    def _toggle_six_axis_tuning(self) -> None:
+        self.show_six_axis_tuning.set(not self.show_six_axis_tuning.get())
+        self._refresh_six_axis_tuning()
+
+    def _refresh_six_axis_tuning(self) -> None:
+        if not hasattr(self, "six_axis_tuning_button") or not hasattr(self, "six_axis_tuning_frame"):
+            return
+        expanded = self.show_six_axis_tuning.get()
+        self.six_axis_tuning_button.configure(text=self._t("收起六轴辅助调节（仅混合分析）" if expanded else "展开六轴辅助调节（仅混合分析）"))
+        if expanded:
+            self.six_axis_tuning_frame.grid(row=int(self.six_axis_tuning_button.grid_info()["row"]) + 1, column=0, columnspan=3, sticky="ew", pady=(0, 8))
+        else:
+            self.six_axis_tuning_frame.grid_remove()
+
+    def _toggle_rtm_pose_3d_settings(self) -> None:
+        self.show_rtm_pose_3d_settings.set(not self.show_rtm_pose_3d_settings.get())
+        self._refresh_rtm_pose_3d_settings()
+
+    def _refresh_rtm_pose_3d_settings(self) -> None:
+        if not hasattr(self, "rtm_pose_3d_settings_button") or not hasattr(self, "rtm_pose_3d_settings_frame"):
+            return
+        expanded = self.show_rtm_pose_3d_settings.get()
+        self.rtm_pose_3d_settings_button.configure(text=self._t("收起 RTM Pose 3D 设置" if expanded else "展开 RTM Pose 3D 设置"))
+        if expanded:
+            self.rtm_pose_3d_settings_frame.grid(row=int(self.rtm_pose_3d_settings_button.grid_info()["row"]) + 1, column=0, columnspan=3, sticky="ew", pady=(0, 8))
+        else:
+            self.rtm_pose_3d_settings_frame.grid_remove()
+
+    def _toggle_six_axis_travel_scales(self) -> None:
+        self.show_six_axis_travel_scales.set(not self.show_six_axis_travel_scales.get())
+        self._refresh_six_axis_travel_scales()
+
+    def _refresh_six_axis_travel_scales(self) -> None:
+        if not hasattr(self, "six_axis_travel_button") or not hasattr(self, "six_axis_travel_frame"):
+            return
+        expanded = self.show_six_axis_travel_scales.get()
+        self.six_axis_travel_button.configure(text=self._t("收起六轴单轴行程倍率" if expanded else "展开六轴单轴行程倍率"))
+        if expanded:
+            self.six_axis_travel_frame.grid(row=int(self.six_axis_travel_button.grid_info()["row"]) + 1, column=0, columnspan=3, sticky="ew")
+        else:
+            self.six_axis_travel_frame.grid_remove()
+
+    def _refresh_ble_settings(self) -> None:
+        if not hasattr(self, "ble_settings_frame"):
+            return
+        if self.sink_type.get() == "BLE UART":
+            self.ble_settings_frame.grid()
+        else:
+            self.ble_settings_frame.grid_remove()
+
+    def _manual_test_controls(self, parent: ttk.Frame, row: int) -> int:
+        ttk.Button(parent, text="居中", command=self.send_center).grid(row=row, column=0, sticky="ew")
+        ttk.Button(parent, text="中等测试", command=self.send_small_test).grid(row=row, column=1, columnspan=2, sticky="ew", padx=(4, 0))
+        row += 1
+        ttk.Button(parent, text="上下全幅测试", command=self.send_full_l0_test).grid(
+            row=row, column=0, columnspan=3, sticky="ew", pady=(4, 0)
+        )
+        row += 1
+        ttk.Button(parent, text="OSR6 六轴轻测", command=self.send_six_axis_test).grid(
+            row=row, column=0, columnspan=3, sticky="ew", pady=(4, 8)
+        )
+        return row + 1
+
+    def _preset_controls(self, parent: ttk.Frame, row: int) -> int:
+        ttk.Button(parent, text="安全预设", command=self.apply_safe_preset).grid(row=row, column=0, sticky="ew")
+        ttk.Button(parent, text="标准预设", command=self.apply_normal_preset).grid(row=row, column=1, sticky="ew", padx=(4, 0))
+        ttk.Button(parent, text="全行程", command=self.apply_full_preset).grid(row=row, column=2, sticky="ew", padx=(4, 0))
+        row += 1
+        ttk.Button(parent, text="混合分析灵敏", command=self.apply_hybrid_analysis_preset, style="Primary.TButton").grid(
+            row=row, column=0, columnspan=3, sticky="ew", pady=(4, 12)
+        )
+        return row + 1
 
     def _install_tooltips(self, widget: tk.Widget) -> None:
         try:
@@ -1489,13 +1829,22 @@ class OsrScreenApp(tk.Tk):
         )
         row += 1
 
-        ttk.Label(parent, text="BLE 名称").grid(row=row, column=0, sticky="w", pady=2)
-        ttk.Entry(parent, textvariable=self.ble_name).grid(row=row, column=1, sticky="ew", pady=2)
-        ttk.Button(parent, text="扫描", command=self.scan_ble).grid(row=row, column=2, sticky="ew", padx=(4, 0))
+        self.ble_settings_frame = ttk.Frame(parent)
+        self.ble_settings_frame.columnconfigure(1, weight=1)
+        ble_row = 0
+        ttk.Label(self.ble_settings_frame, text="BLE 名称").grid(row=ble_row, column=0, sticky="w", pady=2)
+        ttk.Entry(self.ble_settings_frame, textvariable=self.ble_name).grid(row=ble_row, column=1, sticky="ew", pady=2)
+        ttk.Button(self.ble_settings_frame, text="扫描", command=self.scan_ble).grid(row=ble_row, column=2, sticky="ew", padx=(4, 0))
+        ble_row += 1
+        ttk.Label(self.ble_settings_frame, text="BLE 地址").grid(row=ble_row, column=0, sticky="w", pady=2)
+        ttk.Entry(self.ble_settings_frame, textvariable=self.ble_address, width=18).grid(row=ble_row, column=1, columnspan=2, sticky="ew", pady=2)
+        ble_row += 1
+        ttk.Label(self.ble_settings_frame, text="写入 UUID").grid(row=ble_row, column=0, sticky="w", pady=2)
+        ttk.Entry(self.ble_settings_frame, textvariable=self.ble_write_uuid, width=18).grid(row=ble_row, column=1, columnspan=2, sticky="ew", pady=2)
+        self.ble_settings_frame.grid(row=row, column=0, columnspan=3, sticky="ew")
         row += 1
-        row = self._entry(parent, "BLE 地址", self.ble_address, row, width=18)
-        row = self._entry(parent, "写入 UUID", self.ble_write_uuid, row, width=18)
-        ttk.Button(parent, text="连接并回中", command=self.connect_and_center, style="Primary.TButton").grid(
+        self.connect_button = ttk.Button(parent, textvariable=self.connect_button_text, command=self.connect_and_center, style="Primary.TButton")
+        self.connect_button.grid(
             row=row, column=0, columnspan=2, sticky="ew", pady=(4, 0)
         )
         ttk.Button(parent, text="断开", command=self.disconnect_sink).grid(row=row, column=2, sticky="ew", padx=(4, 0), pady=(4, 0))
@@ -1503,6 +1852,7 @@ class OsrScreenApp(tk.Tk):
         ttk.Button(parent, text="查询设备轴", command=self.query_device_axes).grid(
             row=row, column=0, columnspan=3, sticky="ew", pady=(4, 0)
         )
+        self._refresh_ble_settings()
         return row + 1
 
     def _quick_controls(self, parent: ttk.Frame, row: int) -> int:
@@ -1512,17 +1862,6 @@ class OsrScreenApp(tk.Tk):
         ttk.Label(parent, text="速度").grid(row=row, column=0, sticky="w", pady=2)
         ttk.Scale(parent, from_=100, to=9999, variable=self.max_step).grid(row=row, column=1, sticky="ew", pady=2)
         ttk.Label(parent, textvariable=self.max_step, width=6, anchor="e").grid(row=row, column=2, sticky="e")
-        row += 1
-        ttk.Button(parent, text="居中", command=self.send_center).grid(row=row, column=0, sticky="ew")
-        ttk.Button(parent, text="中等测试", command=self.send_small_test).grid(row=row, column=1, columnspan=2, sticky="ew", padx=(4, 0))
-        row += 1
-        ttk.Button(parent, text="上下全幅测试", command=self.send_full_l0_test).grid(
-            row=row, column=0, columnspan=3, sticky="ew", pady=(4, 0)
-        )
-        row += 1
-        ttk.Button(parent, text="OSR6 六轴轻测", command=self.send_six_axis_test).grid(
-            row=row, column=0, columnspan=3, sticky="ew", pady=(4, 0)
-        )
         row += 1
         ttk.Button(parent, text="恢复所有默认设置", command=self.reset_all_settings).grid(
             row=row, column=0, columnspan=3, sticky="ew", pady=(4, 0)
@@ -1539,48 +1878,46 @@ class OsrScreenApp(tk.Tk):
             row=row, column=0, columnspan=3, sticky="ew", pady=(4, 0)
         )
         row += 1
-        ttk.Button(parent, text="安全预设", command=self.apply_safe_preset).grid(row=row, column=0, sticky="ew", pady=(8, 0))
-        ttk.Button(parent, text="标准预设", command=self.apply_normal_preset).grid(row=row, column=1, sticky="ew", padx=(4, 0), pady=(8, 0))
-        ttk.Button(parent, text="全行程", command=self.apply_full_preset).grid(row=row, column=2, sticky="ew", padx=(4, 0), pady=(8, 0))
-        row += 1
-        ttk.Button(parent, text="混合分析灵敏", command=self.apply_hybrid_analysis_preset, style="Primary.TButton").grid(
-            row=row, column=0, columnspan=3, sticky="ew", pady=(4, 0)
-        )
-        row += 1
         ttk.Button(parent, text="开始录制", command=self.start_recording).grid(row=row, column=0, columnspan=2, sticky="ew", pady=(8, 0))
         ttk.Button(parent, text="保存脚本", command=self.save_recording).grid(row=row, column=2, sticky="ew", padx=(4, 0), pady=(8, 0))
+        row += 1
+        row = self._travel_slider(parent, "L0 总行程倍率", self.l0_travel_scale, self.l0_travel_slider, self.l0_travel_text, row)
+        row = self._travel_slider(parent, "六轴总行程倍率", self.global_travel_scale, self.global_travel_slider, self.global_travel_text, row)
+        self.six_axis_travel_button = ttk.Button(parent, command=self._toggle_six_axis_travel_scales)
+        self.six_axis_travel_button.grid(row=row, column=0, columnspan=3, sticky="ew", pady=(0, 4))
+        row += 1
+        self.six_axis_travel_frame = ttk.Frame(parent)
+        self.six_axis_travel_frame.columnconfigure(1, weight=1)
+        inner_row = 0
+        for axis in ("L1", "L2", "R0", "R1", "R2"):
+            inner_row = self._travel_slider(
+                self.six_axis_travel_frame,
+                f"{axis} 行程倍率",
+                self.six_axis_travel_scale_vars[axis],
+                self.six_axis_travel_slider_vars[axis],
+                self.six_axis_travel_text_vars[axis],
+                inner_row,
+            )
+        self.six_axis_travel_frame.grid(row=row, column=0, columnspan=3, sticky="ew")
+        self._refresh_six_axis_travel_scales()
+        row += 1
         return row + 1
 
     def _axis_limit_controls(self, parent: ttk.Frame, row: int) -> int:
         row = self._section(parent, "六轴独立上下限", row)
-        row = self._travel_slider(parent, "L0 总行程倍率", self.l0_travel_scale, self.l0_travel_slider, self.l0_travel_text, row)
-        row = self._travel_slider(parent, "六轴总行程倍率", self.global_travel_scale, self.global_travel_slider, self.global_travel_text, row)
-        pose_box = ttk.LabelFrame(parent, text="Pose 倾向", padding=8)
-        pose_box.columnconfigure(1, weight=1)
-        ttk.Checkbutton(pose_box, text="Pose 倾向 L0", variable=self.pose_l0_analysis).grid(row=0, column=0, columnspan=3, sticky="w", pady=2)
-        ttk.Label(pose_box, text="Pose L0 权重").grid(row=1, column=0, sticky="w", pady=2)
-        ttk.Scale(pose_box, from_=0, to=100, variable=self.pose_l0_weight).grid(row=1, column=1, sticky="ew", pady=2)
-        ttk.Label(pose_box, textvariable=self.pose_l0_weight, width=4, anchor="e").grid(row=1, column=2, sticky="e")
-        pose_l0_base_label = ttk.Label(pose_box, textvariable=self.pose_l0_base_weight_text, foreground="#555")
-        pose_l0_base_label.grid(row=2, column=0, columnspan=3, sticky="w", pady=(0, 5))
-        Tooltip(pose_l0_base_label, self._tooltip_text("基础分析 L0 权重"))
-        ttk.Checkbutton(pose_box, text="Pose 倾向六轴", variable=self.pose_six_axis_analysis).grid(row=3, column=0, columnspan=3, sticky="w", pady=(5, 2))
-        ttk.Label(pose_box, text="Pose 六轴权重").grid(row=4, column=0, sticky="w", pady=2)
-        ttk.Scale(pose_box, from_=0, to=100, variable=self.pose_six_axis_weight).grid(row=4, column=1, sticky="ew", pady=2)
-        ttk.Label(pose_box, textvariable=self.pose_six_axis_weight, width=4, anchor="e").grid(row=4, column=2, sticky="e")
-        pose_six_base_label = ttk.Label(pose_box, textvariable=self.pose_six_axis_base_weight_text, foreground="#555")
-        pose_six_base_label.grid(row=5, column=0, columnspan=3, sticky="w", pady=(0, 2))
-        Tooltip(pose_six_base_label, self._tooltip_text("基础分析六轴权重"))
-        pose_box.grid(row=row, column=0, columnspan=3, sticky="ew", pady=(0, 8))
+        self.measurement_limits_button = ttk.Button(parent, command=self._toggle_measurement_limits)
+        self.measurement_limits_button.grid(row=row, column=0, columnspan=3, sticky="ew", pady=(0, 4))
         row += 1
-        row = self._measurement_controls(parent, row)
-        row = self._six_axis_tuning_controls(parent, row)
-        ttk.Label(parent, text="轴").grid(row=row, column=0, sticky="w")
-        ttk.Label(parent, text="下限").grid(row=row, column=1, sticky="w")
-        ttk.Label(parent, text="上限").grid(row=row, column=2, sticky="w")
-        row += 1
+        self.measurement_limits_frame = ttk.Frame(parent)
+        self.measurement_limits_frame.columnconfigure(1, weight=1)
+        inner_row = 0
+        inner_row = self._measurement_controls(self.measurement_limits_frame, inner_row)
+        ttk.Label(self.measurement_limits_frame, text="轴").grid(row=inner_row, column=0, sticky="w")
+        ttk.Label(self.measurement_limits_frame, text="下限").grid(row=inner_row, column=1, sticky="w")
+        ttk.Label(self.measurement_limits_frame, text="上限").grid(row=inner_row, column=2, sticky="w")
+        inner_row += 1
         for axis in SIX_AXES:
-            line = ttk.Frame(parent)
+            line = ttk.Frame(self.measurement_limits_frame)
             line.columnconfigure(1, weight=1)
             line.columnconfigure(3, weight=1)
             ttk.Label(line, text=axis, width=4).grid(row=0, column=0, sticky="w")
@@ -1600,14 +1937,56 @@ class OsrScreenApp(tk.Tk):
                 command=lambda _value, axis_name=axis: self._normalize_axis_limit(axis_name),
             ).grid(row=0, column=3, sticky="ew", padx=(8, 3))
             ttk.Label(line, textvariable=self.axis_max_vars[axis], width=5, anchor="e").grid(row=0, column=4, sticky="e")
-            line.grid(row=row, column=0, columnspan=3, sticky="ew", pady=1)
-            row += 1
+            line.grid(row=inner_row, column=0, columnspan=3, sticky="ew", pady=1)
+            inner_row += 1
         ttk.Label(
-            parent,
+            self.measurement_limits_frame,
             text="实时输出与测试会按每个轴自己的范围映射。滑块交叉时会自动整理。",
             wraplength=300,
             foreground="#555",
-        ).grid(row=row, column=0, columnspan=3, sticky="ew", pady=(4, 0))
+        ).grid(row=inner_row, column=0, columnspan=3, sticky="ew", pady=(4, 0))
+        self.measurement_limits_frame.grid(row=row, column=0, columnspan=3, sticky="ew")
+        self._refresh_measurement_limits()
+        row += 1
+        row = self._six_axis_tuning_controls(parent, row)
+        row = self._rtm_pose_3d_controls(parent, row)
+        return row
+
+    def _rtm_pose_3d_controls(self, parent: ttk.Frame, row: int) -> int:
+        self.rtm_pose_3d_settings_button = ttk.Button(parent, command=self._toggle_rtm_pose_3d_settings)
+        self.rtm_pose_3d_settings_button.grid(row=row, column=0, columnspan=3, sticky="ew", pady=(4, 4))
+        row += 1
+        box = ttk.LabelFrame(parent, text="RTM Pose 3D 骨架标注", padding=8)
+        self.rtm_pose_3d_settings_frame = box
+        box.columnconfigure(1, weight=1)
+        rtm_toggle = ttk.Checkbutton(box, text="RTM Pose 3D 骨架标注", variable=self.rtm_pose_3d_enabled)
+        rtm_toggle.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 2))
+        Tooltip(rtm_toggle, self._tooltip_text("RTM Pose 3D 骨架标注"))
+        ttk.Label(box, text="RTM Pose 3D 权重").grid(row=1, column=0, sticky="w", pady=2)
+        ttk.Scale(box, from_=0, to=100, variable=self.rtm_pose_3d_weight).grid(row=1, column=1, sticky="ew", pady=2)
+        ttk.Label(box, textvariable=self.rtm_pose_3d_weight, width=4, anchor="e").grid(row=1, column=2, sticky="e")
+        rtm_base_label = ttk.Label(box, textvariable=self.rtm_pose_3d_base_weight_text, foreground="#555")
+        rtm_base_label.grid(row=2, column=0, columnspan=3, sticky="w", pady=(0, 5))
+        Tooltip(rtm_base_label, self._tooltip_text("基础分析 RTM 权重"))
+        ttk.Label(box, text="RTM Pose 3D 模型").grid(row=3, column=0, sticky="w", pady=2)
+        rtm_model_entry = ttk.Entry(box, textvariable=self.rtm_pose_3d_model_path)
+        rtm_model_entry.grid(row=3, column=1, sticky="ew", pady=2)
+        Tooltip(rtm_model_entry, self._tooltip_text("RTM Pose 3D 模型"))
+        ttk.Button(box, text="选择模型", command=self.pick_rtm_pose_3d_model).grid(row=3, column=2, sticky="ew", padx=(4, 0), pady=2)
+        ttk.Button(box, textvariable=self.rtm_model_download_button_text, command=self.download_rtm_pose_3d_model).grid(
+            row=4, column=0, columnspan=3, sticky="ew", pady=(4, 2)
+        )
+        ttk.Label(box, textvariable=self.rtm_model_download_status_text, foreground="#555", wraplength=330).grid(
+            row=5, column=0, columnspan=3, sticky="w", pady=(0, 2)
+        )
+        ttk.Label(
+            box,
+            text="来源：OpenMMLab MMPose / rtmlib，需要本地 ONNX 模型。",
+            foreground="#555",
+            wraplength=330,
+        ).grid(row=6, column=0, columnspan=3, sticky="w", pady=(0, 2))
+        box.grid(row=row, column=0, columnspan=3, sticky="ew", pady=(0, 8))
+        self._refresh_rtm_pose_3d_settings()
         return row + 1
 
     def _measurement_controls(self, parent: ttk.Frame, row: int) -> int:
@@ -1651,7 +2030,11 @@ class OsrScreenApp(tk.Tk):
         return row + 1
 
     def _six_axis_tuning_controls(self, parent: ttk.Frame, row: int) -> int:
-        box = ttk.LabelFrame(parent, text="六轴辅助调节（不影响 L0）", padding=8)
+        self.six_axis_tuning_button = ttk.Button(parent, command=self._toggle_six_axis_tuning)
+        self.six_axis_tuning_button.grid(row=row, column=0, columnspan=3, sticky="ew", pady=(4, 4))
+        row += 1
+        box = ttk.LabelFrame(parent, text="六轴辅助调节（仅混合分析推荐）", padding=8)
+        self.six_axis_tuning_frame = box
         box.columnconfigure(1, weight=1)
         ttk.Label(box, text="总强度").grid(row=0, column=0, sticky="w", pady=2)
         ttk.Scale(box, from_=0, to=180, variable=self.six_axis_intensity).grid(row=0, column=1, sticky="ew", pady=2)
@@ -1694,11 +2077,12 @@ class OsrScreenApp(tk.Tk):
             row_i += 1
         ttk.Label(
             box,
-            text="建议先把其它轴限位收窄，再逐个放大强度；L0 主轴不会被这些滑块改变。",
+            text="这组滑块只推荐用于混合分析（推荐-非舞蹈）；RTM Pose 3D 输出不会接入这里。",
             wraplength=270,
             foreground="#555",
         ).grid(row=row_i, column=0, columnspan=3, sticky="ew", pady=(4, 0))
         box.grid(row=row, column=0, columnspan=3, sticky="ew", pady=(0, 8))
+        self._refresh_six_axis_tuning()
         return row + 1
 
     def apply_soft_six_axis_preset(self) -> None:
@@ -1812,6 +2196,74 @@ class OsrScreenApp(tk.Tk):
             self.video_path.set(path)
             self.source_mode.set("Video File")
 
+    def pick_rtm_pose_3d_model(self) -> None:
+        self._choose_rtm_pose_3d_model_for_var(self.rtm_pose_3d_model_path)
+
+    def _choose_rtm_pose_3d_model_for_var(self, variable: tk.StringVar) -> None:
+        path = filedialog.askopenfilename(
+            title=self._t("RTM Pose 3D 模型"),
+            filetypes=(("ONNX", "*.onnx"), ("All files", "*.*")),
+        )
+        if path:
+            variable.set(path)
+
+    def download_rtm_pose_3d_model(self) -> None:
+        if self._rtm_pose_3d_downloading:
+            self.status.set(self._t("模型下载中..."))
+            self.rtm_model_download_status_text.set(self._t("模型下载中..."))
+            return
+        self._rtm_pose_3d_downloading = True
+        self.rtm_model_download_button_text.set(self._t("下载中..."))
+        self.rtm_model_download_status_text.set(self._t("模型下载中..."))
+        self.status.set(self._t("模型下载中..."))
+
+        def worker() -> None:
+            try:
+                root = Path(__file__).resolve().parents[2]
+                model_dir = root / "models"
+                model_dir.mkdir(parents=True, exist_ok=True)
+                target = model_dir / RTM_POSE_3D_MODEL_NAME
+                partial = target.with_suffix(target.suffix + ".download")
+                if target.exists() and target.stat().st_size > 100_000_000:
+                    self._queue_latest(
+                        {
+                            "rtm_model_path": str(target),
+                            "status_text": self._t("模型下载完成"),
+                            "rtm_download_status": self._t("模型下载完成"),
+                        }
+                    )
+                    return
+
+                last_percent = -1
+
+                def report(block_count: int, block_size: int, total_size: int) -> None:
+                    nonlocal last_percent
+                    if total_size <= 0:
+                        return
+                    downloaded = min(total_size, block_count * block_size)
+                    percent = int(downloaded * 100 / total_size)
+                    if percent >= last_percent + 5:
+                        last_percent = percent
+                        text = f"{self._t('模型下载中...')} {percent}%"
+                        self._queue_latest({"status_text": text, "rtm_download_status": text})
+
+                urllib.request.urlretrieve(RTM_POSE_3D_MODEL_URL, partial, report)
+                partial.replace(target)
+                self._queue_latest(
+                    {
+                        "rtm_model_path": str(target),
+                        "status_text": self._t("模型下载完成"),
+                        "rtm_download_status": self._t("模型下载完成"),
+                    }
+                )
+            except Exception as exc:
+                text = f"{self._t('模型下载失败')}: {exc}"
+                self._queue_latest({"error": text, "rtm_download_status": text})
+            finally:
+                self._queue_latest({"rtm_download_done": True})
+
+        threading.Thread(target=worker, daemon=True).start()
+
     def analyze_video_file(self) -> None:
         path = self.video_path.get()
         if not path:
@@ -1844,25 +2296,31 @@ class OsrScreenApp(tk.Tk):
             raise ValueError(f"{self._t('无法打开视频')}: {video_path}")
         self._six_axis_stable_positions = {axis: 0.5 for axis in SIX_AXES}
         analyzer = RealtimeAnalyzer(
-            self._tracker_internal(self.tracker_mode.get()),
-            self.output_mode.get(),
-            self.smoothing.get(),
-            self.deadzone.get(),
-            self.motion_gain.get(),
-            self.enable_smoothing.get(),
-            self.enable_deadzone.get(),
-            self.response_curve.get(),
-            self.visual_stroke_scale.get(),
-            self.enable_l0_jitter_guard.get(),
-            self.l0_guard_strength.get(),
-            self.enable_extreme_reset.get(),
-            self.enable_endpoint_guard.get(),
-            self.endpoint_margin_pct.get() / 200.0,
-            False,
-            self.pose_l0_analysis.get(),
-            self.pose_six_axis_analysis.get(),
-            self.pose_l0_weight.get() / 100.0,
-            self.pose_six_axis_weight.get() / 100.0,
+            tracker_mode=self._tracker_internal(self.tracker_mode.get()),
+            output_mode=self.output_mode.get(),
+            smoothing=self.smoothing.get(),
+            deadzone=self.deadzone.get(),
+            motion_gain=self.motion_gain.get(),
+            enable_smoothing=self.enable_smoothing.get(),
+            enable_deadzone=self.enable_deadzone.get(),
+            response_curve=self.response_curve.get(),
+            visual_stroke_scale=self.visual_stroke_scale.get(),
+            l0_jitter_guard=self.enable_l0_jitter_guard.get(),
+            l0_guard_strength=self.l0_guard_strength.get(),
+            enable_extreme_reset=self.enable_extreme_reset.get(),
+            enable_endpoint_guard=self.enable_endpoint_guard.get(),
+            endpoint_margin=self.endpoint_margin_pct.get() / 200.0,
+            pose_dance_l0=False,
+            pose_dance_six_axis=False,
+            pose_l0_weight=0.0,
+            pose_six_axis_weight=0.0,
+            pose_v2_dance_six_axis=False,
+            pose_v2_l0_weight=0.0,
+            pose_v2_six_axis_weight=0.0,
+            rtm_pose_3d_enabled=self.rtm_pose_3d_enabled.get(),
+            rtm_pose_3d_model_path=self.rtm_pose_3d_model_path.get(),
+            rtm_pose_3d_weight=self.rtm_pose_3d_weight.get() / 100.0,
+            compression_latency=self.compression_latency.get(),
         )
         recorder = MultiAxisFunscriptRecorder()
         recorder.start()
@@ -1880,7 +2338,8 @@ class OsrScreenApp(tk.Tk):
                 if index % frame_step != 0:
                     index += 1
                     continue
-                result = analyzer.process(frame)
+                analysis_frame = self._prepare_analysis_frame(frame)
+                result = analyzer.process(analysis_frame)
                 positions = self._apply_six_axis_tuning(result.positions)
                 at = int(cap.get(cv2.CAP_PROP_POS_MSEC))
                 if at <= 0:
@@ -1891,7 +2350,7 @@ class OsrScreenApp(tk.Tk):
                     progress = f"{index}/{total}" if total else str(index)
                     self._queue_latest(
                         {
-                            "preview": result.preview_bgr,
+                            "preview": self._capture_preview_for_display(frame, analysis_frame, result.preview_bgr),
                             "status_text": f"{self._t('视频分析中...')} {progress}",
                             "record_count": recorder.action_count,
                         }
@@ -1903,44 +2362,158 @@ class OsrScreenApp(tk.Tk):
         recorder.stop()
         return recorder.save(save_path)
 
-    def connect_sink(self) -> None:
-        self.disconnect_sink()
-        kind = self.sink_type.get()
+    def _close_sink_safely(self, sink: object) -> None:
         try:
-            if kind in ("USB Serial", "Serial COM"):
-                self.sink = SerialSink(extract_serial_device(self.serial_port.get()), self.baudrate.get())
-            elif kind == "BLE UART":
-                self.sink = BleSink(self.ble_address.get(), self.ble_write_uuid.get())
-            else:
-                self.sink = LogSink()
+            sink.close()
+        except Exception:
+            pass
+
+    def _connection_snapshot(self) -> dict[str, object]:
+        kind = self.sink_type.get()
+        return {
+            "kind": kind,
+            "serial_port": extract_serial_device(self.serial_port.get()),
+            "baudrate": self.baudrate.get(),
+            "ble_address": self.ble_address.get(),
+            "ble_write_uuid": self.ble_write_uuid.get(),
+        }
+
+    def _open_sink_from_snapshot(self, snapshot: dict[str, object]) -> object:
+        kind = str(snapshot["kind"])
+        if kind in ("USB Serial", "Serial COM"):
+            return SerialSink(str(snapshot["serial_port"]), int(snapshot["baudrate"]))
+        if kind == "BLE UART":
+            return BleSink(str(snapshot["ble_address"]), str(snapshot["ble_write_uuid"]))
+        return LogSink()
+
+    def _set_connecting(self, active: bool) -> None:
+        self._connecting = active
+        self.connect_button_text.set(self._t("连接中...") if active else self._t("连接并回中"))
+        for name in ("connect_button", "monitor_connect_button"):
+            button = getattr(self, name, None)
+            if button is None:
+                continue
+            try:
+                button.state(["disabled"] if active else ["!disabled"])
+            except tk.TclError:
+                pass
+
+    def _finish_connection_success(self, item: dict[str, object]) -> None:
+        attempt_id = int(item.get("attempt_id", 0))
+        sink = item.get("sink")
+        if attempt_id != self._connect_attempt_id:
+            if sink is not None:
+                self._close_sink_safely(sink)
+            return
+        if sink is None:
+            return
+        self.sink = sink
+        self.connected = True
+        self._set_connecting(False)
+        kind = str(item.get("kind", self.sink_type.get()))
+        self.status.set(f"{self._t('已连接')}: {kind}")
+        if kind in ("USB Serial", "Serial COM"):
+            self.device_status.set(f"{self._t('设备')}: {self._t('已连接')} {item.get('serial_port', '')}")
+        elif kind == "BLE UART":
+            self.device_status.set(f"{self._t('设备')}: {self._t('已连接')} BLE {item.get('ble_address', '')}")
+        else:
+            self.device_status.set(f"{self._t('设备')}: {self._t('日志模式')}")
+        self._save_config()
+        if bool(item.get("center_after", False)):
+            try:
+                self.send_center(interval_ms=600)
+                self.status.set(self._t("已连接并回中"))
+            except Exception as exc:
+                self.status.set(f"{self._t('回中失败')}: {exc}")
+
+    def _finish_connection_error(self, item: dict[str, object]) -> None:
+        attempt_id = int(item.get("attempt_id", 0))
+        if attempt_id != self._connect_attempt_id:
+            return
+        self.sink = LogSink()
+        self.connected = False
+        self._set_connecting(False)
+        message = str(item.get("message", self._t("连接失败")))
+        self.device_status.set(f"{self._t('设备')}: {self._t('连接失败')}")
+        self.status.set(f"{self._t('连接失败')}: {message}")
+        messagebox.showerror(self._t("连接失败"), message)
+
+    def _connection_watchdog(self, attempt_id: int) -> None:
+        if not self._connecting or attempt_id != self._connect_attempt_id:
+            return
+        self._connect_attempt_id += 1
+        self.sink = LogSink()
+        self.connected = False
+        self._set_connecting(False)
+        self.device_status.set(f"{self._t('设备')}: {self._t('连接失败')}")
+        self.status.set(self._t("连接超时"))
+
+    def _start_connection_worker(self, center_after: bool = False) -> None:
+        if self._connecting:
+            self.status.set(self._t("正在连接，连接成功后请再试一次。"))
+            return
+        snapshot = self._connection_snapshot()
+        kind = str(snapshot["kind"])
+        self._connect_attempt_id += 1
+        attempt_id = self._connect_attempt_id
+        self._close_sink_safely(self.sink)
+        self.sink = LogSink()
+        self.connected = False
+        if kind not in ("USB Serial", "Serial COM", "BLE UART"):
             self.sink.open()
             self.connected = True
             self.status.set(f"{self._t('已连接')}: {kind}")
-            if kind in ("USB Serial", "Serial COM"):
-                self.device_status.set(f"{self._t('设备')}: {self._t('已连接')} {extract_serial_device(self.serial_port.get())}")
-            elif kind == "BLE UART":
-                self.device_status.set(f"{self._t('设备')}: {self._t('已连接')} BLE {self.ble_address.get()}")
-            else:
-                self.device_status.set(f"{self._t('设备')}: {self._t('日志模式')}")
+            self.device_status.set(f"{self._t('设备')}: {self._t('日志模式')}")
             self._save_config()
-        except Exception as exc:
-            self.sink = LogSink()
-            self.connected = False
-            self.device_status.set(f"{self._t('设备')}: {self._t('连接失败')}")
-            self.status.set(self._t("连接失败"))
-            messagebox.showerror(self._t("连接失败"), str(exc))
+            if center_after:
+                self.send_center(interval_ms=600)
+                self.status.set(self._t("已连接并回中"))
+            return
+        self._set_connecting(True)
+        self.status.set(self._t("正在连接，请稍候..."))
+        self.device_status.set(f"{self._t('设备')}: {self._t('正在连接，请稍候...')}")
+
+        def worker() -> None:
+            sink: object | None = None
+            try:
+                sink = self._open_sink_from_snapshot(snapshot)
+                sink.open()
+                payload = dict(snapshot)
+                payload.update(
+                    {
+                        "connection_success": True,
+                        "attempt_id": attempt_id,
+                        "sink": sink,
+                        "kind": kind,
+                        "center_after": center_after,
+                    }
+                )
+                self._queue_latest(payload)
+            except Exception as exc:
+                if sink is not None:
+                    self._close_sink_safely(sink)
+                self._queue_latest(
+                    {
+                        "connection_error": True,
+                        "attempt_id": attempt_id,
+                        "message": str(exc),
+                    }
+                )
+
+        self._connect_worker = threading.Thread(target=worker, daemon=True)
+        self._connect_worker.start()
+        self.after(15000, lambda attempt=attempt_id: self._connection_watchdog(attempt))
+
+    def connect_sink(self) -> None:
+        self._start_connection_worker(center_after=False)
 
     def connect_and_center(self) -> None:
-        self.connect_sink()
-        if self.connected:
-            self.send_center(interval_ms=600)
-            self.status.set(self._t("已连接并回中"))
+        self._start_connection_worker(center_after=True)
 
     def disconnect_sink(self) -> None:
-        try:
-            self.sink.close()
-        except Exception:
-            pass
+        self._connect_attempt_id += 1
+        self._set_connecting(False)
+        self._close_sink_safely(self.sink)
         self.sink = LogSink()
         self.connected = False
         self.device_status.set(f"{self._t('设备')}: {self._t('未连接')}")
@@ -2014,22 +2587,70 @@ class OsrScreenApp(tk.Tk):
         mode = tk.StringVar(value=self.output_mode.get() if self.output_mode.get() in ("L0 Only", "Six Axis") else "L0 Only")
         current_tracker = self._tracker_internal(self.tracker_mode.get())
         if current_tracker not in TRACKER_MODE_CHOICES:
-            current_tracker = "混合分析（推荐）"
+            current_tracker = "混合分析（推荐-非舞蹈）"
         tracker = tk.StringVar(value=self._tracker_display(current_tracker))
         pose_l0 = tk.BooleanVar(value=self.pose_l0_analysis.get())
         pose_six = tk.BooleanVar(value=self.pose_six_axis_analysis.get())
         pose_l0_weight = tk.IntVar(value=self.pose_l0_weight.get())
         pose_six_weight = tk.IntVar(value=self.pose_six_axis_weight.get())
+        pose_v2 = tk.BooleanVar(value=self.pose_v2_dance_six_axis.get())
+        pose_v2_l0 = tk.BooleanVar(value=self.pose_v2_l0_analysis.get())
+        pose_v2_six = tk.BooleanVar(value=self.pose_v2_six_axis_analysis.get())
+        pose_v2_l0_weight = tk.IntVar(value=self.pose_v2_l0_weight.get())
+        pose_v2_six_weight = tk.IntVar(value=self.pose_v2_six_axis_weight.get())
+        rtm_pose_3d = tk.BooleanVar(value=self.rtm_pose_3d_enabled.get())
+        rtm_pose_3d_model = tk.StringVar(value=self.rtm_pose_3d_model_path.get())
+        rtm_pose_3d_weight = tk.IntVar(value=self.rtm_pose_3d_weight.get())
         compression_latency = tk.IntVar(value=self.compression_latency.get())
         pose_l0_base_text = tk.StringVar()
         pose_six_base_text = tk.StringVar()
+        pose_v2_l0_base_text = tk.StringVar()
+        pose_v2_six_base_text = tk.StringVar()
+        rtm_pose_3d_base_text = tk.StringVar()
         result = {"ok": False}
+        pose_popup_syncing = False
 
         def refresh_pose_base_texts(*_args: object) -> None:
             pose_l0_base_text.set(self._pose_base_weight_label(pose_l0.get(), pose_l0_weight.get(), "基础分析 L0 权重"))
             pose_six_base_text.set(self._pose_base_weight_label(pose_six.get(), pose_six_weight.get(), "基础分析六轴权重"))
+            pose_v2_l0_base_text.set(self._pose_base_weight_label(pose_v2_l0.get(), pose_v2_l0_weight.get(), "基础分析 v2 L0 权重"))
+            pose_v2_six_base_text.set(self._pose_base_weight_label(pose_v2_six.get(), pose_v2_six_weight.get(), "基础分析 v2 六轴权重"))
+            rtm_pose_3d_base_text.set(self._pose_base_weight_label(rtm_pose_3d.get(), rtm_pose_3d_weight.get(), "基础分析 RTM 权重"))
 
-        for variable in (pose_l0, pose_six, pose_l0_weight, pose_six_weight):
+        def sync_popup_pose_mode(source: str) -> None:
+            nonlocal pose_popup_syncing
+            if pose_popup_syncing:
+                return
+            pose_popup_syncing = True
+            try:
+                if source == "v2_mode":
+                    if pose_v2.get():
+                        pose_l0.set(False)
+                        pose_six.set(False)
+                        if not pose_v2_l0.get() and not pose_v2_six.get():
+                            pose_v2_six.set(True)
+                    else:
+                        pose_v2_l0.set(False)
+                        pose_v2_six.set(False)
+                elif source == "v2_bias":
+                    if pose_v2_l0.get() or pose_v2_six.get():
+                        pose_v2.set(True)
+                        pose_l0.set(False)
+                        pose_six.set(False)
+                elif source == "v1" and (pose_l0.get() or pose_six.get()):
+                    pose_v2.set(False)
+                    pose_v2_l0.set(False)
+                    pose_v2_six.set(False)
+            finally:
+                pose_popup_syncing = False
+            refresh_pose_base_texts()
+
+        pose_l0.trace_add("write", lambda *_args: sync_popup_pose_mode("v1"))
+        pose_six.trace_add("write", lambda *_args: sync_popup_pose_mode("v1"))
+        pose_v2.trace_add("write", lambda *_args: sync_popup_pose_mode("v2_mode"))
+        pose_v2_l0.trace_add("write", lambda *_args: sync_popup_pose_mode("v2_bias"))
+        pose_v2_six.trace_add("write", lambda *_args: sync_popup_pose_mode("v2_bias"))
+        for variable in (pose_l0, pose_six, pose_l0_weight, pose_six_weight, pose_v2, pose_v2_l0, pose_v2_six, pose_v2_l0_weight, pose_v2_six_weight, rtm_pose_3d, rtm_pose_3d_weight):
             variable.trace_add("write", refresh_pose_base_texts)
         refresh_pose_base_texts()
 
@@ -2090,25 +2711,39 @@ class OsrScreenApp(tk.Tk):
             state="readonly",
             width=28,
         ).grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 6))
-        ttk.Checkbutton(analysis, text="Pose 倾向 L0", variable=pose_l0).grid(row=1, column=0, columnspan=3, sticky="w", pady=2)
-        ttk.Label(analysis, text="Pose L0 权重").grid(row=2, column=0, sticky="w", pady=2)
-        ttk.Scale(analysis, from_=0, to=100, variable=pose_l0_weight).grid(row=2, column=1, sticky="ew", pady=2)
-        ttk.Label(analysis, textvariable=pose_l0_weight, width=4, anchor="e").grid(row=2, column=2, sticky="e")
-        pose_l0_popup_base_label = ttk.Label(analysis, textvariable=pose_l0_base_text, foreground="#555")
-        pose_l0_popup_base_label.grid(row=3, column=0, columnspan=3, sticky="w", pady=(0, 4))
-        Tooltip(pose_l0_popup_base_label, self._tooltip_text("基础分析 L0 权重"))
-        ttk.Checkbutton(analysis, text="Pose 倾向六轴", variable=pose_six).grid(row=4, column=0, columnspan=3, sticky="w", pady=(6, 2))
-        ttk.Label(analysis, text="Pose 六轴权重").grid(row=5, column=0, sticky="w", pady=2)
-        ttk.Scale(analysis, from_=0, to=100, variable=pose_six_weight).grid(row=5, column=1, sticky="ew", pady=2)
-        ttk.Label(analysis, textvariable=pose_six_weight, width=4, anchor="e").grid(row=5, column=2, sticky="e")
-        pose_six_popup_base_label = ttk.Label(analysis, textvariable=pose_six_base_text, foreground="#555")
-        pose_six_popup_base_label.grid(row=6, column=0, columnspan=3, sticky="w", pady=(0, 2))
-        Tooltip(pose_six_popup_base_label, self._tooltip_text("基础分析六轴权重"))
-        ttk.Label(analysis, text="压缩延迟").grid(row=7, column=0, sticky="w", pady=(8, 2))
-        ttk.Scale(analysis, from_=-5, to=5, variable=compression_latency).grid(row=7, column=1, sticky="ew", pady=(8, 2))
-        ttk.Label(analysis, textvariable=compression_latency, width=4, anchor="e").grid(row=7, column=2, sticky="e", pady=(8, 2))
+        rtm_popup_toggle = ttk.Checkbutton(analysis, text="RTM Pose 3D 骨架标注", variable=rtm_pose_3d)
+        rtm_popup_toggle.grid(row=1, column=0, columnspan=3, sticky="w", pady=(0, 2))
+        Tooltip(rtm_popup_toggle, self._tooltip_text("RTM Pose 3D 骨架标注"))
+        ttk.Label(analysis, text="RTM Pose 3D 权重").grid(row=2, column=0, sticky="w", pady=2)
+        ttk.Scale(analysis, from_=0, to=100, variable=rtm_pose_3d_weight).grid(row=2, column=1, sticky="ew", pady=2)
+        ttk.Label(analysis, textvariable=rtm_pose_3d_weight, width=4, anchor="e").grid(row=2, column=2, sticky="e")
+        rtm_popup_base_label = ttk.Label(analysis, textvariable=rtm_pose_3d_base_text, foreground="#555")
+        rtm_popup_base_label.grid(row=3, column=0, columnspan=3, sticky="w", pady=(0, 4))
+        Tooltip(rtm_popup_base_label, self._tooltip_text("基础分析 RTM 权重"))
+        ttk.Label(analysis, text="RTM Pose 3D 模型").grid(row=4, column=0, sticky="w", pady=2)
+        rtm_popup_entry = ttk.Entry(analysis, textvariable=rtm_pose_3d_model)
+        rtm_popup_entry.grid(row=4, column=1, sticky="ew", pady=2)
+        Tooltip(rtm_popup_entry, self._tooltip_text("RTM Pose 3D 模型"))
+        ttk.Button(analysis, text="选择模型", command=lambda: self._choose_rtm_pose_3d_model_for_var(rtm_pose_3d_model)).grid(
+            row=4, column=2, sticky="ew", padx=(4, 0), pady=2
+        )
+        ttk.Button(analysis, textvariable=self.rtm_model_download_button_text, command=self.download_rtm_pose_3d_model).grid(
+            row=5, column=0, columnspan=3, sticky="ew", pady=(4, 2)
+        )
+        ttk.Label(analysis, textvariable=self.rtm_model_download_status_text, foreground="#555", wraplength=360).grid(
+            row=6, column=0, columnspan=3, sticky="ew", pady=(0, 2)
+        )
+        ttk.Label(
+            analysis,
+            text="来源：OpenMMLab MMPose / rtmlib，需要本地 ONNX 模型。",
+            wraplength=360,
+            foreground="#555",
+        ).grid(row=7, column=0, columnspan=3, sticky="ew", pady=(0, 2))
+        ttk.Label(analysis, text="压缩延迟").grid(row=8, column=0, sticky="w", pady=(8, 2))
+        ttk.Scale(analysis, from_=-5, to=5, variable=compression_latency).grid(row=8, column=1, sticky="ew", pady=(8, 2))
+        ttk.Label(analysis, textvariable=compression_latency, width=4, anchor="e").grid(row=8, column=2, sticky="e", pady=(8, 2))
         ttk.Label(analysis, text="-5 最准确 / 0 默认 / 5 延迟最低", wraplength=360, foreground="#555").grid(
-            row=8, column=0, columnspan=3, sticky="ew", pady=(0, 2)
+            row=9, column=0, columnspan=3, sticky="ew", pady=(0, 2)
         )
 
         limits_text = tk.StringVar()
@@ -2137,10 +2772,21 @@ class OsrScreenApp(tk.Tk):
         def confirm() -> None:
             self.output_mode.set(mode.get())
             self.tracker_mode.set(tracker.get())
-            self.pose_l0_analysis.set(pose_l0.get())
-            self.pose_six_axis_analysis.set(pose_six.get())
+            self.pose_l0_analysis.set(False)
+            self.pose_six_axis_analysis.set(False)
             self.pose_l0_weight.set(pose_l0_weight.get())
             self.pose_six_axis_weight.set(pose_six_weight.get())
+            self.pose_v2_dance_six_axis.set(pose_v2.get())
+            self.pose_v2_l0_analysis.set(pose_v2_l0.get())
+            self.pose_v2_six_axis_analysis.set(pose_v2_six.get())
+            self.pose_v2_l0_weight.set(pose_v2_l0_weight.get())
+            self.pose_v2_six_axis_weight.set(pose_v2_six_weight.get())
+            self.pose_v2_dance_six_axis.set(False)
+            self.pose_v2_l0_analysis.set(False)
+            self.pose_v2_six_axis_analysis.set(False)
+            self.rtm_pose_3d_enabled.set(rtm_pose_3d.get())
+            self.rtm_pose_3d_model_path.set(rtm_pose_3d_model.get())
+            self.rtm_pose_3d_weight.set(rtm_pose_3d_weight.get())
             self.compression_latency.set(max(-5, min(5, int(compression_latency.get()))))
             result["ok"] = True
             dialog.destroy()
@@ -2232,6 +2878,14 @@ class OsrScreenApp(tk.Tk):
             self.pose_six_axis_analysis.set(False)
             self.pose_l0_weight.set(60)
             self.pose_six_axis_weight.set(60)
+            self.pose_v2_dance_six_axis.set(False)
+            self.pose_v2_l0_analysis.set(False)
+            self.pose_v2_six_axis_analysis.set(False)
+            self.pose_v2_l0_weight.set(60)
+            self.pose_v2_six_axis_weight.set(60)
+            self.rtm_pose_3d_enabled.set(False)
+            self.rtm_pose_3d_model_path.set("")
+            self.rtm_pose_3d_weight.set(100)
             self._set_tracker_mode(defaults.tracker_mode)
             self.response_curve.set(defaults.response_curve)
             self.motion_gain.set(defaults.motion_gain)
@@ -2239,10 +2893,16 @@ class OsrScreenApp(tk.Tk):
             self.compression_latency.set(0)
             self.l0_travel_scale.set(defaults.global_travel_scale)
             self.global_travel_scale.set(defaults.global_travel_scale)
+            for axis, value in DEFAULT_SIX_AXIS_TRAVEL_SCALES.items():
+                self.six_axis_travel_scale_vars[axis].set(value)
             self.six_axis_intensity.set(65)
             self.six_axis_jitter_reduction.set(55)
             self.six_axis_sensitivity_level.set(5)
             self.show_more_settings.set(False)
+            self.show_measurement_limits.set(False)
+            self.show_six_axis_tuning.set(False)
+            self.show_rtm_pose_3d_settings.set(False)
+            self.show_six_axis_travel_scales.set(False)
             for axis, gain in DEFAULT_SIX_AXIS_GAINS.items():
                 self.six_axis_gain_vars[axis].set(gain)
             for axis, inverted in DEFAULT_SIX_AXIS_INVERTS.items():
@@ -2411,7 +3071,7 @@ class OsrScreenApp(tk.Tk):
             "Hold",
             axis_limits=self._axis_limits(axes),
             position_scale=self.global_travel_scale.get(),
-            axis_position_scales={"L0": self.l0_travel_scale.get()},
+            axis_position_scales=self._axis_position_scales(),
             enable_endpoint_guard=self.enable_endpoint_guard.get(),
             endpoint_margin=self.endpoint_margin_pct.get() / 100.0,
         )
@@ -2491,6 +3151,10 @@ class OsrScreenApp(tk.Tk):
         self._normalize_limits()
         axes = SIX_AXES.copy()
         axis_limits = self._axis_limits(axes)
+        axis_position_scales = self._axis_position_scales()
+        global_position_scale = self.global_travel_scale.get()
+        endpoint_guard = self.enable_endpoint_guard.get()
+        endpoint_margin = self.endpoint_margin_pct.get() / 100.0
         min_value = self.min_value.get()
         max_value = self.max_value.get()
 
@@ -2505,10 +3169,10 @@ class OsrScreenApp(tk.Tk):
                 0.0,
                 "Hold",
                 axis_limits=axis_limits,
-                position_scale=self.global_travel_scale.get(),
-                axis_position_scales={"L0": self.l0_travel_scale.get()},
-                enable_endpoint_guard=self.enable_endpoint_guard.get(),
-                endpoint_margin=self.endpoint_margin_pct.get() / 100.0,
+                position_scale=global_position_scale,
+                axis_position_scales=axis_position_scales,
+                enable_endpoint_guard=endpoint_guard,
+                endpoint_margin=endpoint_margin,
             )
             center = {axis: 0.5 for axis in axes}
             try:
@@ -2586,7 +3250,7 @@ class OsrScreenApp(tk.Tk):
         self._refresh_play_preset_buttons()
 
     def apply_hybrid_analysis_preset(self) -> None:
-        self._set_tracker_mode("混合分析（推荐）")
+        self._set_tracker_mode("混合分析（推荐-非舞蹈）")
         self.enable_smoothing.set(True)
         self.smoothing.set(0.08)
         self.enable_deadzone.set(True)
@@ -2612,7 +3276,7 @@ class OsrScreenApp(tk.Tk):
         self._refresh_play_preset_buttons()
 
     def apply_stable_l0_preset(self) -> None:
-        self._set_tracker_mode("混合分析（推荐）")
+        self._set_tracker_mode("混合分析（推荐-非舞蹈）")
         self.enable_smoothing.set(True)
         self.smoothing.set(0.30)
         self.enable_deadzone.set(True)
@@ -2644,7 +3308,7 @@ class OsrScreenApp(tk.Tk):
         }
         level = max(1, min(5, int(level)))
         preset = presets[level]
-        self._set_tracker_mode("混合分析（推荐）")
+        self._set_tracker_mode("混合分析（推荐-非舞蹈）")
         self.enable_speed_limit.set(True)
         self.enable_smoothing.set(True)
         self.enable_deadzone.set(True)
@@ -2709,6 +3373,11 @@ class OsrScreenApp(tk.Tk):
 
         root_x = overlay.winfo_rootx()
         root_y = overlay.winfo_rooty()
+        physical_screen = virtual_screen_bounds()
+        logical_w = max(1, overlay.winfo_screenwidth())
+        logical_h = max(1, overlay.winfo_screenheight())
+        scale_x = physical_screen["width"] / logical_w if physical_screen["width"] > 0 else 1.0
+        scale_y = physical_screen["height"] / logical_h if physical_screen["height"] > 0 else 1.0
         state: dict[str, object] = {
             "start": None,
             "region": None,
@@ -2717,7 +3386,23 @@ class OsrScreenApp(tk.Tk):
         }
 
         def local_to_screen(x_value: int, y_value: int) -> tuple[int, int]:
-            return root_x + x_value, root_y + y_value
+            absolute_x = root_x + x_value
+            absolute_y = root_y + y_value
+            return (
+                physical_screen["left"] + round(absolute_x * scale_x),
+                physical_screen["top"] + round(absolute_y * scale_y),
+            )
+
+        def local_size_to_screen(width_value: int, height_value: int) -> tuple[int, int]:
+            return max(16, round(width_value * scale_x)), max(16, round(height_value * scale_y))
+
+        def screen_to_local(x_value: int, y_value: int) -> tuple[int, int]:
+            local_x = (x_value - physical_screen["left"]) / max(0.0001, scale_x) - root_x
+            local_y = (y_value - physical_screen["top"]) / max(0.0001, scale_y) - root_y
+            return round(local_x), round(local_y)
+
+        def screen_size_to_local(width_value: int, height_value: int) -> tuple[int, int]:
+            return max(1, round(width_value / max(0.0001, scale_x))), max(1, round(height_value / max(0.0001, scale_y)))
 
         def draw_help() -> None:
             canvas.delete("help")
@@ -2744,10 +3429,10 @@ class OsrScreenApp(tk.Tk):
         def draw_current_region() -> None:
             canvas.delete("current_region")
             try:
-                x1 = self.x.get() - root_x
-                y1 = self.y.get() - root_y
-                x2 = x1 + self.width.get()
-                y2 = y1 + self.height.get()
+                x1, y1 = screen_to_local(self.x.get(), self.y.get())
+                width, height = screen_size_to_local(self.width.get(), self.height.get())
+                x2 = x1 + width
+                y2 = y1 + height
             except tk.TclError:
                 return
             if self.width.get() <= 0 or self.height.get() <= 0:
@@ -2824,10 +3509,12 @@ class OsrScreenApp(tk.Tk):
 
         def draw_panel(x1: int, y1: int, x2: int, y2: int, width: int, height: int) -> None:
             clear_panel()
+            screen_x, screen_y = local_to_screen(x1, y1)
+            screen_w, screen_h = local_size_to_screen(width, height)
             panel = tk.Frame(overlay, background="#101010", padx=10, pady=8, highlightthickness=1, highlightbackground="#2f7d55")
             tk.Label(
                 panel,
-                text=f"{width} x {height}    X {root_x + x1}  Y {root_y + y1}",
+                text=f"{screen_w} x {screen_h}    X {screen_x}  Y {screen_y}",
                 background="#101010",
                 foreground="white",
                 font=("", 10, "bold"),
@@ -2866,10 +3553,12 @@ class OsrScreenApp(tk.Tk):
             label_x = min(left + 10, max(10, canvas.winfo_width() - 210))
             label_y = max(104, top - 30)
             canvas.create_rectangle(label_x - 6, label_y - 5, label_x + 190, label_y + 21, fill="#111111", outline="#58e08a", tags="selection")
+            screen_x, screen_y = local_to_screen(left, top)
+            screen_w, screen_h = local_size_to_screen(width, height)
             canvas.create_text(
                 label_x,
                 label_y,
-                text=f"{width} x {height}   X {root_x + left}  Y {root_y + top}",
+                text=f"{screen_w} x {screen_h}   X {screen_x}  Y {screen_y}",
                 anchor="nw",
                 fill="white",
                 font=("", 10, "bold"),
@@ -2921,7 +3610,8 @@ class OsrScreenApp(tk.Tk):
                 )
                 return
             screen_x, screen_y = local_to_screen(left, top)
-            state["region"] = (screen_x, screen_y, width, height)
+            screen_w, screen_h = local_size_to_screen(width, height)
+            state["region"] = (screen_x, screen_y, screen_w, screen_h)
             draw_selection(left, top, right, bottom)
             draw_panel(left, top, right, bottom, width, height)
 
@@ -2946,26 +3636,32 @@ class OsrScreenApp(tk.Tk):
                 self._run_audio(period)
                 return
             analyzer = RealtimeAnalyzer(
-                self._tracker_internal(self.tracker_mode.get()),
-                self.output_mode.get(),
-                self.smoothing.get(),
-                self.deadzone.get(),
-                self.motion_gain.get(),
-                self.enable_smoothing.get(),
-                self.enable_deadzone.get(),
-                self.response_curve.get(),
-                self.visual_stroke_scale.get(),
-                self.enable_l0_jitter_guard.get(),
-                self.l0_guard_strength.get(),
-                self.enable_extreme_reset.get(),
-            self.enable_endpoint_guard.get(),
-            self.endpoint_margin_pct.get() / 200.0,
-            False,
-            self.pose_l0_analysis.get(),
-            self.pose_six_axis_analysis.get(),
-            self.pose_l0_weight.get() / 100.0,
-            self.pose_six_axis_weight.get() / 100.0,
-        )
+                tracker_mode=self._tracker_internal(self.tracker_mode.get()),
+                output_mode=self.output_mode.get(),
+                smoothing=self.smoothing.get(),
+                deadzone=self.deadzone.get(),
+                motion_gain=self.motion_gain.get(),
+                enable_smoothing=self.enable_smoothing.get(),
+                enable_deadzone=self.enable_deadzone.get(),
+                response_curve=self.response_curve.get(),
+                visual_stroke_scale=self.visual_stroke_scale.get(),
+                l0_jitter_guard=self.enable_l0_jitter_guard.get(),
+                l0_guard_strength=self.l0_guard_strength.get(),
+                enable_extreme_reset=self.enable_extreme_reset.get(),
+                enable_endpoint_guard=self.enable_endpoint_guard.get(),
+                endpoint_margin=self.endpoint_margin_pct.get() / 200.0,
+                pose_dance_l0=False,
+                pose_dance_six_axis=False,
+                pose_l0_weight=0.0,
+                pose_six_axis_weight=0.0,
+                pose_v2_dance_six_axis=False,
+                pose_v2_l0_weight=0.0,
+                pose_v2_six_axis_weight=0.0,
+                rtm_pose_3d_enabled=self.rtm_pose_3d_enabled.get(),
+                rtm_pose_3d_model_path=self.rtm_pose_3d_model_path.get(),
+                rtm_pose_3d_weight=self.rtm_pose_3d_weight.get() / 100.0,
+                compression_latency=self.compression_latency.get(),
+            )
             output = self._new_output(self.interval_ms.get())
             if self.source_mode.get() == "Video File":
                 self._run_video(analyzer, output, period, 0.0)
@@ -3058,7 +3754,8 @@ class OsrScreenApp(tk.Tk):
         frame: object,
         last_preview: float,
     ) -> float:
-        result = analyzer.process(self._prepare_analysis_frame(frame))
+        analysis_frame = self._prepare_analysis_frame(frame)
+        result = analyzer.process(analysis_frame)
         positions = self._apply_six_axis_tuning(result.positions)
         command = output.next_command(positions, result.activity)
         command_text = self._emit_command(command)
@@ -3067,7 +3764,7 @@ class OsrScreenApp(tk.Tk):
         if now - last_preview > 0.08:
             self._queue_latest(
                 {
-                    "preview": result.preview_bgr,
+                    "preview": self._capture_preview_for_display(frame, analysis_frame, result.preview_bgr),
                     "command": command_text,
                     "activity": result.activity,
                     "record_count": self.recorder.action_count,
@@ -3090,6 +3787,31 @@ class OsrScreenApp(tk.Tk):
             return frame
         return cv2.resize(frame, (target_width, target_height), interpolation=cv2.INTER_AREA)
 
+    def _capture_preview_for_display(self, capture_frame: object, analysis_frame: object, analysis_preview: object) -> object:
+        try:
+            capture_height, capture_width = capture_frame.shape[:2]
+            analysis_height, analysis_width = analysis_frame.shape[:2]
+            preview_height, preview_width = analysis_preview.shape[:2]
+        except AttributeError:
+            return analysis_preview
+        display = analysis_preview
+        if self.rtm_pose_3d_enabled.get() and preview_height == analysis_height and preview_width > analysis_width:
+            overlay = analysis_preview[:, :analysis_width].copy()
+            panel = analysis_preview[:, analysis_width:].copy()
+            overlay_display = cv2.resize(overlay, (capture_width, capture_height), interpolation=cv2.INTER_NEAREST)
+            panel_width = max(1, int(round(panel.shape[1] * capture_height / max(1, analysis_height))))
+            panel_display = cv2.resize(panel, (panel_width, capture_height), interpolation=cv2.INTER_NEAREST)
+            return np.concatenate((overlay_display, panel_display), axis=1)
+        if preview_height == analysis_height and preview_width >= analysis_width:
+            display = analysis_preview[:, :analysis_width].copy()
+        try:
+            display_height, display_width = display.shape[:2]
+        except AttributeError:
+            return analysis_preview
+        if display_width == capture_width and display_height == capture_height:
+            return display
+        return cv2.resize(display, (capture_width, capture_height), interpolation=cv2.INTER_NEAREST)
+
     def _analysis_frame_scale(self) -> float:
         try:
             value = max(-5, min(5, int(round(float(self.compression_latency.get())))))
@@ -3104,6 +3826,9 @@ class OsrScreenApp(tk.Tk):
 
     def _apply_six_axis_tuning(self, positions: dict[str, float]) -> dict[str, float]:
         if self.output_mode.get() != "Six Axis":
+            return dict(positions)
+        tracker_mode = self._tracker_internal(self.tracker_mode.get())
+        if not RealtimeAnalyzer._is_hybrid_analysis_mode(tracker_mode) or self.rtm_pose_3d_enabled.get():
             return dict(positions)
         tuned = dict(positions)
         global_gain = max(0.0, min(1.8, self.six_axis_intensity.get() / 100.0))
@@ -3135,6 +3860,14 @@ class OsrScreenApp(tk.Tk):
             for axis in selected_axes
         }
 
+    def _axis_position_scales(self) -> dict[str, float]:
+        scales = {"L0": max(0.0, min(3.0, float(self.l0_travel_scale.get())))}
+        six_axis_scale = max(0.0, min(3.0, float(self.global_travel_scale.get())))
+        for axis in ("L1", "L2", "R0", "R1", "R2"):
+            axis_scale = max(0.0, min(3.0, float(self.six_axis_travel_scale_vars[axis].get())))
+            scales[axis] = max(0.0, min(3.0, six_axis_scale * axis_scale))
+        return scales
+
     def _new_output(self, interval_ms: int) -> MultiAxisSafeOutput:
         self._normalize_limits()
         axes = self._active_axes()
@@ -3150,7 +3883,7 @@ class OsrScreenApp(tk.Tk):
             axis_limits=self._axis_limits(axes),
             startup_ramp_ms=self.startup_ramp_ms.get() if self.enable_startup_ramp.get() else 0,
             position_scale=self.global_travel_scale.get(),
-            axis_position_scales={"L0": self.l0_travel_scale.get()},
+            axis_position_scales=self._axis_position_scales(),
             enable_extreme_reset=self.enable_extreme_reset.get(),
             extreme_hold_ms=self.extreme_hold_ms.get(),
             enable_endpoint_guard=self.enable_endpoint_guard.get(),
@@ -3169,6 +3902,10 @@ class OsrScreenApp(tk.Tk):
         try:
             while True:
                 item = self.frame_queue.get_nowait()
+                if "connection_success" in item:
+                    self._finish_connection_success(item)
+                if "connection_error" in item:
+                    self._finish_connection_error(item)
                 if "error" in item:
                     self.status.set(str(item["error"]))
                 if "status_text" in item:
@@ -3185,6 +3922,14 @@ class OsrScreenApp(tk.Tk):
                     self.activity.set(f"{self._t('声音')}: {float(item['audio_level']):.3f}")
                 if "record_count" in item and self.recorder.is_recording:
                     self.record_status.set(f"{self._t('录制中')}: {item['record_count']} {self._t('点')}")
+                if "rtm_model_path" in item:
+                    self.rtm_pose_3d_model_path.set(str(item["rtm_model_path"]))
+                    self.rtm_pose_3d_enabled.set(True)
+                if "rtm_download_status" in item:
+                    self.rtm_model_download_status_text.set(str(item["rtm_download_status"]))
+                if "rtm_download_done" in item:
+                    self._rtm_pose_3d_downloading = False
+                    self.rtm_model_download_button_text.set(self._t("下载模型"))
                 if "ble_devices" in item:
                     devices = item["ble_devices"]
                     if devices:
@@ -3453,6 +4198,14 @@ class OsrScreenApp(tk.Tk):
         cfg.extra["six_axis_jitter_reduction"] = self.six_axis_jitter_reduction.get()
         cfg.extra["six_axis_sensitivity_level"] = self.six_axis_sensitivity_level.get()
         cfg.extra["show_more_settings"] = self.show_more_settings.get()
+        cfg.extra["show_measurement_limits"] = self.show_measurement_limits.get()
+        cfg.extra["show_six_axis_tuning"] = self.show_six_axis_tuning.get()
+        cfg.extra["show_rtm_pose_3d_settings"] = self.show_rtm_pose_3d_settings.get()
+        cfg.extra["show_six_axis_travel_scales"] = self.show_six_axis_travel_scales.get()
+        cfg.extra["six_axis_travel_scales"] = {
+            axis: self.six_axis_travel_scale_vars[axis].get()
+            for axis in ("L1", "L2", "R0", "R1", "R2")
+        }
         cfg.extra["six_axis_gains"] = {
             axis: self.six_axis_gain_vars[axis].get()
             for axis in ("L1", "L2", "R0", "R1", "R2")
@@ -3472,6 +4225,14 @@ class OsrScreenApp(tk.Tk):
         cfg.extra["pose_six_axis_analysis"] = self.pose_six_axis_analysis.get()
         cfg.extra["pose_l0_weight"] = self.pose_l0_weight.get()
         cfg.extra["pose_six_axis_weight"] = self.pose_six_axis_weight.get()
+        cfg.extra["pose_v2_dance_six_axis"] = self.pose_v2_dance_six_axis.get()
+        cfg.extra["pose_v2_l0_analysis"] = self.pose_v2_l0_analysis.get()
+        cfg.extra["pose_v2_six_axis_analysis"] = self.pose_v2_six_axis_analysis.get()
+        cfg.extra["pose_v2_l0_weight"] = self.pose_v2_l0_weight.get()
+        cfg.extra["pose_v2_six_axis_weight"] = self.pose_v2_six_axis_weight.get()
+        cfg.extra["rtm_pose_3d_enabled"] = self.rtm_pose_3d_enabled.get()
+        cfg.extra["rtm_pose_3d_model_path"] = self.rtm_pose_3d_model_path.get()
+        cfg.extra["rtm_pose_3d_weight"] = self.rtm_pose_3d_weight.get()
         cfg.extra["l0_travel_scale"] = self.l0_travel_scale.get()
         cfg.extra["compression_latency"] = max(-5, min(5, int(self.compression_latency.get())))
         cfg.extra["measure_axis"] = self.measure_axis.get()

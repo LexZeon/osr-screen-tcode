@@ -12,6 +12,7 @@ AXES = ("L0", "L1", "L2", "R0", "R1", "R2")
 DEFAULT_AXIS_LIMITS = {axis: [0, 9999] for axis in AXES}
 DEFAULT_SIX_AXIS_GAINS = {"L1": 85, "L2": 60, "R0": 60, "R1": 38, "R2": 70}
 DEFAULT_SIX_AXIS_INVERTS = {"L1": False, "L2": False, "R0": False, "R1": False, "R2": False}
+DEFAULT_SIX_AXIS_TRAVEL_SCALES = {"L1": 1.0, "L2": 1.0, "R0": 1.0, "R1": 1.0, "R2": 1.0}
 
 
 @dataclass
@@ -28,7 +29,7 @@ class AppConfig:
     enable_smoothing: bool = True
     deadzone: float = 0.006
     enable_deadzone: bool = True
-    tracker_mode: str = "混合分析（推荐）"
+    tracker_mode: str = "混合分析（推荐-非舞蹈）"
     response_curve: str = "Linear"
     motion_gain: float = 1.8
     visual_stroke_scale: float = 0.72
@@ -76,12 +77,14 @@ class AppConfig:
             "Optical Flow": "Optical Flow（内测用）",
             "Hybrid Motion": "Hybrid Motion（内测用）",
             "Stroke Phase": "Stroke Phase（内测用）",
-            legacy_hybrid_name: "混合分析（推荐）",
-            f"{legacy_hybrid_name}（推荐）": "混合分析（推荐）",
+            legacy_hybrid_name: "混合分析（推荐-非舞蹈）",
+            f"{legacy_hybrid_name}（推荐）": "混合分析（推荐-非舞蹈）",
+            "混合分析（推荐）": "混合分析（推荐-非舞蹈）",
+            "Hybrid Analysis (Recommended)": "混合分析（推荐-非舞蹈）",
         }
         if data.get("tracker_mode") in legacy_mode_labels:
             data["tracker_mode"] = legacy_mode_labels[data["tracker_mode"]]
-        if data.get("tracker_mode") == "混合分析（推荐）" and not extra.get("hybrid_analysis_range_migration_v1"):
+        if data.get("tracker_mode") == "混合分析（推荐-非舞蹈）" and not extra.get("hybrid_analysis_range_migration_v1"):
             data.setdefault("visual_stroke_scale", 0.72)
             data["response_curve"] = "Linear"
             extra["hybrid_analysis_range_migration_v1"] = True
@@ -94,13 +97,25 @@ class AppConfig:
         extra.setdefault("enable_endpoint_guard", True)
         extra.setdefault("endpoint_margin_pct", 10)
         extra.setdefault("pose_dance_analysis", False)
-        extra.setdefault("pose_l0_analysis", bool(extra.get("pose_dance_analysis", False)))
-        extra.setdefault("pose_six_axis_analysis", bool(extra.get("pose_dance_analysis", False)))
+        extra.setdefault("pose_l0_analysis", False)
+        extra.setdefault("pose_six_axis_analysis", False)
         extra.setdefault("pose_l0_weight", 60)
         extra.setdefault("pose_six_axis_weight", 60)
+        extra.setdefault("pose_v2_dance_six_axis", False)
+        extra.setdefault("pose_v2_l0_analysis", False)
+        extra.setdefault("pose_v2_six_axis_analysis", bool(extra.get("pose_v2_dance_six_axis", False)))
+        extra.setdefault("pose_v2_l0_weight", 60)
+        extra.setdefault("pose_v2_six_axis_weight", 60)
+        extra.setdefault("rtm_pose_3d_enabled", False)
+        extra.setdefault("rtm_pose_3d_model_path", "")
+        extra.setdefault("rtm_pose_3d_weight", 100)
         extra.setdefault("l0_travel_scale", data.get("global_travel_scale", 1.0))
         extra.setdefault("compression_latency", 0)
         extra.setdefault("show_more_settings", False)
+        extra.setdefault("show_measurement_limits", False)
+        extra.setdefault("show_six_axis_tuning", False)
+        extra.setdefault("show_rtm_pose_3d_settings", False)
+        extra.setdefault("show_six_axis_travel_scales", False)
         extra.setdefault("six_axis_intensity", 65)
         extra.setdefault("six_axis_jitter_reduction", 55)
         extra.setdefault("six_axis_sensitivity_level", 5)
@@ -117,6 +132,13 @@ class AppConfig:
         extra["six_axis_inverts"] = {
             axis: bool(stored_inverts.get(axis, DEFAULT_SIX_AXIS_INVERTS.get(axis, False)))
             for axis in DEFAULT_SIX_AXIS_INVERTS
+        }
+        stored_travel_scales = extra.get("six_axis_travel_scales")
+        if not isinstance(stored_travel_scales, dict):
+            stored_travel_scales = {}
+        extra["six_axis_travel_scales"] = {
+            axis: max(0.0, min(3.0, float(stored_travel_scales.get(axis, DEFAULT_SIX_AXIS_TRAVEL_SCALES.get(axis, 1.0)))))
+            for axis in DEFAULT_SIX_AXIS_TRAVEL_SCALES
         }
         if not extra.get("six_axis_soft_default_v1"):
             if int(extra.get("six_axis_intensity", 65)) > 75:
@@ -138,14 +160,33 @@ class AppConfig:
         extra["extreme_hold_ms"] = max(250, min(3000, int(extra.get("extreme_hold_ms", 900))))
         extra["enable_endpoint_guard"] = bool(extra.get("enable_endpoint_guard", True))
         extra["endpoint_margin_pct"] = max(0, min(25, int(extra.get("endpoint_margin_pct", 10))))
-        extra["pose_l0_analysis"] = bool(extra.get("pose_l0_analysis", False))
-        extra["pose_six_axis_analysis"] = bool(extra.get("pose_six_axis_analysis", False))
+        extra["pose_l0_analysis"] = False
+        extra["pose_six_axis_analysis"] = False
         extra["pose_l0_weight"] = max(0, min(100, int(extra.get("pose_l0_weight", 60))))
         extra["pose_six_axis_weight"] = max(0, min(100, int(extra.get("pose_six_axis_weight", 60))))
+        extra["pose_v2_dance_six_axis"] = False
+        extra["pose_v2_l0_analysis"] = False
+        extra["pose_v2_six_axis_analysis"] = False
+        extra["pose_v2_l0_weight"] = max(0, min(100, int(extra.get("pose_v2_l0_weight", 60))))
+        extra["pose_v2_six_axis_weight"] = max(0, min(100, int(extra.get("pose_v2_six_axis_weight", 60))))
+        if extra["pose_v2_dance_six_axis"] and (extra["pose_v2_l0_analysis"] or extra["pose_v2_six_axis_analysis"]):
+            extra["pose_l0_analysis"] = False
+            extra["pose_six_axis_analysis"] = False
+        elif extra["pose_l0_analysis"] or extra["pose_six_axis_analysis"]:
+            extra["pose_v2_dance_six_axis"] = False
+            extra["pose_v2_l0_analysis"] = False
+            extra["pose_v2_six_axis_analysis"] = False
+        extra["rtm_pose_3d_enabled"] = bool(extra.get("rtm_pose_3d_enabled", False))
+        extra["rtm_pose_3d_model_path"] = str(extra.get("rtm_pose_3d_model_path", ""))
+        extra["rtm_pose_3d_weight"] = max(0, min(100, int(extra.get("rtm_pose_3d_weight", 100))))
         extra["l0_travel_scale"] = max(0.0, min(3.0, float(extra.get("l0_travel_scale", data.get("global_travel_scale", 1.0)))))
         extra["compression_latency"] = max(-5, min(5, int(extra.get("compression_latency", 0))))
         data["global_travel_scale"] = max(0.0, min(3.0, float(data.get("global_travel_scale", 1.0))))
         extra["show_more_settings"] = bool(extra.get("show_more_settings", False))
+        extra["show_measurement_limits"] = bool(extra.get("show_measurement_limits", False))
+        extra["show_six_axis_tuning"] = bool(extra.get("show_six_axis_tuning", False))
+        extra["show_rtm_pose_3d_settings"] = bool(extra.get("show_rtm_pose_3d_settings", False))
+        extra["show_six_axis_travel_scales"] = bool(extra.get("show_six_axis_travel_scales", False))
         allowed = {field.name for field in cls.__dataclass_fields__.values()}
         return cls(**{k: v for k, v in data.items() if k in allowed})
 

@@ -55,7 +55,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-".venv\Scripts\python.exe" -c "import mss, numpy, cv2, serial, bleak, PIL, sounddevice, soundcard, websockets" >nul 2>nul
+".venv\Scripts\python.exe" -c "import mss, numpy, cv2, serial, bleak, PIL, sounddevice, soundcard, websockets, rtmlib, onnxruntime" >nul 2>nul
 if errorlevel 1 (
     echo Repairing local dependencies...
     ".venv\Scripts\python.exe" -m pip install --force-reinstall --no-cache-dir -r requirements.txt
@@ -66,7 +66,7 @@ if errorlevel 1 (
         pause
         exit /b 1
     )
-    ".venv\Scripts\python.exe" -c "import mss, numpy, cv2, serial, bleak, PIL, sounddevice, soundcard, websockets" >nul 2>nul
+    ".venv\Scripts\python.exe" -c "import mss, numpy, cv2, serial, bleak, PIL, sounddevice, soundcard, websockets, rtmlib, onnxruntime" >nul 2>nul
     if errorlevel 1 (
         echo.
         echo Failed to import the required dependencies.

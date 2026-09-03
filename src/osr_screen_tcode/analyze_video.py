@@ -14,7 +14,7 @@ def analyze_video(
     video_path: Path,
     output_path: Path,
     output_mode: str = "L0 Only",
-    tracker_mode: str = "混合分析（推荐）",
+    tracker_mode: str = "混合分析（推荐-非舞蹈）",
     fps: int = 30,
     smoothing: float = 0.35,
     deadzone: float = 0.015,
@@ -81,7 +81,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--tracker-mode",
         choices=[
-            "混合分析（推荐）",
+            "混合分析（推荐-非舞蹈）",
             "混合分析",
             "Stroke Phase（内测用）",
             "Stroke Phase",
@@ -94,7 +94,7 @@ def main(argv: list[str] | None = None) -> int:
             "Activity Pulse（内测用）",
             "Activity Pulse",
         ],
-        default="混合分析（推荐）",
+        default="混合分析（推荐-非舞蹈）",
     )
     parser.add_argument("--fps", type=int, default=30)
     parser.add_argument("--smoothing", type=float, default=0.35)

@@ -10,7 +10,7 @@ Tip: hover your mouse over buttons, sliders, and parameter names in the app. Sma
 
 ## Download
 
-Download `OSR6-Realtime-Screen-v1.0.3-Windows.zip`, extract the whole folder, then run the app from the extracted folder. Do not run the exe directly from inside the zip preview window.
+For this test build, run `Start.cmd` directly from the test source folder. Zip packaging is reserved for a later formal build.
 
 For source code users, clone the repository and double-click `Start.cmd` or `Start-Source.cmd`.
 
@@ -58,7 +58,7 @@ For source code users, clone the repository and double-click `Start.cmd` or `Sta
 
 ![Step 11 output mode](../screenshots/guide-en-11-output-mode.png)
 
-12. Confirm or select the screen region, then use `Hybrid Analysis (Recommended)` first.
+12. Confirm or select the screen region, then use `Hybrid Analysis (Recommended - Non-Dance)` first.
 
 ![Step 12 region and analysis](../screenshots/guide-en-12-region-analysis.png)
 
