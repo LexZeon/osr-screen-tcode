@@ -8,7 +8,45 @@
 
 Current version: `1.1.2`
 
+## Analysis Demos
 
+### Hybrid Analysis L0
+
+<sub>Available since v1.0.0. Test hardware: CPU Intel Ultra 9; GPU disabled / not used for this analysis.</sub>
+
+Hybrid Analysis L0 focuses on the main linear axis. It reads the selected screen region, tracks the dominant motion rhythm, and outputs limited four-digit L0 TCode.
+
+![Hybrid Analysis L0 demo 1](screenshots/hybrid_analysis_l0_193515.gif)
+
+![Hybrid Analysis L0 demo 2](screenshots/hybrid_analysis_l0_193812.gif)
+
+![Hybrid Analysis L0 demo 3](screenshots/hybrid_analysis_l0_194652.gif)
+
+### Hybrid Analysis Six-Axis
+
+<sub>Available since v1.0.0. Test hardware: CPU Intel Ultra 9; GPU disabled / not used for this analysis.</sub>
+
+Six-Axis Hybrid Analysis expands the realtime screen analysis across L0, L1, L2, R0, R1, and R2 for richer OSR6-style motion output.
+
+![Hybrid Analysis Six-Axis demo](screenshots/hybrid_analysis_six_axis_195200.gif)
+
+### RTM Pose 2D GPU Acceleration
+
+<sub>Available since v1.1.2. Test hardware: CPU Intel Ultra 9; GPU NVIDIA GeForce RTX 4090 Laptop GPU; RTM GPU acceleration enabled.</sub>
+
+RTM Pose 2D uses a local ONNX pose model for pose-driven analysis. With GPU acceleration enabled, pose inference can run on the 4090 Laptop GPU.
+
+![RTM Pose 2D GPU acceleration demo](screenshots/rtm_pose_2d_gpu_4090_laptop_204036.gif)
+
+### RTM Pose 2D CPU Mode
+
+<sub>Available since v1.1.2. Test hardware: CPU Intel Ultra 9; GPU disabled / no GPU acceleration.</sub>
+
+RTM Pose 2D can also run without GPU acceleration. This mode keeps inference on the Intel Ultra 9 CPU for comparison and fallback testing.
+
+![RTM Pose 2D CPU demo](screenshots/rtm_pose_2d_cpu_intel_ultra_9_no_gpu_204419.gif)
+
+<sub>Dance source used in the RTM Pose demos: [Bilibili BV1UvtE6uEkD](https://www.bilibili.com/video/BV1UvtE6uEkD/). For infringement concerns, contact aivnailedeng@gmail.com for removal.</sub>
 
 ## Download
 
@@ -30,8 +68,10 @@ After cloning the repository on Windows, double-click `Start.cmd` or `Start-Sour
 - Realtime screen-region capture and motion analysis.
 - USB serial and BLE UART output for TCode-compatible devices.
 - `L0 Only` and `Six Axis` output modes.
-- Hybrid analysis mode recommended for low-latency screen reading.
-- RTM Pose 2D/3D dance modes with local ONNX models, lightweight keypoint optical-flow assist, and Kalman fusion.
+- Hybrid Analysis mode for low-latency non-dance screen reading.
+- RTM Pose 2D/3D dance modes with local ONNX models.
+- RTM Pose optical-flow assist and Kalman fusion are enabled by default for smoother keypoint tracking.
+- Optional RTM Pose GPU acceleration, disabled by default, with CPU fallback when CUDA is unavailable.
 - Audio-only mode for rhythm-driven use.
 - Per-axis limits, total travel scaling, presets, smoothing, speed limit, dead zone, gating, and other comfort controls.
 - Measurement mode for saving safe upper/lower limits locally.
@@ -60,6 +100,8 @@ This project was built with AI-assisted vibe coding. It is shared directly as a 
 
 This project learned from public open-source work around OSR/TCode tooling, realtime visual analysis, funscript generation, and simulator-style preview ideas, including projects such as FunGen, PoseFunscripter, and nb-3d-simulator. Please contact the maintainer if an acknowledgement or license notice should be corrected.
 
+Special thanks to **DK** and **1327** for technical guidance.
+
 ## Contact
 
 For infringement concerns, license corrections, suggestions, or collaboration: aivnailedeng@gmail.com
@@ -75,6 +117,46 @@ For infringement concerns, license corrections, suggestions, or collaboration: a
 > **六轴模式重要警告：六轴只建议在光线好、主体清晰、框选区域干净的画面里使用。** 画面太暗、主体不清楚、无关运动太多或画面不稳定时，请先使用 `L0 Only` 或 `Log only` 预览。
 
 当前版本：`1.1.2`
+
+## 分析演示
+
+### Hybrid Analysis L0
+
+<sub>v1.0.0 起支持。测试硬件：CPU Intel Ultra 9；GPU 关闭 / 此分析未使用 GPU。</sub>
+
+Hybrid Analysis L0 聚焦主线性轴。它会读取框选屏幕区域，跟踪主要运动节奏，并输出限制后的四位 L0 TCode。
+
+![Hybrid Analysis L0 演示 1](screenshots/hybrid_analysis_l0_193515.gif)
+
+![Hybrid Analysis L0 演示 2](screenshots/hybrid_analysis_l0_193812.gif)
+
+![Hybrid Analysis L0 演示 3](screenshots/hybrid_analysis_l0_194652.gif)
+
+### Hybrid Analysis Six-Axis
+
+<sub>v1.0.0 起支持。测试硬件：CPU Intel Ultra 9；GPU 关闭 / 此分析未使用 GPU。</sub>
+
+Hybrid Analysis Six-Axis 会把实时画面分析扩展到 L0、L1、L2、R0、R1、R2，用于更丰富的 OSR6 六轴输出。
+
+![Hybrid Analysis Six-Axis 演示](screenshots/hybrid_analysis_six_axis_195200.gif)
+
+### RTM Pose 2D GPU 加速
+
+<sub>v1.1.2 起支持。测试硬件：CPU Intel Ultra 9；GPU NVIDIA GeForce RTX 4090 Laptop GPU；已开启 RTM GPU 加速。</sub>
+
+RTM Pose 2D 使用本地 ONNX 姿态模型做姿态驱动分析。开启 GPU 加速后，姿态推理可以运行在 4090 Laptop GPU 上。
+
+![RTM Pose 2D GPU 加速演示](screenshots/rtm_pose_2d_gpu_4090_laptop_204036.gif)
+
+### RTM Pose 2D CPU 模式
+
+<sub>v1.1.2 起支持。测试硬件：CPU Intel Ultra 9；GPU 关闭 / 未开启 GPU 加速。</sub>
+
+RTM Pose 2D 也可以不启用 GPU 加速，推理会运行在 Intel Ultra 9 CPU 上，适合做对照测试或作为兼容回退。
+
+![RTM Pose 2D CPU 演示](screenshots/rtm_pose_2d_cpu_intel_ultra_9_no_gpu_204419.gif)
+
+<sub>RTM Pose 演示中的舞蹈素材来源：[Bilibili BV1UvtE6uEkD](https://www.bilibili.com/video/BV1UvtE6uEkD/)。如有侵权请联系 aivnailedeng@gmail.com 删除。</sub>
 
 ## 下载
 
@@ -96,8 +178,10 @@ For infringement concerns, license corrections, suggestions, or collaboration: a
 - 实时框选屏幕区域并分析画面运动。
 - 通过 USB 串口或 BLE UART 输出 TCode。
 - 支持 `L0 Only` 和 `Six Axis`。
-- 推荐使用低延迟的混合分析模式。
-- RTM Pose 2D/3D 舞蹈分析模式：使用本地 ONNX 模型，并默认开启轻量关键点光流辅助和卡尔曼融合。
+- Hybrid Analysis 模式用于低延迟非舞蹈读屏分析。
+- RTM Pose 2D/3D 舞蹈分析模式，使用本地 ONNX 模型。
+- RTM Pose 默认开启关键点光流辅助和卡尔曼融合，让骨架追踪更平滑。
+- RTM Pose 可选 GPU 加速，默认关闭；缺少 CUDA 时会自动回退到 CPU。
 - 支持只监听声音的节奏模式。
 - 支持每轴上下限、总行程倍率、预设、平滑、限速、死区、活动门控等调试项。
 - 测量模式可以手动遥控并保存本地安全上限/下限。
@@ -125,6 +209,8 @@ For infringement concerns, license corrections, suggestions, or collaboration: a
 ## 鸣谢
 
 本项目参考和学习了公开开源社区里 OSR/TCode、实时视觉分析、funscript 生成和模拟预览相关思路，包括 FunGen、PoseFunscripter、nb-3d-simulator 等项目。如有鸣谢或许可证信息需要修正，请联系维护者。
+
+特别感谢 **DK** 和 **1327** 提供技术指导。
 
 ## 联系
 
