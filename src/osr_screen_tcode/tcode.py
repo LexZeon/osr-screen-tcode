@@ -109,6 +109,7 @@ class MultiAxisSafeOutput:
         startup_ramp_ms: int = 0,
         position_scale: float = 1.0,
         axis_position_scales: dict[str, float] | None = None,
+        axis_position_inverts: dict[str, bool] | None = None,
         enable_extreme_reset: bool = True,
         extreme_hold_ms: int = 900,
         extreme_margin: float = 0.06,
@@ -135,6 +136,10 @@ class MultiAxisSafeOutput:
             axis: clamp(float(scale), 0.0, 3.0)
             for axis, scale in (axis_position_scales or {}).items()
         }
+        self.axis_position_inverts = {
+            axis: bool(inverted)
+            for axis, inverted in (axis_position_inverts or {}).items()
+        }
         self.enable_extreme_reset = bool(enable_extreme_reset)
         self.extreme_hold_ms = max(150, int(extreme_hold_ms))
         self.extreme_margin = clamp(float(extreme_margin), 0.01, 0.18)
@@ -148,6 +153,50 @@ class MultiAxisSafeOutput:
     @property
     def center_value(self) -> int:
         return round((self.min_value + self.max_value) / 2)
+
+    def update_mapping(
+        self,
+        *,
+        min_value: int | None = None,
+        max_value: int | None = None,
+        invert_l0: bool | None = None,
+        axis_limits: dict[str, tuple[int, int]] | None = None,
+        position_scale: float | None = None,
+        axis_position_scales: dict[str, float] | None = None,
+        axis_position_inverts: dict[str, bool] | None = None,
+        max_step: int | None = None,
+    ) -> None:
+        if min_value is not None:
+            self.min_value = int(clamp(min_value, 0, 9999))
+        if max_value is not None:
+            self.max_value = int(clamp(max_value, 0, 9999))
+        if self.min_value > self.max_value:
+            self.min_value, self.max_value = self.max_value, self.min_value
+        if axis_limits is not None:
+            self.axis_limits = {
+                axis: self._normalize_limit(axis_limits.get(axis, (self.min_value, self.max_value)))
+                for axis in self.axes
+            }
+        if invert_l0 is not None:
+            self.invert_l0 = bool(invert_l0)
+        if position_scale is not None:
+            self.position_scale = clamp(float(position_scale), 0.0, 3.0)
+        if axis_position_scales is not None:
+            self.axis_position_scales = {
+                axis: clamp(float(scale), 0.0, 3.0)
+                for axis, scale in axis_position_scales.items()
+            }
+        if axis_position_inverts is not None:
+            self.axis_position_inverts = {
+                axis: bool(inverted)
+                for axis, inverted in axis_position_inverts.items()
+            }
+        if max_step is not None:
+            self.max_step = max(1, int(max_step))
+        for axis in self.axes:
+            self._values.setdefault(axis, self._center_for(axis))
+            self._extreme_since.setdefault(axis, None)
+            self._extreme_side.setdefault(axis, 0)
 
     def next_command(self, positions: dict[str, float], activity: float) -> MultiTCodeCommand:
         values: dict[str, int] = {}
@@ -183,7 +232,7 @@ class MultiAxisSafeOutput:
         position = clamp(position, 0.0, 1.0)
         scale = self.axis_position_scales.get(axis, self.position_scale)
         position = clamp(0.5 + (position - 0.5) * scale, 0.0, 1.0)
-        if axis == "L0" and self.invert_l0:
+        if (axis == "L0" and self.invert_l0) or (axis != "L0" and self.axis_position_inverts.get(axis, False)):
             position = 1.0 - position
         if self.enable_endpoint_guard and axis == "L0":
             margin = self.endpoint_margin

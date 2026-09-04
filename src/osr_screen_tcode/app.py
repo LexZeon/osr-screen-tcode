@@ -13,6 +13,7 @@ import locale
 import threading
 import time
 import urllib.request
+import zipfile
 from pathlib import Path
 
 
@@ -43,7 +44,16 @@ from .analyzer import SIX_AXES, RealtimeAnalyzer
 from .audio import AudioAnalyzer, AudioCapture, list_audio_devices
 from . import __version__
 from .capture import ScreenCapture, ScreenRegion, virtual_screen_bounds
-from .config import AppConfig, DEFAULT_SIX_AXIS_GAINS, DEFAULT_SIX_AXIS_INVERTS, DEFAULT_SIX_AXIS_TRAVEL_SCALES
+from .config import (
+    AppConfig,
+    DEFAULT_AXIS_OUTPUT_INVERTS,
+    DEFAULT_SIX_AXIS_GAINS,
+    DEFAULT_SIX_AXIS_INVERTS,
+    DEFAULT_SIX_AXIS_TRAVEL_SCALES,
+    RTM_POSE_2D_MODE,
+    RTM_POSE_3D_MODE,
+    RTM_POSE_MODE,
+)
 from .preview import PreviewBridge
 from .recorder import MultiAxisFunscriptRecorder
 from .sinks import (
@@ -60,10 +70,14 @@ from .tcode import MultiAxisSafeOutput
 
 RTM_POSE_3D_MODEL_URL = "https://huggingface.co/Soykaf/RTMW3D-x/resolve/main/onnx/rtmw3d-x_8xb64_cocktail14-384x288-b0a0eab7_20240626.onnx"
 RTM_POSE_3D_MODEL_NAME = "rtmw3d-x_8xb64_cocktail14-384x288-b0a0eab7_20240626.onnx"
+RTM_POSE_2D_MODEL_URL = "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-s_simcc-body7_pt-body7_420e-256x192-acd4a1ef_20230504.zip"
+RTM_POSE_2D_MODEL_NAME = "rtmpose-s_simcc-body7_pt-body7_420e-256x192-acd4a1ef_20230504.onnx"
 
 
 TRACKER_MODE_CHOICES = (
     "混合分析（推荐-非舞蹈）",
+    RTM_POSE_2D_MODE,
+    RTM_POSE_3D_MODE,
     "Stroke Phase（内测用）",
     "Motion Center（内测用）",
     "Optical Flow（内测用）",
@@ -73,6 +87,8 @@ TRACKER_MODE_CHOICES = (
 
 TRACKER_MODE_EN = {
     "混合分析（推荐-非舞蹈）": "Hybrid Analysis (Recommended - Non-Dance)",
+    RTM_POSE_2D_MODE: "RTM Pose 2D (Recommended - Dance)",
+    RTM_POSE_3D_MODE: "RTM Pose 3D (Higher Latency - Dance)",
     "Stroke Phase（内测用）": "Stroke Phase (Beta)",
     "Motion Center（内测用）": "Motion Center (Beta)",
     "Optical Flow（内测用）": "Optical Flow (Beta)",
@@ -143,6 +159,7 @@ UI_TEXT_EN = {
     "启用启动渐入": "Enable Startup Ramp",
     "渐入 ms": "Ramp ms",
     "反向": "Invert",
+    "反转": "Invert",
     "一键稳态 L0": "Stable L0 Preset",
     "连接设备": "Device Connection",
     "输出": "Output",
@@ -197,13 +214,26 @@ UI_TEXT_EN = {
     "Pose v2 六轴权重": "Pose v2 Six-Axis Weight",
     "基础分析 v2 L0 权重": "Base v2 L0 Weight",
     "基础分析 v2 六轴权重": "Base v2 Six-Axis Weight",
-    "RTM Pose 3D 骨架标注": "RTM Pose 3D Skeleton Overlay",
-    "RTM Pose 3D 模型": "RTM Pose 3D Model",
-    "RTM Pose 3D 权重": "RTM Pose 3D Weight",
+    "RTM Pose 骨架标注": "RTM Pose Skeleton Overlay",
+    "RTM Pose 模型": "RTM Pose Model",
+    "混合分析 L0 权重": "Hybrid L0 Weight",
+    "当前本模型分析权重": "Current Model Analysis Weight",
+    "RTM GPU 加速": "RTM GPU Acceleration",
+    "RTM GPU 状态：CPU": "RTM GPU Status: CPU",
+    "RTM GPU 状态：检测中...": "RTM GPU Status: checking...",
+    "RTM GPU 状态：CUDA 可用": "RTM GPU Status: CUDA available",
+    "RTM GPU 状态：未检测到 CUDA，自动使用 CPU": "RTM GPU Status: CUDA not detected, using CPU",
+    "RTM 光流辅助": "RTM Optical Flow Assist",
+    "RTM 卡尔曼融合": "RTM Kalman Fusion",
     "基础分析 RTM 权重": "Base RTM Weight",
     "选择模型": "Choose Model",
     "下载模型": "Download Model",
+    "下载/自动检测模型": "Download / Auto Detect Model",
     "下载中...": "Downloading...",
+    "自动检测到模型": "Model auto detected",
+    "未检测到模型，开始下载...": "No model detected. Downloading...",
+    "模型不匹配": "Model Mismatch",
+    "请先选择或下载正确的 RTM Pose 模型。": "Choose or download the correct RTM Pose model first.",
     "模型下载中...": "Downloading model...",
     "模型下载完成": "Model downloaded",
     "模型下载失败": "Model download failed",
@@ -223,14 +253,14 @@ UI_TEXT_EN = {
     "收起测量模式和轴上下限": "Hide Measurement + Axis Limits",
     "展开六轴辅助调节（仅混合分析）": "Show Six-Axis Tuning (Hybrid Only)",
     "收起六轴辅助调节（仅混合分析）": "Hide Six-Axis Tuning (Hybrid Only)",
-    "展开 RTM Pose 3D 设置": "Show RTM Pose 3D Settings",
-    "收起 RTM Pose 3D 设置": "Hide RTM Pose 3D Settings",
+    "展开 RTM Pose 模型设置": "Show RTM Pose Model Settings",
+    "收起 RTM Pose 模型设置": "Hide RTM Pose Model Settings",
     "总强度": "Overall Strength",
     "六轴降抖": "Six-Axis Stabilizer",
     "一键稳六轴": "Stable Six-Axis Preset",
     "六轴敏感度": "Six-Axis Sensitivity",
     "反": "Inv",
-    "这组滑块只推荐用于混合分析（推荐-非舞蹈）；RTM Pose 3D 输出不会接入这里。": "Recommended only for Hybrid Analysis (Recommended - Non-Dance). RTM Pose 3D output does not use these sliders.",
+    "这组滑块只推荐用于混合分析（推荐-非舞蹈）；RTM Pose 输出不会接入这里。": "Recommended only for Hybrid Analysis (Recommended - Non-Dance). RTM Pose output does not use these sliders.",
     "连接失败": "Connection Failed",
     "正在运行": "Running",
     "请先停止实时输出，再查询设备轴。": "Stop realtime output before querying device axes.",
@@ -269,6 +299,7 @@ UI_TEXT_EN = {
     "已连接并回中": "Connected and centered",
     "回中失败": "Center failed",
     "正在连接，请稍候...": "Connecting, please wait...",
+    "正在连接，连接成功后会开始实时输出": "Connecting. Realtime output will start after the device connects.",
     "正在连接，连接成功后请再试一次。": "Connecting. Try again after the connection succeeds.",
     "实时输出中": "Realtime output running",
     "已停止": "Stopped",
@@ -394,13 +425,13 @@ TOOLTIPS = {
     "保存为下限": "把当前测量位置保存为该轴下限。",
     "当前轴回中": "把当前测量轴发送到 5000。",
     "保存为上限": "把当前测量位置保存为该轴上限。",
-    "六轴辅助调节（仅混合分析推荐）": "只推荐用于混合分析（推荐-非舞蹈）的 L1/L2/R0/R1/R2 辅助微调；RTM Pose 3D 不接入这里。",
+    "六轴辅助调节（仅混合分析推荐）": "只推荐用于混合分析（推荐-非舞蹈）的 L1/L2/R0/R1/R2 辅助微调；RTM Pose 不接入这里。",
     "展开测量模式和轴上下限": "展开测量模式和每个轴的安全上下限。",
     "收起测量模式和轴上下限": "收起测量模式和每个轴的安全上下限。",
     "展开六轴辅助调节（仅混合分析）": "展开混合分析用的六轴辅助微调。",
     "收起六轴辅助调节（仅混合分析）": "收起混合分析用的六轴辅助微调。",
-    "展开 RTM Pose 3D 设置": "展开 RTM Pose 3D 的骨架标注、权重、模型路径和模型下载设置。",
-    "收起 RTM Pose 3D 设置": "收起 RTM Pose 3D 设置，保持主界面更清爽。",
+    "展开 RTM Pose 模型设置": "展开 RTM Pose 的模型路径、模型下载和来源说明。只有选择 RTM Pose 2D/3D 舞蹈模式时才显示。",
+    "收起 RTM Pose 模型设置": "收起 RTM Pose 模型设置，保持主界面更清爽。",
     "总强度": "整体放大或缩小非 L0 五个辅助轴。",
     "六轴降抖": "越往右，辅助轴越不敏感、越平滑、越不容易抖。",
     "一键稳六轴": "把辅助轴调成低敏稳态，适合先解决抖动。",
@@ -451,10 +482,15 @@ TOOLTIPS = {
     "Pose v2 六轴权重": "越大越偏向 Pose v2 的胯部核心区、平行四边形和防卡边判断。",
     "基础分析 v2 L0 权重": "显示 L0 基础分析方法还占多少。开启 Pose v2 倾向 L0 时等于 100 - Pose v2 L0 权重；关闭时为 100%。",
     "基础分析 v2 六轴权重": "显示六轴基础分析方法还占多少。开启 Pose v2 倾向六轴时等于 100 - Pose v2 六轴权重；关闭时为 100%。",
-    "RTM Pose 3D 骨架标注": "测试版功能：使用 RTM Pose 3D 感知到的人体骨架进行标注和可调权重辅助；权重 100% 时跳过基础分析。",
-    "RTM Pose 3D 模型": "填写本地 RTMPose3D / RTMW3D ONNX 模型路径。没有模型时程序仍会运行，只显示等待模型路径。",
-    "RTM Pose 3D 权重": "RTM 权重大于 0 时会用 3D 骨架辅助输出；100% 时跳过基础画面分析，只运行 RTM。没有模型或识别失败时保持当前输出。",
-    "基础分析 RTM 权重": "显示基础分析方法还占多少。RTM 权重 100% 时基础分析不会运行。",
+    "RTM Pose 骨架标注": "测试版舞蹈模式：使用 RTM Pose 感知到的人体骨架做标注和输出。只在选择 RTM Pose 2D/3D 舞蹈模式时启用。",
+    "RTM Pose 模型": "填写本地 RTMPose 2D 或 RTMPose 3D ONNX 模型路径。没有模型时程序仍会运行，只显示等待模型路径。",
+    "基础分析 RTM 权重": "RTM Pose 是独立舞蹈模式，不接入混合分析权重。",
+    "混合分析 L0 权重": "勾选后才会额外运行混合分析，只把它的 L0 按这个权重混入 RTM；不勾选时 RTM 保持 100% 模型并节省算力。",
+    "当前本模型分析权重": "显示当前 RTM 模型在 L0 中占多少；未勾选混合分析时为 100%。",
+    "RTM GPU 加速": "默认关闭。勾选后尝试用 CUDA GPU 运行 RTM 模型；如果本机没有 CUDA 推理环境，会自动回落 CPU。",
+    "RTM 光流辅助": "默认开启。用上一帧骨架关键点在新画面里做轻量追踪，补足两次模型检测之间的运动。",
+    "RTM 卡尔曼融合": "默认开启。用光流作为预测，用 RTM 检测点作为观测进行融合，减少关键点跳动。",
+    "反转": "反转这个输出方向；只改变最终轴方向，不改变识别算法。",
     "框选屏幕区域": "启动前重新选择实时读取范围，减少无关画面干扰。",
     "FPS": "每秒分析帧数，越高越跟手也越吃性能。",
     "间隔 ms": "TCode 命令的 I 时间，通常和输出刷新速度相关。",
@@ -540,13 +576,13 @@ TOOLTIPS_EN = {
     "保存为下限": "Save the current measurement value as this axis lower limit.",
     "当前轴回中": "Move the selected measurement axis to 5000.",
     "保存为上限": "Save the current measurement value as this axis upper limit.",
-    "六轴辅助调节（仅混合分析推荐）": "Tune L1/L2/R0/R1/R2 for Hybrid Analysis only. RTM Pose 3D does not use these controls.",
+    "六轴辅助调节（仅混合分析推荐）": "Tune L1/L2/R0/R1/R2 for Hybrid Analysis only. RTM Pose does not use these controls.",
     "展开测量模式和轴上下限": "Show measurement mode and per-axis safety limits.",
     "收起测量模式和轴上下限": "Hide measurement mode and per-axis safety limits.",
     "展开六轴辅助调节（仅混合分析）": "Show six-axis helper tuning for Hybrid Analysis.",
     "收起六轴辅助调节（仅混合分析）": "Hide six-axis helper tuning for Hybrid Analysis.",
-    "展开 RTM Pose 3D 设置": "Show RTM Pose 3D skeleton, weight, model path, and model download settings.",
-    "收起 RTM Pose 3D 设置": "Hide RTM Pose 3D settings to keep the main controls cleaner.",
+    "展开 RTM Pose 模型设置": "Show RTM Pose model path, download, and source details. Only visible in RTM Pose 2D/3D dance modes.",
+    "收起 RTM Pose 模型设置": "Hide RTM Pose model settings to keep the main controls cleaner.",
     "总强度": "Overall strength for the five non-L0 auxiliary axes.",
     "六轴降抖": "Higher values make auxiliary axes less sensitive, smoother, and steadier.",
     "一键稳六轴": "Apply a low-sensitivity six-axis setup to reduce jitter.",
@@ -597,10 +633,15 @@ TOOLTIPS_EN = {
     "Pose v2 六轴权重": "Higher values favor Pose v2 hip-core, parallelogram, and anti-stuck side-axis tracking.",
     "基础分析 v2 L0 权重": "Shows how much the original L0 analysis still contributes. With Pose v2 L0 enabled, it is 100 minus Pose v2 L0 weight; when disabled, it is 100%.",
     "基础分析 v2 六轴权重": "Shows how much the original six-axis analysis still contributes. With Pose v2 Six-Axis enabled, it is 100 minus Pose v2 Six-Axis weight; when disabled, it is 100%.",
-    "RTM Pose 3D 骨架标注": "Test feature: uses the skeleton perceived by RTM Pose 3D for overlay and adjustable-weight assist. At 100%, base analysis is skipped.",
-    "RTM Pose 3D 模型": "Set the local RTMPose3D / RTMW3D ONNX model path. Without a model, the app still runs and shows a waiting message.",
-    "RTM Pose 3D 权重": "When RTM weight is above 0, 3D skeleton assists output. At 100%, base image analysis is skipped and only RTM runs. If the model is missing or detection fails, output holds.",
-    "基础分析 RTM 权重": "Shows how much base analysis still contributes. At 100% RTM weight, base analysis is not run.",
+    "RTM Pose 骨架标注": "Test dance mode: uses the skeleton perceived by RTM Pose for overlay and output. Only active in RTM Pose 2D/3D dance modes.",
+    "RTM Pose 模型": "Set the local RTMPose 2D or RTMPose 3D ONNX model path. Without a model, the app still runs and shows a waiting message.",
+    "基础分析 RTM 权重": "RTM Pose is a separate dance mode and does not use Hybrid Analysis weighting.",
+    "混合分析 L0 权重": "When checked, Hybrid Analysis runs only for L0 and is mixed into RTM by this weight. When unchecked, RTM stays 100% model-driven and saves CPU.",
+    "当前本模型分析权重": "Shows how much RTM model analysis currently contributes to L0. It is 100% when Hybrid L0 is unchecked.",
+    "RTM GPU 加速": "Off by default. When checked, RTM Pose tries CUDA GPU inference; if CUDA is unavailable, it automatically falls back to CPU.",
+    "RTM 光流辅助": "On by default. Tracks the previous skeleton keypoints in the next frame to fill motion between model detections.",
+    "RTM 卡尔曼融合": "On by default. Uses optical flow as prediction and RTM detections as observations to reduce keypoint jitter.",
+    "反转": "Invert this output direction. It changes the final axis direction only, not the recognition algorithm.",
     "框选屏幕区域": "Select the realtime capture region before starting.",
     "FPS": "Frames analyzed per second. Higher is more responsive and uses more CPU.",
     "间隔 ms": "The TCode I time, usually related to output refresh speed.",
@@ -706,6 +747,7 @@ class OsrScreenApp(tk.Tk):
         self._connecting = False
         self._connect_worker: threading.Thread | None = None
         self._connect_attempt_id = 0
+        self._start_after_connect = False
         self.auto_connect = auto_connect
         self.center_on_connect = center_on_connect
         self._config_save_after_id: str | None = None
@@ -909,11 +951,208 @@ class OsrScreenApp(tk.Tk):
     def _set_tracker_mode(self, value: str) -> None:
         self.tracker_mode.set(self._tracker_display(value))
 
+    def _active_rtm_pose_model_var(self, value: str | None = None) -> tk.StringVar:
+        return self.rtm_pose_2d_model_path if self._rtm_pose_2d_mode_active(value) else self.rtm_pose_3d_model_path
+
+    def _refresh_active_rtm_pose_model_path(self) -> None:
+        if not hasattr(self, "rtm_pose_model_path"):
+            return
+        self._rtm_pose_model_path_syncing = True
+        try:
+            self.rtm_pose_model_path.set(self._active_rtm_pose_model_var().get())
+        finally:
+            self._rtm_pose_model_path_syncing = False
+
+    def _store_active_rtm_pose_model_path(self) -> None:
+        if self._rtm_pose_model_path_syncing or not hasattr(self, "rtm_pose_model_path"):
+            return
+        self._active_rtm_pose_model_var().set(self.rtm_pose_model_path.get())
+
+    def _rtm_pose_mode_active(self, value: str | None = None) -> bool:
+        raw_value = self.tracker_mode.get() if value is None else value
+        return self._tracker_internal(raw_value) in (RTM_POSE_2D_MODE, RTM_POSE_3D_MODE)
+
+    def _rtm_pose_2d_mode_active(self, value: str | None = None) -> bool:
+        raw_value = self.tracker_mode.get() if value is None else value
+        return self._tracker_internal(raw_value) == RTM_POSE_2D_MODE
+
+    def _rtm_pose_3d_mode_active(self, value: str | None = None) -> bool:
+        raw_value = self.tracker_mode.get() if value is None else value
+        return self._tracker_internal(raw_value) == RTM_POSE_3D_MODE
+
+    def _rtm_pose_model_dir(self) -> Path:
+        return Path(__file__).resolve().parents[2] / "models"
+
+    def _rtm_pose_model_spec(self, mode: str) -> tuple[str, str, int, int, str]:
+        internal = self._tracker_internal(mode)
+        if internal == RTM_POSE_3D_MODE:
+            return (RTM_POSE_3D_MODEL_NAME, RTM_POSE_3D_MODEL_URL, 100_000_000, 3, "RTM Pose 3D")
+        return (RTM_POSE_2D_MODEL_NAME, RTM_POSE_2D_MODEL_URL, 5_000_000, 2, "RTM Pose 2D")
+
+    def _validate_rtm_pose_model_path(self, path_value: str, mode: str) -> tuple[bool, str]:
+        model_name, _url, min_size, expected_outputs, label = self._rtm_pose_model_spec(mode)
+        path_text = str(path_value or "").strip().strip('"')
+        if not path_text:
+            return False, f"{label} 需要先选择或下载模型。"
+        path = Path(path_text)
+        if not path.exists() or not path.is_file():
+            return False, f"模型文件不存在：{path_text}"
+        if path.suffix.lower() != ".onnx":
+            return False, "请选择 .onnx 模型文件。"
+        try:
+            stat = path.stat()
+        except OSError as exc:
+            return False, f"无法读取模型文件：{exc}"
+        if stat.st_size < min_size:
+            return False, f"模型文件太小，可能下载不完整。当前模式需要 {model_name}。"
+
+        cache = getattr(self, "_rtm_pose_model_validation_cache", None)
+        if cache is None:
+            cache = {}
+            self._rtm_pose_model_validation_cache = cache
+        try:
+            cache_path = str(path.resolve())
+        except OSError:
+            cache_path = str(path)
+        cache_key = (self._tracker_internal(mode), cache_path, int(stat.st_size), int(stat.st_mtime_ns))
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        try:
+            import onnxruntime as ort
+
+            session = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
+            output_count = len(session.get_outputs())
+        except Exception as exc:
+            result = (False, f"ONNX 模型无法读取：{exc}")
+            cache[cache_key] = result
+            return result
+
+        if output_count != expected_outputs:
+            result = (
+                False,
+                f"模型类型不匹配：当前文件有 {output_count} 个输出，{label} 需要 {expected_outputs} 个输出。请使用 {model_name}。",
+            )
+            cache[cache_key] = result
+            return result
+
+        result = (True, f"{label} 模型可用：{path.name}")
+        cache[cache_key] = result
+        return result
+
+    def _find_existing_rtm_pose_model(self, mode: str) -> Path | None:
+        model_name, _url, _min_size, _expected_outputs, _label = self._rtm_pose_model_spec(mode)
+        model_dir = self._rtm_pose_model_dir()
+        candidates = [model_dir / model_name]
+        if model_dir.exists():
+            candidates.extend(path for path in model_dir.glob("*.onnx") if path.name != model_name)
+        for candidate in candidates:
+            ok, _message = self._validate_rtm_pose_model_path(str(candidate), mode)
+            if ok:
+                return candidate
+        return None
+
+    def _apply_rtm_pose_model_path(self, path: str, mode: str, target_var: tk.StringVar | None = None) -> None:
+        internal = self._tracker_internal(mode)
+        if internal == RTM_POSE_2D_MODE:
+            self.rtm_pose_2d_model_path.set(path)
+        else:
+            self.rtm_pose_3d_model_path.set(path)
+        if target_var is not None:
+            target_var.set(path)
+        if internal in (RTM_POSE_2D_MODE, RTM_POSE_3D_MODE):
+            self._set_tracker_mode(internal)
+        self._refresh_active_rtm_pose_model_path()
+
+    def _ensure_rtm_pose_model_ready(self) -> bool:
+        if not self._rtm_pose_mode_active():
+            return True
+        mode = self._tracker_internal(self.tracker_mode.get())
+        model_var = self._active_rtm_pose_model_var(mode)
+        ok, message = self._validate_rtm_pose_model_path(model_var.get(), mode)
+        if ok:
+            self.rtm_model_download_status_text.set(message)
+            return True
+
+        detected = self._find_existing_rtm_pose_model(mode)
+        if detected is not None:
+            self._apply_rtm_pose_model_path(str(detected), mode)
+            text = f"{self._t('自动检测到模型')}: {detected.name}"
+            self.status.set(text)
+            self.rtm_model_download_status_text.set(text)
+            return True
+
+        text = f"{self._t('请先选择或下载正确的 RTM Pose 模型。')}\n{message}"
+        self.status.set(text)
+        self.rtm_model_download_status_text.set(message)
+        messagebox.showwarning(self._t("模型不匹配"), text)
+        return False
+
+    def _rtm_pose_cuda_available(self) -> bool:
+        try:
+            import onnxruntime as ort
+
+            return "CUDAExecutionProvider" in set(ort.get_available_providers())
+        except Exception:
+            return False
+
+    def _rtm_pose_gpu_status_message(self, enabled: bool) -> str:
+        if not enabled:
+            return self._t("RTM GPU 状态：CPU")
+        if self._rtm_pose_cuda_available():
+            return self._t("RTM GPU 状态：CUDA 可用")
+        return self._t("RTM GPU 状态：未检测到 CUDA，自动使用 CPU")
+
+    def _schedule_rtm_pose_gpu_status_refresh(self) -> None:
+        if not hasattr(self, "rtm_pose_gpu_status_text"):
+            return
+        if not self.rtm_pose_gpu_enabled.get():
+            self.rtm_pose_gpu_status_text.set(self._rtm_pose_gpu_status_message(False))
+            return
+        self.rtm_pose_gpu_status_text.set(self._t("RTM GPU 状态：检测中..."))
+        self.after(25, self._refresh_rtm_pose_gpu_status)
+
+    def _refresh_rtm_pose_gpu_status(self) -> None:
+        if hasattr(self, "rtm_pose_gpu_status_text"):
+            self.rtm_pose_gpu_status_text.set(self._rtm_pose_gpu_status_message(self.rtm_pose_gpu_enabled.get()))
+
+    def _running_analysis_label(self) -> str:
+        mode = self._tracker_display(self._tracker_internal(self.tracker_mode.get()))
+        if self.ui_language == "en":
+            return f"Running: {mode}"
+        return f"正在以：{mode}：分析"
+
+    def _refresh_start_button_text(self) -> None:
+        if self.worker and self.worker.is_alive():
+            self.start_button_text.set(self._running_analysis_label())
+        else:
+            self.start_button_text.set(self._t("开始实时输出"))
+
+    def _on_tracker_mode_changed(self) -> None:
+        is_rtm = self._rtm_pose_mode_active()
+        self.rtm_pose_3d_enabled.set(self._rtm_pose_3d_mode_active())
+        self.rtm_pose_3d_weight.set(100 if is_rtm else 0)
+        self._refresh_active_rtm_pose_model_path()
+        self._refresh_pose_base_weight_texts()
+        self._refresh_rtm_pose_3d_settings()
+
     @staticmethod
     def _normalize_tracker_mode(value: str) -> str:
         aliases = {
             "混合分析（推荐）": "混合分析（推荐-非舞蹈）",
             "Hybrid Analysis (Recommended)": "混合分析（推荐-非舞蹈）",
+            "Hybrid Analysis (Recommended - Non-Dance)": "混合分析（推荐-非舞蹈）",
+            "RTM Pose": RTM_POSE_3D_MODE,
+            "RTM Pose（推荐-舞蹈）": RTM_POSE_3D_MODE,
+            "RTM Pose 2D": RTM_POSE_2D_MODE,
+            "RTM Pose 2D（推荐-舞蹈）": RTM_POSE_2D_MODE,
+            "RTM Pose 2D (Recommended - Dance)": RTM_POSE_2D_MODE,
+            "RTM Pose 3D": RTM_POSE_3D_MODE,
+            "RTM Pose 3D（推荐-舞蹈）": RTM_POSE_3D_MODE,
+            "RTM Pose 3D（高延迟-舞蹈）": RTM_POSE_3D_MODE,
+            "RTM Pose (Recommended - Dance)": RTM_POSE_3D_MODE,
+            "RTM Pose 3D (Higher Latency - Dance)": RTM_POSE_3D_MODE,
         }
         return aliases.get(value, value)
 
@@ -988,14 +1227,31 @@ class OsrScreenApp(tk.Tk):
         self.pose_v2_l0_base_weight_text = tk.StringVar()
         self.pose_v2_six_axis_base_weight_text = tk.StringVar()
         self._pose_mode_syncing = False
-        self.rtm_pose_3d_enabled = tk.BooleanVar(value=bool(cfg.extra.get("rtm_pose_3d_enabled", False)))
+        initial_tracker_mode = self._normalize_tracker_mode(cfg.tracker_mode)
+        if bool(cfg.extra.get("rtm_pose_3d_enabled", False)):
+            initial_tracker_mode = RTM_POSE_3D_MODE
+        initial_rtm_pose_mode = initial_tracker_mode in (RTM_POSE_2D_MODE, RTM_POSE_3D_MODE)
+        self.rtm_pose_3d_enabled = tk.BooleanVar(value=initial_tracker_mode == RTM_POSE_3D_MODE)
+        self.rtm_pose_2d_model_path = tk.StringVar(value=str(cfg.extra.get("rtm_pose_2d_model_path", "")))
         self.rtm_pose_3d_model_path = tk.StringVar(value=str(cfg.extra.get("rtm_pose_3d_model_path", "")))
-        self.rtm_pose_3d_weight = tk.IntVar(value=int(cfg.extra.get("rtm_pose_3d_weight", 100)))
+        self.rtm_pose_3d_weight = tk.IntVar(value=100 if initial_rtm_pose_mode else 0)
+        self.rtm_hybrid_l0_enabled = tk.BooleanVar(value=bool(cfg.extra.get("rtm_hybrid_l0_enabled", False)))
+        self.rtm_hybrid_l0_weight = tk.IntVar(value=max(1, min(100, int(cfg.extra.get("rtm_hybrid_l0_weight", 30)))))
+        self.rtm_model_l0_weight_text = tk.StringVar()
         self.rtm_pose_3d_base_weight_text = tk.StringVar()
-        self.rtm_model_download_button_text = tk.StringVar(value=self._t("下载模型"))
+        self.rtm_model_download_button_text = tk.StringVar(value=self._t("下载/自动检测模型"))
         self.rtm_model_download_status_text = tk.StringVar(value="")
+        self.rtm_pose_gpu_enabled = tk.BooleanVar(value=bool(cfg.extra.get("rtm_pose_gpu_enabled", False)))
+        self.rtm_pose_gpu_status_text = tk.StringVar()
+        self.rtm_pose_flow_enabled = tk.BooleanVar(value=bool(cfg.extra.get("rtm_pose_flow_enabled", True)))
+        self.rtm_pose_kalman_enabled = tk.BooleanVar(value=bool(cfg.extra.get("rtm_pose_kalman_enabled", True)))
         self._rtm_pose_3d_downloading = False
-        self.tracker_mode = tk.StringVar(value=self._tracker_display(cfg.tracker_mode))
+        self._rtm_pose_3d_download_target: tk.StringVar | None = None
+        self._rtm_pose_3d_download_mode: str | None = None
+        self._rtm_pose_model_path_syncing = False
+        self._rtm_pose_model_validation_cache: dict[tuple[str, str, int, int], tuple[bool, str]] = {}
+        self.tracker_mode = tk.StringVar(value=self._tracker_display(initial_tracker_mode))
+        self.rtm_pose_model_path = tk.StringVar()
         self.response_curve = tk.StringVar(value=cfg.response_curve)
         self.motion_gain = tk.DoubleVar(value=cfg.motion_gain)
         self.visual_stroke_scale = tk.DoubleVar(value=cfg.visual_stroke_scale)
@@ -1007,21 +1263,30 @@ class OsrScreenApp(tk.Tk):
         self.global_travel_slider = tk.DoubleVar(value=self._travel_scale_to_slider(self.global_travel_scale.get()))
         self.l0_travel_text = tk.StringVar(value=self._format_travel_scale(self.l0_travel_scale.get()))
         self.global_travel_text = tk.StringVar(value=self._format_travel_scale(self.global_travel_scale.get()))
+        self.six_axis_travel_invert = tk.BooleanVar(value=bool(cfg.extra.get("six_axis_travel_invert", False)))
         stored_travel_scales = cfg.extra.get("six_axis_travel_scales", {})
+        stored_output_inverts = cfg.extra.get("axis_output_inverts", {})
         if not isinstance(stored_travel_scales, dict):
             stored_travel_scales = {}
+        if not isinstance(stored_output_inverts, dict):
+            stored_output_inverts = {}
         self.six_axis_travel_scale_vars: dict[str, tk.DoubleVar] = {}
         self.six_axis_travel_slider_vars: dict[str, tk.DoubleVar] = {}
         self.six_axis_travel_text_vars: dict[str, tk.StringVar] = {}
+        self.axis_output_invert_vars: dict[str, tk.BooleanVar] = {}
         for axis, default_scale in DEFAULT_SIX_AXIS_TRAVEL_SCALES.items():
             scale = max(0.0, min(3.0, float(stored_travel_scales.get(axis, default_scale))))
             self.six_axis_travel_scale_vars[axis] = tk.DoubleVar(value=scale)
             self.six_axis_travel_slider_vars[axis] = tk.DoubleVar(value=self._travel_scale_to_slider(scale))
             self.six_axis_travel_text_vars[axis] = tk.StringVar(value=self._format_travel_scale(scale))
+            self.axis_output_invert_vars[axis] = tk.BooleanVar(
+                value=bool(stored_output_inverts.get(axis, DEFAULT_AXIS_OUTPUT_INVERTS.get(axis, False)))
+            )
         self.play_preset_level = tk.IntVar(value=int(cfg.extra.get("play_preset_level", 3)))
         self.six_axis_intensity = tk.IntVar(value=int(cfg.extra.get("six_axis_intensity", 65)))
         self.six_axis_jitter_reduction = tk.IntVar(value=int(cfg.extra.get("six_axis_jitter_reduction", 55)))
         self.six_axis_sensitivity_level = tk.IntVar(value=int(cfg.extra.get("six_axis_sensitivity_level", 5)))
+        self.start_button_text = tk.StringVar(value=self._t("开始实时输出"))
         self.show_more_settings = tk.BooleanVar(value=bool(cfg.extra.get("show_more_settings", False)))
         self.show_measurement_limits = tk.BooleanVar(value=bool(cfg.extra.get("show_measurement_limits", False)))
         self.show_six_axis_tuning = tk.BooleanVar(value=bool(cfg.extra.get("show_six_axis_tuning", False)))
@@ -1079,6 +1344,7 @@ class OsrScreenApp(tk.Tk):
         self._previous_l0_value = 5000
         self._script_history: deque[tuple[float, dict[str, int]]] = deque(maxlen=900)
         self._last_measure_sent = 0.0
+        self._live_output_mapping_dirty = True
         self.min_value.trace_add("write", lambda *_args: self._refresh_limit_text())
         self.max_value.trace_add("write", lambda *_args: self._refresh_limit_text())
         self.l0_travel_scale.trace_add("write", lambda *_args: self._sync_travel_slider(self.l0_travel_scale, self.l0_travel_slider, self.l0_travel_text))
@@ -1097,6 +1363,9 @@ class OsrScreenApp(tk.Tk):
         self.show_six_axis_tuning.trace_add("write", lambda *_args: self._refresh_six_axis_tuning())
         self.show_rtm_pose_3d_settings.trace_add("write", lambda *_args: self._refresh_rtm_pose_3d_settings())
         self.show_six_axis_travel_scales.trace_add("write", lambda *_args: self._refresh_six_axis_travel_scales())
+        self.rtm_pose_gpu_enabled.trace_add("write", lambda *_args: self._schedule_rtm_pose_gpu_status_refresh())
+        self.tracker_mode.trace_add("write", lambda *_args: self._on_tracker_mode_changed())
+        self.rtm_pose_model_path.trace_add("write", lambda *_args: self._store_active_rtm_pose_model_path())
         self.sink_type.trace_add("write", lambda *_args: self._refresh_ble_settings())
         self.pose_l0_analysis.trace_add("write", lambda *_args: self._sync_pose_mode_selection("v1"))
         self.pose_six_axis_analysis.trace_add("write", lambda *_args: self._sync_pose_mode_selection("v1"))
@@ -1115,12 +1384,33 @@ class OsrScreenApp(tk.Tk):
             self.pose_v2_six_axis_weight,
             self.rtm_pose_3d_enabled,
             self.rtm_pose_3d_weight,
+            self.rtm_hybrid_l0_enabled,
+            self.rtm_hybrid_l0_weight,
         ):
             variable.trace_add("write", lambda *_args: self._refresh_pose_base_weight_texts())
         self._refresh_pose_base_weight_texts()
+        self._schedule_rtm_pose_gpu_status_refresh()
         for axis in SIX_AXES:
             self.axis_min_vars[axis].trace_add("write", lambda *_args, axis_name=axis: self._refresh_axis_limit_text(axis_name))
             self.axis_max_vars[axis].trace_add("write", lambda *_args, axis_name=axis: self._refresh_axis_limit_text(axis_name))
+        live_mapping_vars: list[tk.Variable] = [
+            self.output_mode,
+            self.min_value,
+            self.max_value,
+            self.max_step,
+            self.enable_speed_limit,
+            self.invert,
+            self.l0_travel_scale,
+            self.global_travel_scale,
+            self.six_axis_travel_invert,
+        ]
+        live_mapping_vars.extend(self.axis_min_vars.values())
+        live_mapping_vars.extend(self.axis_max_vars.values())
+        live_mapping_vars.extend(self.six_axis_travel_scale_vars.values())
+        live_mapping_vars.extend(self.axis_output_invert_vars.values())
+        for variable in live_mapping_vars:
+            variable.trace_add("write", lambda *_args: self._mark_live_output_mapping_dirty())
+        self._refresh_active_rtm_pose_model_path()
 
     def _install_config_autosave(self) -> None:
         for variable in self._config_variables():
@@ -1161,8 +1451,14 @@ class OsrScreenApp(tk.Tk):
             self.pose_v2_l0_weight,
             self.pose_v2_six_axis_weight,
             self.rtm_pose_3d_enabled,
+            self.rtm_pose_2d_model_path,
             self.rtm_pose_3d_model_path,
             self.rtm_pose_3d_weight,
+            self.rtm_hybrid_l0_enabled,
+            self.rtm_hybrid_l0_weight,
+            self.rtm_pose_gpu_enabled,
+            self.rtm_pose_flow_enabled,
+            self.rtm_pose_kalman_enabled,
             self.tracker_mode,
             self.response_curve,
             self.motion_gain,
@@ -1170,6 +1466,7 @@ class OsrScreenApp(tk.Tk):
             self.compression_latency,
             self.l0_travel_scale,
             self.global_travel_scale,
+            self.six_axis_travel_invert,
             self.play_preset_level,
             self.six_axis_intensity,
             self.six_axis_jitter_reduction,
@@ -1203,6 +1500,7 @@ class OsrScreenApp(tk.Tk):
         variables.extend(self.axis_min_vars.values())
         variables.extend(self.axis_max_vars.values())
         variables.extend(self.six_axis_travel_scale_vars.values())
+        variables.extend(self.axis_output_invert_vars.values())
         variables.extend(self.six_axis_gain_vars.values())
         variables.extend(self.six_axis_invert_vars.values())
         return variables
@@ -1272,8 +1570,13 @@ class OsrScreenApp(tk.Tk):
             )
         if hasattr(self, "rtm_pose_3d_base_weight_text"):
             self.rtm_pose_3d_base_weight_text.set(
-                self._pose_base_weight_label(self.rtm_pose_3d_enabled.get(), self.rtm_pose_3d_weight.get(), "基础分析 RTM 权重")
+                self._pose_base_weight_label(self._rtm_pose_mode_active(), self.rtm_pose_3d_weight.get(), "基础分析 RTM 权重")
             )
+        if hasattr(self, "rtm_model_l0_weight_text"):
+            model_weight = 100
+            if self.rtm_hybrid_l0_enabled.get():
+                model_weight = max(0, 100 - self._clamped_percent(self.rtm_hybrid_l0_weight.get(), 30))
+            self.rtm_model_l0_weight_text.set(f"{self._t('当前本模型分析权重')}: {model_weight}%")
 
     def _schedule_config_save(self) -> None:
         if self._config_autosave_suspended:
@@ -1447,6 +1750,7 @@ class OsrScreenApp(tk.Tk):
         slider_var: tk.DoubleVar,
         text_var: tk.StringVar,
         row: int,
+        invert_var: tk.BooleanVar | None = None,
     ) -> int:
         ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", pady=2)
         ttk.Scale(
@@ -1456,7 +1760,17 @@ class OsrScreenApp(tk.Tk):
             variable=slider_var,
             command=lambda value, target=value_var, text=text_var: self._on_travel_slider(value, target, text),
         ).grid(row=row, column=1, sticky="ew", pady=2)
-        ttk.Label(parent, textvariable=text_var, width=6, anchor="e").grid(row=row, column=2, sticky="e")
+        value_box = ttk.Frame(parent)
+        value_box.grid(row=row, column=2, sticky="e")
+        entry = ttk.Entry(value_box, textvariable=text_var, width=7, justify="right")
+        entry.grid(row=0, column=0, sticky="e")
+        entry.bind("<Return>", lambda _event, target=value_var, slider=slider_var, text=text_var: self._on_travel_entry(target, slider, text))
+        entry.bind("<FocusOut>", lambda _event, target=value_var, slider=slider_var, text=text_var: self._on_travel_entry(target, slider, text))
+        Tooltip(entry, self._tooltip_text(label))
+        if invert_var is not None:
+            check = ttk.Checkbutton(value_box, text=self._t("反转"), variable=invert_var)
+            check.grid(row=0, column=1, sticky="e", padx=(4, 0))
+            Tooltip(check, self._tooltip_text("反转"))
         return row + 1
 
     @staticmethod
@@ -1491,6 +1805,23 @@ class OsrScreenApp(tk.Tk):
         scale = self._travel_slider_to_scale(float(value))
         target.set(round(scale, 3))
         text.set(self._format_travel_scale(scale))
+        self._refresh_limit_text()
+
+    def _on_travel_entry(self, target: tk.DoubleVar, slider: tk.DoubleVar, text: tk.StringVar) -> None:
+        if self._travel_slider_syncing:
+            return
+        raw = text.get().strip().lower().replace("x", "")
+        try:
+            scale = max(0.0, min(3.0, float(raw)))
+        except (tk.TclError, ValueError):
+            scale = max(0.0, min(3.0, float(target.get())))
+        self._travel_slider_syncing = True
+        try:
+            target.set(round(scale, 3))
+            slider.set(self._travel_scale_to_slider(scale))
+            text.set(self._format_travel_scale(scale))
+        finally:
+            self._travel_slider_syncing = False
         self._refresh_limit_text()
 
     def _sync_travel_slider(self, value_var: tk.DoubleVar, slider_var: tk.DoubleVar, text_var: tk.StringVar) -> None:
@@ -1573,8 +1904,13 @@ class OsrScreenApp(tk.Tk):
     def _refresh_rtm_pose_3d_settings(self) -> None:
         if not hasattr(self, "rtm_pose_3d_settings_button") or not hasattr(self, "rtm_pose_3d_settings_frame"):
             return
+        if not self._rtm_pose_mode_active():
+            self.rtm_pose_3d_settings_button.grid_remove()
+            self.rtm_pose_3d_settings_frame.grid_remove()
+            return
+        self.rtm_pose_3d_settings_button.grid()
         expanded = self.show_rtm_pose_3d_settings.get()
-        self.rtm_pose_3d_settings_button.configure(text=self._t("收起 RTM Pose 3D 设置" if expanded else "展开 RTM Pose 3D 设置"))
+        self.rtm_pose_3d_settings_button.configure(text=self._t("收起 RTM Pose 模型设置" if expanded else "展开 RTM Pose 模型设置"))
         if expanded:
             self.rtm_pose_3d_settings_frame.grid(row=int(self.rtm_pose_3d_settings_button.grid_info()["row"]) + 1, column=0, columnspan=3, sticky="ew", pady=(0, 8))
         else:
@@ -1867,7 +2203,8 @@ class OsrScreenApp(tk.Tk):
             row=row, column=0, columnspan=3, sticky="ew", pady=(4, 0)
         )
         row += 1
-        ttk.Button(parent, text="开始实时输出", command=self.start).grid(row=row, column=0, columnspan=3, sticky="ew", pady=(4, 0))
+        self.start_button = ttk.Button(parent, textvariable=self.start_button_text, command=self.start)
+        self.start_button.grid(row=row, column=0, columnspan=3, sticky="ew", pady=(4, 0))
         row += 1
         self.preview_button = ttk.Button(parent, text="显示预览", command=self.toggle_preview)
         self.preview_button.grid(row=row, column=0, columnspan=3, sticky="ew", pady=(4, 0))
@@ -1881,8 +2218,16 @@ class OsrScreenApp(tk.Tk):
         ttk.Button(parent, text="开始录制", command=self.start_recording).grid(row=row, column=0, columnspan=2, sticky="ew", pady=(8, 0))
         ttk.Button(parent, text="保存脚本", command=self.save_recording).grid(row=row, column=2, sticky="ew", padx=(4, 0), pady=(8, 0))
         row += 1
-        row = self._travel_slider(parent, "L0 总行程倍率", self.l0_travel_scale, self.l0_travel_slider, self.l0_travel_text, row)
-        row = self._travel_slider(parent, "六轴总行程倍率", self.global_travel_scale, self.global_travel_slider, self.global_travel_text, row)
+        row = self._travel_slider(parent, "L0 总行程倍率", self.l0_travel_scale, self.l0_travel_slider, self.l0_travel_text, row, self.invert)
+        row = self._travel_slider(
+            parent,
+            "六轴总行程倍率",
+            self.global_travel_scale,
+            self.global_travel_slider,
+            self.global_travel_text,
+            row,
+            self.six_axis_travel_invert,
+        )
         self.six_axis_travel_button = ttk.Button(parent, command=self._toggle_six_axis_travel_scales)
         self.six_axis_travel_button.grid(row=row, column=0, columnspan=3, sticky="ew", pady=(0, 4))
         row += 1
@@ -1897,6 +2242,7 @@ class OsrScreenApp(tk.Tk):
                 self.six_axis_travel_slider_vars[axis],
                 self.six_axis_travel_text_vars[axis],
                 inner_row,
+                self.axis_output_invert_vars[axis],
             )
         self.six_axis_travel_frame.grid(row=row, column=0, columnspan=3, sticky="ew")
         self._refresh_six_axis_travel_scales()
@@ -1956,35 +2302,46 @@ class OsrScreenApp(tk.Tk):
         self.rtm_pose_3d_settings_button = ttk.Button(parent, command=self._toggle_rtm_pose_3d_settings)
         self.rtm_pose_3d_settings_button.grid(row=row, column=0, columnspan=3, sticky="ew", pady=(4, 4))
         row += 1
-        box = ttk.LabelFrame(parent, text="RTM Pose 3D 骨架标注", padding=8)
+        box = ttk.LabelFrame(parent, text="RTM Pose 模型", padding=8)
         self.rtm_pose_3d_settings_frame = box
         box.columnconfigure(1, weight=1)
-        rtm_toggle = ttk.Checkbutton(box, text="RTM Pose 3D 骨架标注", variable=self.rtm_pose_3d_enabled)
-        rtm_toggle.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 2))
-        Tooltip(rtm_toggle, self._tooltip_text("RTM Pose 3D 骨架标注"))
-        ttk.Label(box, text="RTM Pose 3D 权重").grid(row=1, column=0, sticky="w", pady=2)
-        ttk.Scale(box, from_=0, to=100, variable=self.rtm_pose_3d_weight).grid(row=1, column=1, sticky="ew", pady=2)
-        ttk.Label(box, textvariable=self.rtm_pose_3d_weight, width=4, anchor="e").grid(row=1, column=2, sticky="e")
-        rtm_base_label = ttk.Label(box, textvariable=self.rtm_pose_3d_base_weight_text, foreground="#555")
-        rtm_base_label.grid(row=2, column=0, columnspan=3, sticky="w", pady=(0, 5))
-        Tooltip(rtm_base_label, self._tooltip_text("基础分析 RTM 权重"))
-        ttk.Label(box, text="RTM Pose 3D 模型").grid(row=3, column=0, sticky="w", pady=2)
-        rtm_model_entry = ttk.Entry(box, textvariable=self.rtm_pose_3d_model_path)
-        rtm_model_entry.grid(row=3, column=1, sticky="ew", pady=2)
-        Tooltip(rtm_model_entry, self._tooltip_text("RTM Pose 3D 模型"))
-        ttk.Button(box, text="选择模型", command=self.pick_rtm_pose_3d_model).grid(row=3, column=2, sticky="ew", padx=(4, 0), pady=2)
+        rtm_hybrid_check = ttk.Checkbutton(box, text="混合分析 L0 权重", variable=self.rtm_hybrid_l0_enabled)
+        rtm_hybrid_check.grid(row=0, column=0, sticky="w", pady=2)
+        Tooltip(rtm_hybrid_check, self._tooltip_text("混合分析 L0 权重"))
+        ttk.Scale(box, from_=1, to=100, variable=self.rtm_hybrid_l0_weight).grid(row=0, column=1, sticky="ew", pady=2)
+        ttk.Label(box, textvariable=self.rtm_hybrid_l0_weight, width=4, anchor="e").grid(row=0, column=2, sticky="e")
+        rtm_model_weight_label = ttk.Label(box, textvariable=self.rtm_model_l0_weight_text, foreground="#555")
+        rtm_model_weight_label.grid(row=1, column=0, columnspan=3, sticky="w", pady=(0, 5))
+        Tooltip(rtm_model_weight_label, self._tooltip_text("当前本模型分析权重"))
+        ttk.Label(box, text="RTM Pose 模型").grid(row=2, column=0, sticky="w", pady=2)
+        rtm_model_entry = ttk.Entry(box, textvariable=self.rtm_pose_model_path)
+        rtm_model_entry.grid(row=2, column=1, sticky="ew", pady=2)
+        Tooltip(rtm_model_entry, self._tooltip_text("RTM Pose 模型"))
+        ttk.Button(box, text="选择模型", command=self.pick_rtm_pose_3d_model).grid(row=2, column=2, sticky="ew", padx=(4, 0), pady=2)
         ttk.Button(box, textvariable=self.rtm_model_download_button_text, command=self.download_rtm_pose_3d_model).grid(
-            row=4, column=0, columnspan=3, sticky="ew", pady=(4, 2)
+            row=3, column=0, columnspan=3, sticky="ew", pady=(4, 2)
         )
         ttk.Label(box, textvariable=self.rtm_model_download_status_text, foreground="#555", wraplength=330).grid(
-            row=5, column=0, columnspan=3, sticky="w", pady=(0, 2)
+            row=4, column=0, columnspan=3, sticky="w", pady=(0, 2)
         )
         ttk.Label(
             box,
             text="来源：OpenMMLab MMPose / rtmlib，需要本地 ONNX 模型。",
             foreground="#555",
             wraplength=330,
-        ).grid(row=6, column=0, columnspan=3, sticky="w", pady=(0, 2))
+        ).grid(row=5, column=0, columnspan=3, sticky="w", pady=(0, 2))
+        rtm_gpu_check = ttk.Checkbutton(box, text="RTM GPU 加速", variable=self.rtm_pose_gpu_enabled)
+        rtm_gpu_check.grid(row=6, column=0, columnspan=3, sticky="w", pady=(5, 0))
+        Tooltip(rtm_gpu_check, self._tooltip_text("RTM GPU 加速"))
+        ttk.Label(box, textvariable=self.rtm_pose_gpu_status_text, foreground="#555", wraplength=330).grid(
+            row=7, column=0, columnspan=3, sticky="w", pady=(0, 2)
+        )
+        rtm_flow_check = ttk.Checkbutton(box, text="RTM 光流辅助", variable=self.rtm_pose_flow_enabled)
+        rtm_flow_check.grid(row=8, column=0, columnspan=3, sticky="w", pady=(5, 0))
+        Tooltip(rtm_flow_check, self._tooltip_text("RTM 光流辅助"))
+        rtm_kalman_check = ttk.Checkbutton(box, text="RTM 卡尔曼融合", variable=self.rtm_pose_kalman_enabled)
+        rtm_kalman_check.grid(row=9, column=0, columnspan=3, sticky="w", pady=(2, 0))
+        Tooltip(rtm_kalman_check, self._tooltip_text("RTM 卡尔曼融合"))
         box.grid(row=row, column=0, columnspan=3, sticky="ew", pady=(0, 8))
         self._refresh_rtm_pose_3d_settings()
         return row + 1
@@ -2077,7 +2434,7 @@ class OsrScreenApp(tk.Tk):
             row_i += 1
         ttk.Label(
             box,
-            text="这组滑块只推荐用于混合分析（推荐-非舞蹈）；RTM Pose 3D 输出不会接入这里。",
+            text="这组滑块只推荐用于混合分析（推荐-非舞蹈）；RTM Pose 输出不会接入这里。",
             wraplength=270,
             foreground="#555",
         ).grid(row=row_i, column=0, columnspan=3, sticky="ew", pady=(4, 0))
@@ -2197,39 +2554,60 @@ class OsrScreenApp(tk.Tk):
             self.source_mode.set("Video File")
 
     def pick_rtm_pose_3d_model(self) -> None:
-        self._choose_rtm_pose_3d_model_for_var(self.rtm_pose_3d_model_path)
+        self._choose_rtm_pose_3d_model_for_var(self.rtm_pose_model_path)
 
-    def _choose_rtm_pose_3d_model_for_var(self, variable: tk.StringVar) -> None:
+    def _choose_rtm_pose_3d_model_for_var(self, variable: tk.StringVar, mode: str | None = None) -> None:
         path = filedialog.askopenfilename(
-            title=self._t("RTM Pose 3D 模型"),
+            title=self._t("RTM Pose 模型"),
             filetypes=(("ONNX", "*.onnx"), ("All files", "*.*")),
         )
         if path:
             variable.set(path)
+            target_mode = self._tracker_internal(mode or self.tracker_mode.get())
+            if target_mode in (RTM_POSE_2D_MODE, RTM_POSE_3D_MODE):
+                ok, message = self._validate_rtm_pose_model_path(path, target_mode)
+                self.rtm_model_download_status_text.set(message)
+                if not ok:
+                    messagebox.showwarning(self._t("模型不匹配"), message)
 
-    def download_rtm_pose_3d_model(self) -> None:
+    def download_rtm_pose_3d_model(self, target_var: tk.StringVar | None = None, mode: str | None = None) -> None:
         if self._rtm_pose_3d_downloading:
             self.status.set(self._t("模型下载中..."))
             self.rtm_model_download_status_text.set(self._t("模型下载中..."))
             return
+        target_mode = self._tracker_internal(mode or self.tracker_mode.get())
+        if target_mode not in (RTM_POSE_2D_MODE, RTM_POSE_3D_MODE):
+            target_mode = RTM_POSE_2D_MODE
+        detected = self._find_existing_rtm_pose_model(target_mode)
+        if detected is not None:
+            self._apply_rtm_pose_model_path(str(detected), target_mode, target_var)
+            text = f"{self._t('自动检测到模型')}: {detected.name}"
+            self.status.set(text)
+            self.rtm_model_download_status_text.set(text)
+            return
+        self._rtm_pose_3d_download_target = target_var
+        self._rtm_pose_3d_download_mode = target_mode
         self._rtm_pose_3d_downloading = True
         self.rtm_model_download_button_text.set(self._t("下载中..."))
-        self.rtm_model_download_status_text.set(self._t("模型下载中..."))
-        self.status.set(self._t("模型下载中..."))
+        self.rtm_model_download_status_text.set(self._t("未检测到模型，开始下载..."))
+        self.status.set(self._t("未检测到模型，开始下载..."))
 
         def worker() -> None:
             try:
-                root = Path(__file__).resolve().parents[2]
-                model_dir = root / "models"
+                model_dir = self._rtm_pose_model_dir()
                 model_dir.mkdir(parents=True, exist_ok=True)
-                target = model_dir / RTM_POSE_3D_MODEL_NAME
+                is_2d = target_mode == RTM_POSE_2D_MODE
+                model_name, source_url, _min_size, _expected_outputs, _label = self._rtm_pose_model_spec(target_mode)
+                target = model_dir / model_name
                 partial = target.with_suffix(target.suffix + ".download")
-                if target.exists() and target.stat().st_size > 100_000_000:
+                ok, _message = self._validate_rtm_pose_model_path(str(target), target_mode)
+                if ok:
                     self._queue_latest(
                         {
                             "rtm_model_path": str(target),
-                            "status_text": self._t("模型下载完成"),
-                            "rtm_download_status": self._t("模型下载完成"),
+                            "rtm_model_mode": target_mode,
+                            "status_text": f"{self._t('自动检测到模型')}: {target.name}",
+                            "rtm_download_status": f"{self._t('自动检测到模型')}: {target.name}",
                         }
                     )
                     return
@@ -2247,11 +2625,33 @@ class OsrScreenApp(tk.Tk):
                         text = f"{self._t('模型下载中...')} {percent}%"
                         self._queue_latest({"status_text": text, "rtm_download_status": text})
 
-                urllib.request.urlretrieve(RTM_POSE_3D_MODEL_URL, partial, report)
-                partial.replace(target)
+                urllib.request.urlretrieve(source_url, partial, report)
+                if is_2d:
+                    zip_path = target.with_suffix(".zip")
+                    partial.replace(zip_path)
+                    with zipfile.ZipFile(zip_path) as archive:
+                        onnx_members = [name for name in archive.namelist() if name.lower().endswith(".onnx")]
+                        if not onnx_members:
+                            raise ValueError("ONNX model not found in downloaded zip")
+                        with archive.open(onnx_members[0]) as source, target.open("wb") as destination:
+                            while True:
+                                chunk = source.read(1024 * 1024)
+                                if not chunk:
+                                    break
+                                destination.write(chunk)
+                    try:
+                        zip_path.unlink()
+                    except OSError:
+                        pass
+                else:
+                    partial.replace(target)
+                ok, message = self._validate_rtm_pose_model_path(str(target), target_mode)
+                if not ok:
+                    raise ValueError(message)
                 self._queue_latest(
                     {
                         "rtm_model_path": str(target),
+                        "rtm_model_mode": target_mode,
                         "status_text": self._t("模型下载完成"),
                         "rtm_download_status": self._t("模型下载完成"),
                     }
@@ -2317,9 +2717,16 @@ class OsrScreenApp(tk.Tk):
             pose_v2_dance_six_axis=False,
             pose_v2_l0_weight=0.0,
             pose_v2_six_axis_weight=0.0,
-            rtm_pose_3d_enabled=self.rtm_pose_3d_enabled.get(),
+            rtm_pose_2d_enabled=self._rtm_pose_2d_mode_active(),
+            rtm_pose_2d_model_path=self.rtm_pose_2d_model_path.get(),
+            rtm_pose_3d_enabled=self._rtm_pose_3d_mode_active(),
             rtm_pose_3d_model_path=self.rtm_pose_3d_model_path.get(),
-            rtm_pose_3d_weight=self.rtm_pose_3d_weight.get() / 100.0,
+            rtm_pose_3d_weight=1.0 if self._rtm_pose_mode_active() else 0.0,
+            rtm_hybrid_l0_enabled=self._rtm_pose_mode_active() and self.rtm_hybrid_l0_enabled.get(),
+            rtm_hybrid_l0_weight=self.rtm_hybrid_l0_weight.get() / 100.0,
+            rtm_pose_gpu_enabled=self.rtm_pose_gpu_enabled.get(),
+            rtm_pose_flow_enabled=self.rtm_pose_flow_enabled.get(),
+            rtm_pose_kalman_enabled=self.rtm_pose_kalman_enabled.get(),
             compression_latency=self.compression_latency.get(),
         )
         recorder = MultiAxisFunscriptRecorder()
@@ -2341,10 +2748,11 @@ class OsrScreenApp(tk.Tk):
                 analysis_frame = self._prepare_analysis_frame(frame)
                 result = analyzer.process(analysis_frame)
                 positions = self._apply_six_axis_tuning(result.positions)
+                output_positions = self._positions_with_travel_controls(positions)
                 at = int(cap.get(cv2.CAP_PROP_POS_MSEC))
                 if at <= 0:
                     at = round(index / native_fps * 1000)
-                recorder.add_at(positions, at)
+                recorder.add_at(output_positions, at)
                 now = time.perf_counter()
                 if now - last_update > 0.25:
                     progress = f"{index}/{total}" if total else str(index)
@@ -2425,6 +2833,9 @@ class OsrScreenApp(tk.Tk):
                 self.status.set(self._t("已连接并回中"))
             except Exception as exc:
                 self.status.set(f"{self._t('回中失败')}: {exc}")
+        if self._start_after_connect and not self.worker:
+            self._start_after_connect = False
+            self.after(0, self._begin_realtime_output)
 
     def _finish_connection_error(self, item: dict[str, object]) -> None:
         attempt_id = int(item.get("attempt_id", 0))
@@ -2432,6 +2843,7 @@ class OsrScreenApp(tk.Tk):
             return
         self.sink = LogSink()
         self.connected = False
+        self._start_after_connect = False
         self._set_connecting(False)
         message = str(item.get("message", self._t("连接失败")))
         self.device_status.set(f"{self._t('设备')}: {self._t('连接失败')}")
@@ -2444,6 +2856,7 @@ class OsrScreenApp(tk.Tk):
         self._connect_attempt_id += 1
         self.sink = LogSink()
         self.connected = False
+        self._start_after_connect = False
         self._set_connecting(False)
         self.device_status.set(f"{self._t('设备')}: {self._t('连接失败')}")
         self.status.set(self._t("连接超时"))
@@ -2512,6 +2925,7 @@ class OsrScreenApp(tk.Tk):
 
     def disconnect_sink(self) -> None:
         self._connect_attempt_id += 1
+        self._start_after_connect = False
         self._set_connecting(False)
         self._close_sink_safely(self.sink)
         self.sink = LogSink()
@@ -2553,11 +2967,24 @@ class OsrScreenApp(tk.Tk):
         if not self._confirm_realtime_start():
             self._startup_window_geometry = None
             return
+        if not self._ensure_rtm_pose_model_ready():
+            self._startup_window_geometry = None
+            return
         if not self.connected:
+            self._start_after_connect = True
             self.connect_sink()
             if not self.connected:
+                self.status.set(self._t("正在连接，连接成功后会开始实时输出"))
                 self._startup_window_geometry = None
                 return
+            self._start_after_connect = False
+        self._begin_realtime_output()
+
+    def _begin_realtime_output(self) -> None:
+        if self.worker and self.worker.is_alive():
+            return
+        if not self.connected:
+            return
         self._normalize_limits()
         self._script_history.clear()
         self._six_axis_stable_positions = {axis: 0.5 for axis in SIX_AXES}
@@ -2565,6 +2992,7 @@ class OsrScreenApp(tk.Tk):
         self.stop_event.clear()
         self.worker = threading.Thread(target=self._run_capture, daemon=True)
         self.worker.start()
+        self._refresh_start_button_text()
         self.status.set(self._t("实时输出中"))
         self._restore_start_geometry_once()
         self.after(180, self._release_start_geometry)
@@ -2598,17 +3026,43 @@ class OsrScreenApp(tk.Tk):
         pose_v2_six = tk.BooleanVar(value=self.pose_v2_six_axis_analysis.get())
         pose_v2_l0_weight = tk.IntVar(value=self.pose_v2_l0_weight.get())
         pose_v2_six_weight = tk.IntVar(value=self.pose_v2_six_axis_weight.get())
-        rtm_pose_3d = tk.BooleanVar(value=self.rtm_pose_3d_enabled.get())
+        rtm_pose_3d = tk.BooleanVar(value=self._rtm_pose_mode_active(current_tracker))
+        rtm_pose_2d_model = tk.StringVar(value=self.rtm_pose_2d_model_path.get())
         rtm_pose_3d_model = tk.StringVar(value=self.rtm_pose_3d_model_path.get())
+        rtm_popup_model_path = tk.StringVar()
         rtm_pose_3d_weight = tk.IntVar(value=self.rtm_pose_3d_weight.get())
+        rtm_hybrid_l0_enabled = tk.BooleanVar(value=self.rtm_hybrid_l0_enabled.get())
+        rtm_hybrid_l0_weight = tk.IntVar(value=self.rtm_hybrid_l0_weight.get())
+        rtm_pose_gpu_enabled = tk.BooleanVar(value=self.rtm_pose_gpu_enabled.get())
+        rtm_pose_gpu_status_text = tk.StringVar()
+        rtm_pose_flow_enabled = tk.BooleanVar(value=self.rtm_pose_flow_enabled.get())
+        rtm_pose_kalman_enabled = tk.BooleanVar(value=self.rtm_pose_kalman_enabled.get())
         compression_latency = tk.IntVar(value=self.compression_latency.get())
         pose_l0_base_text = tk.StringVar()
         pose_six_base_text = tk.StringVar()
         pose_v2_l0_base_text = tk.StringVar()
         pose_v2_six_base_text = tk.StringVar()
         rtm_pose_3d_base_text = tk.StringVar()
+        rtm_popup_model_l0_text = tk.StringVar()
         result = {"ok": False}
         pose_popup_syncing = False
+        rtm_popup_path_syncing = False
+
+        def active_popup_rtm_model_var() -> tk.StringVar:
+            return rtm_pose_2d_model if self._rtm_pose_2d_mode_active(tracker.get()) else rtm_pose_3d_model
+
+        def refresh_popup_rtm_model_path(*_args: object) -> None:
+            nonlocal rtm_popup_path_syncing
+            rtm_popup_path_syncing = True
+            try:
+                rtm_popup_model_path.set(active_popup_rtm_model_var().get())
+            finally:
+                rtm_popup_path_syncing = False
+
+        def store_popup_rtm_model_path(*_args: object) -> None:
+            if rtm_popup_path_syncing:
+                return
+            active_popup_rtm_model_var().set(rtm_popup_model_path.get())
 
         def refresh_pose_base_texts(*_args: object) -> None:
             pose_l0_base_text.set(self._pose_base_weight_label(pose_l0.get(), pose_l0_weight.get(), "基础分析 L0 权重"))
@@ -2616,6 +3070,17 @@ class OsrScreenApp(tk.Tk):
             pose_v2_l0_base_text.set(self._pose_base_weight_label(pose_v2_l0.get(), pose_v2_l0_weight.get(), "基础分析 v2 L0 权重"))
             pose_v2_six_base_text.set(self._pose_base_weight_label(pose_v2_six.get(), pose_v2_six_weight.get(), "基础分析 v2 六轴权重"))
             rtm_pose_3d_base_text.set(self._pose_base_weight_label(rtm_pose_3d.get(), rtm_pose_3d_weight.get(), "基础分析 RTM 权重"))
+            model_weight = 100
+            if rtm_hybrid_l0_enabled.get():
+                model_weight = max(0, 100 - self._clamped_percent(rtm_hybrid_l0_weight.get(), 30))
+            rtm_popup_model_l0_text.set(f"{self._t('当前本模型分析权重')}: {model_weight}%")
+
+        def refresh_popup_gpu_status(*_args: object) -> None:
+            if not rtm_pose_gpu_enabled.get():
+                rtm_pose_gpu_status_text.set(self._rtm_pose_gpu_status_message(False))
+                return
+            rtm_pose_gpu_status_text.set(self._t("RTM GPU 状态：检测中..."))
+            dialog.after(25, lambda: rtm_pose_gpu_status_text.set(self._rtm_pose_gpu_status_message(True)) if dialog.winfo_exists() else None)
 
         def sync_popup_pose_mode(source: str) -> None:
             nonlocal pose_popup_syncing
@@ -2650,9 +3115,27 @@ class OsrScreenApp(tk.Tk):
         pose_v2.trace_add("write", lambda *_args: sync_popup_pose_mode("v2_mode"))
         pose_v2_l0.trace_add("write", lambda *_args: sync_popup_pose_mode("v2_bias"))
         pose_v2_six.trace_add("write", lambda *_args: sync_popup_pose_mode("v2_bias"))
-        for variable in (pose_l0, pose_six, pose_l0_weight, pose_six_weight, pose_v2, pose_v2_l0, pose_v2_six, pose_v2_l0_weight, pose_v2_six_weight, rtm_pose_3d, rtm_pose_3d_weight):
+        for variable in (
+            pose_l0,
+            pose_six,
+            pose_l0_weight,
+            pose_six_weight,
+            pose_v2,
+            pose_v2_l0,
+            pose_v2_six,
+            pose_v2_l0_weight,
+            pose_v2_six_weight,
+            rtm_pose_3d,
+            rtm_pose_3d_weight,
+            rtm_hybrid_l0_enabled,
+            rtm_hybrid_l0_weight,
+        ):
             variable.trace_add("write", refresh_pose_base_texts)
+        rtm_pose_gpu_enabled.trace_add("write", refresh_popup_gpu_status)
+        rtm_popup_model_path.trace_add("write", store_popup_rtm_model_path)
         refresh_pose_base_texts()
+        refresh_popup_gpu_status()
+        refresh_popup_rtm_model_path()
 
         body = ttk.Frame(dialog, padding=14)
         body.grid(row=0, column=0, sticky="nsew")
@@ -2711,39 +3194,73 @@ class OsrScreenApp(tk.Tk):
             state="readonly",
             width=28,
         ).grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 6))
-        rtm_popup_toggle = ttk.Checkbutton(analysis, text="RTM Pose 3D 骨架标注", variable=rtm_pose_3d)
-        rtm_popup_toggle.grid(row=1, column=0, columnspan=3, sticky="w", pady=(0, 2))
-        Tooltip(rtm_popup_toggle, self._tooltip_text("RTM Pose 3D 骨架标注"))
-        ttk.Label(analysis, text="RTM Pose 3D 权重").grid(row=2, column=0, sticky="w", pady=2)
-        ttk.Scale(analysis, from_=0, to=100, variable=rtm_pose_3d_weight).grid(row=2, column=1, sticky="ew", pady=2)
-        ttk.Label(analysis, textvariable=rtm_pose_3d_weight, width=4, anchor="e").grid(row=2, column=2, sticky="e")
-        rtm_popup_base_label = ttk.Label(analysis, textvariable=rtm_pose_3d_base_text, foreground="#555")
-        rtm_popup_base_label.grid(row=3, column=0, columnspan=3, sticky="w", pady=(0, 4))
-        Tooltip(rtm_popup_base_label, self._tooltip_text("基础分析 RTM 权重"))
-        ttk.Label(analysis, text="RTM Pose 3D 模型").grid(row=4, column=0, sticky="w", pady=2)
-        rtm_popup_entry = ttk.Entry(analysis, textvariable=rtm_pose_3d_model)
-        rtm_popup_entry.grid(row=4, column=1, sticky="ew", pady=2)
-        Tooltip(rtm_popup_entry, self._tooltip_text("RTM Pose 3D 模型"))
-        ttk.Button(analysis, text="选择模型", command=lambda: self._choose_rtm_pose_3d_model_for_var(rtm_pose_3d_model)).grid(
-            row=4, column=2, sticky="ew", padx=(4, 0), pady=2
+        rtm_popup_frame = ttk.Frame(analysis)
+        rtm_popup_frame.columnconfigure(1, weight=1)
+        rtm_popup_hybrid_check = ttk.Checkbutton(rtm_popup_frame, text="混合分析 L0 权重", variable=rtm_hybrid_l0_enabled)
+        rtm_popup_hybrid_check.grid(row=0, column=0, sticky="w", pady=2)
+        Tooltip(rtm_popup_hybrid_check, self._tooltip_text("混合分析 L0 权重"))
+        ttk.Scale(rtm_popup_frame, from_=1, to=100, variable=rtm_hybrid_l0_weight).grid(row=0, column=1, sticky="ew", pady=2)
+        ttk.Label(rtm_popup_frame, textvariable=rtm_hybrid_l0_weight, width=4, anchor="e").grid(row=0, column=2, sticky="e")
+        rtm_popup_model_label = ttk.Label(rtm_popup_frame, textvariable=rtm_popup_model_l0_text, foreground="#555")
+        rtm_popup_model_label.grid(row=1, column=0, columnspan=3, sticky="w", pady=(0, 5))
+        Tooltip(rtm_popup_model_label, self._tooltip_text("当前本模型分析权重"))
+        ttk.Label(rtm_popup_frame, text="RTM Pose 模型").grid(row=2, column=0, sticky="w", pady=2)
+        rtm_popup_entry = ttk.Entry(rtm_popup_frame, textvariable=rtm_popup_model_path)
+        rtm_popup_entry.grid(row=2, column=1, sticky="ew", pady=2)
+        Tooltip(rtm_popup_entry, self._tooltip_text("RTM Pose 模型"))
+        ttk.Button(
+            rtm_popup_frame,
+            text="选择模型",
+            command=lambda: self._choose_rtm_pose_3d_model_for_var(rtm_popup_model_path, self._tracker_internal(tracker.get())),
+        ).grid(
+            row=2, column=2, sticky="ew", padx=(4, 0), pady=2
         )
-        ttk.Button(analysis, textvariable=self.rtm_model_download_button_text, command=self.download_rtm_pose_3d_model).grid(
-            row=5, column=0, columnspan=3, sticky="ew", pady=(4, 2)
+        ttk.Button(
+            rtm_popup_frame,
+            textvariable=self.rtm_model_download_button_text,
+            command=lambda: self.download_rtm_pose_3d_model(rtm_popup_model_path, self._tracker_internal(tracker.get())),
+        ).grid(
+            row=3, column=0, columnspan=3, sticky="ew", pady=(4, 2)
         )
-        ttk.Label(analysis, textvariable=self.rtm_model_download_status_text, foreground="#555", wraplength=360).grid(
-            row=6, column=0, columnspan=3, sticky="ew", pady=(0, 2)
+        ttk.Label(rtm_popup_frame, textvariable=self.rtm_model_download_status_text, foreground="#555", wraplength=360).grid(
+            row=4, column=0, columnspan=3, sticky="ew", pady=(0, 2)
         )
         ttk.Label(
-            analysis,
+            rtm_popup_frame,
             text="来源：OpenMMLab MMPose / rtmlib，需要本地 ONNX 模型。",
             wraplength=360,
             foreground="#555",
-        ).grid(row=7, column=0, columnspan=3, sticky="ew", pady=(0, 2))
-        ttk.Label(analysis, text="压缩延迟").grid(row=8, column=0, sticky="w", pady=(8, 2))
-        ttk.Scale(analysis, from_=-5, to=5, variable=compression_latency).grid(row=8, column=1, sticky="ew", pady=(8, 2))
-        ttk.Label(analysis, textvariable=compression_latency, width=4, anchor="e").grid(row=8, column=2, sticky="e", pady=(8, 2))
+        ).grid(row=5, column=0, columnspan=3, sticky="ew", pady=(0, 2))
+        rtm_popup_gpu_check = ttk.Checkbutton(rtm_popup_frame, text="RTM GPU 加速", variable=rtm_pose_gpu_enabled)
+        rtm_popup_gpu_check.grid(row=6, column=0, columnspan=3, sticky="w", pady=(5, 0))
+        Tooltip(rtm_popup_gpu_check, self._tooltip_text("RTM GPU 加速"))
+        ttk.Label(rtm_popup_frame, textvariable=rtm_pose_gpu_status_text, foreground="#555", wraplength=360).grid(
+            row=7, column=0, columnspan=3, sticky="ew", pady=(0, 2)
+        )
+        rtm_popup_flow_check = ttk.Checkbutton(rtm_popup_frame, text="RTM 光流辅助", variable=rtm_pose_flow_enabled)
+        rtm_popup_flow_check.grid(row=8, column=0, columnspan=3, sticky="w", pady=(5, 0))
+        Tooltip(rtm_popup_flow_check, self._tooltip_text("RTM 光流辅助"))
+        rtm_popup_kalman_check = ttk.Checkbutton(rtm_popup_frame, text="RTM 卡尔曼融合", variable=rtm_pose_kalman_enabled)
+        rtm_popup_kalman_check.grid(row=9, column=0, columnspan=3, sticky="w", pady=(2, 0))
+        Tooltip(rtm_popup_kalman_check, self._tooltip_text("RTM 卡尔曼融合"))
+
+        def refresh_rtm_popup_settings(*_args: object) -> None:
+            rtm_pose_3d.set(self._rtm_pose_mode_active(tracker.get()))
+            refresh_pose_base_texts()
+            if self._rtm_pose_mode_active(tracker.get()):
+                refresh_popup_rtm_model_path()
+                rtm_popup_frame.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(0, 6))
+            else:
+                rtm_popup_frame.grid_remove()
+
+        tracker.trace_add("write", refresh_rtm_popup_settings)
+        refresh_rtm_popup_settings()
+
+        ttk.Label(analysis, text="压缩延迟").grid(row=2, column=0, sticky="w", pady=(8, 2))
+        ttk.Scale(analysis, from_=-5, to=5, variable=compression_latency).grid(row=2, column=1, sticky="ew", pady=(8, 2))
+        ttk.Label(analysis, textvariable=compression_latency, width=4, anchor="e").grid(row=2, column=2, sticky="e", pady=(8, 2))
         ttk.Label(analysis, text="-5 最准确 / 0 默认 / 5 延迟最低", wraplength=360, foreground="#555").grid(
-            row=9, column=0, columnspan=3, sticky="ew", pady=(0, 2)
+            row=3, column=0, columnspan=3, sticky="ew", pady=(0, 2)
         )
 
         limits_text = tk.StringVar()
@@ -2772,6 +3289,7 @@ class OsrScreenApp(tk.Tk):
         def confirm() -> None:
             self.output_mode.set(mode.get())
             self.tracker_mode.set(tracker.get())
+            rtm_mode_selected = self._rtm_pose_mode_active(tracker.get())
             self.pose_l0_analysis.set(False)
             self.pose_six_axis_analysis.set(False)
             self.pose_l0_weight.set(pose_l0_weight.get())
@@ -2784,9 +3302,16 @@ class OsrScreenApp(tk.Tk):
             self.pose_v2_dance_six_axis.set(False)
             self.pose_v2_l0_analysis.set(False)
             self.pose_v2_six_axis_analysis.set(False)
-            self.rtm_pose_3d_enabled.set(rtm_pose_3d.get())
+            self.rtm_pose_3d_enabled.set(self._rtm_pose_3d_mode_active(tracker.get()))
+            self.rtm_pose_2d_model_path.set(rtm_pose_2d_model.get())
             self.rtm_pose_3d_model_path.set(rtm_pose_3d_model.get())
-            self.rtm_pose_3d_weight.set(rtm_pose_3d_weight.get())
+            self._refresh_active_rtm_pose_model_path()
+            self.rtm_pose_3d_weight.set(100 if rtm_mode_selected else 0)
+            self.rtm_hybrid_l0_enabled.set(rtm_hybrid_l0_enabled.get())
+            self.rtm_hybrid_l0_weight.set(max(1, min(100, int(rtm_hybrid_l0_weight.get()))))
+            self.rtm_pose_gpu_enabled.set(rtm_pose_gpu_enabled.get())
+            self.rtm_pose_flow_enabled.set(rtm_pose_flow_enabled.get())
+            self.rtm_pose_kalman_enabled.set(rtm_pose_kalman_enabled.get())
             self.compression_latency.set(max(-5, min(5, int(compression_latency.get()))))
             result["ok"] = True
             dialog.destroy()
@@ -2812,6 +3337,7 @@ class OsrScreenApp(tk.Tk):
             self.worker.join(timeout=2)
         self.worker = None
         self._startup_window_geometry = None
+        self._refresh_start_button_text()
         self.status.set(self._t("已停止") if self.connected else self._t("未连接"))
 
     def estop(self) -> None:
@@ -2884,8 +3410,14 @@ class OsrScreenApp(tk.Tk):
             self.pose_v2_l0_weight.set(60)
             self.pose_v2_six_axis_weight.set(60)
             self.rtm_pose_3d_enabled.set(False)
+            self.rtm_pose_2d_model_path.set("")
             self.rtm_pose_3d_model_path.set("")
             self.rtm_pose_3d_weight.set(100)
+            self.rtm_hybrid_l0_enabled.set(False)
+            self.rtm_hybrid_l0_weight.set(30)
+            self.rtm_pose_gpu_enabled.set(False)
+            self.rtm_pose_flow_enabled.set(True)
+            self.rtm_pose_kalman_enabled.set(True)
             self._set_tracker_mode(defaults.tracker_mode)
             self.response_curve.set(defaults.response_curve)
             self.motion_gain.set(defaults.motion_gain)
@@ -2893,8 +3425,11 @@ class OsrScreenApp(tk.Tk):
             self.compression_latency.set(0)
             self.l0_travel_scale.set(defaults.global_travel_scale)
             self.global_travel_scale.set(defaults.global_travel_scale)
+            self.six_axis_travel_invert.set(False)
             for axis, value in DEFAULT_SIX_AXIS_TRAVEL_SCALES.items():
                 self.six_axis_travel_scale_vars[axis].set(value)
+            for axis, inverted in DEFAULT_AXIS_OUTPUT_INVERTS.items():
+                self.axis_output_invert_vars[axis].set(inverted)
             self.six_axis_intensity.set(65)
             self.six_axis_jitter_reduction.set(55)
             self.six_axis_sensitivity_level.set(5)
@@ -3072,6 +3607,7 @@ class OsrScreenApp(tk.Tk):
             axis_limits=self._axis_limits(axes),
             position_scale=self.global_travel_scale.get(),
             axis_position_scales=self._axis_position_scales(),
+            axis_position_inverts=self._axis_position_inverts(),
             enable_endpoint_guard=self.enable_endpoint_guard.get(),
             endpoint_margin=self.endpoint_margin_pct.get() / 100.0,
         )
@@ -3097,6 +3633,7 @@ class OsrScreenApp(tk.Tk):
         axes = self._active_axes()
         axis_limits = self._axis_limits(axes)
         invert_l0 = self.invert.get()
+        axis_position_inverts = self._axis_position_inverts()
         min_value = self.min_value.get()
         max_value = self.max_value.get()
 
@@ -3111,6 +3648,7 @@ class OsrScreenApp(tk.Tk):
                 0.0,
                 "Hold",
                 axis_limits=axis_limits,
+                axis_position_inverts=axis_position_inverts,
                 enable_endpoint_guard=False,
             )
             center = {axis: 0.5 for axis in axes}
@@ -3152,7 +3690,9 @@ class OsrScreenApp(tk.Tk):
         axes = SIX_AXES.copy()
         axis_limits = self._axis_limits(axes)
         axis_position_scales = self._axis_position_scales()
+        axis_position_inverts = self._axis_position_inverts()
         global_position_scale = self.global_travel_scale.get()
+        invert_l0 = self.invert.get()
         endpoint_guard = self.enable_endpoint_guard.get()
         endpoint_margin = self.endpoint_margin_pct.get() / 100.0
         min_value = self.min_value.get()
@@ -3163,7 +3703,7 @@ class OsrScreenApp(tk.Tk):
                 axes,
                 min_value,
                 max_value,
-                False,
+                invert_l0,
                 320,
                 999,
                 0.0,
@@ -3171,6 +3711,7 @@ class OsrScreenApp(tk.Tk):
                 axis_limits=axis_limits,
                 position_scale=global_position_scale,
                 axis_position_scales=axis_position_scales,
+                axis_position_inverts=axis_position_inverts,
                 enable_endpoint_guard=endpoint_guard,
                 endpoint_margin=endpoint_margin,
             )
@@ -3657,9 +4198,16 @@ class OsrScreenApp(tk.Tk):
                 pose_v2_dance_six_axis=False,
                 pose_v2_l0_weight=0.0,
                 pose_v2_six_axis_weight=0.0,
-                rtm_pose_3d_enabled=self.rtm_pose_3d_enabled.get(),
+                rtm_pose_2d_enabled=self._rtm_pose_2d_mode_active(),
+                rtm_pose_2d_model_path=self.rtm_pose_2d_model_path.get(),
+                rtm_pose_3d_enabled=self._rtm_pose_3d_mode_active(),
                 rtm_pose_3d_model_path=self.rtm_pose_3d_model_path.get(),
-                rtm_pose_3d_weight=self.rtm_pose_3d_weight.get() / 100.0,
+                rtm_pose_3d_weight=1.0 if self._rtm_pose_mode_active() else 0.0,
+                rtm_hybrid_l0_enabled=self._rtm_pose_mode_active() and self.rtm_hybrid_l0_enabled.get(),
+                rtm_hybrid_l0_weight=self.rtm_hybrid_l0_weight.get() / 100.0,
+                rtm_pose_gpu_enabled=self.rtm_pose_gpu_enabled.get(),
+                rtm_pose_flow_enabled=self.rtm_pose_flow_enabled.get(),
+                rtm_pose_kalman_enabled=self.rtm_pose_kalman_enabled.get(),
                 compression_latency=self.compression_latency.get(),
             )
             output = self._new_output(self.interval_ms.get())
@@ -3669,6 +4217,8 @@ class OsrScreenApp(tk.Tk):
                 self._run_screen(analyzer, output, period, 0.0)
         except Exception as exc:
             self._queue_latest({"error": str(exc)})
+        finally:
+            self._queue_latest({"capture_stopped": True})
 
     def _run_screen(
         self,
@@ -3732,9 +4282,11 @@ class OsrScreenApp(tk.Tk):
                 samples, duration = capture.read()
                 result = analyzer.process(samples, duration or period)
                 positions = self._apply_six_axis_tuning(result.positions)
+                self._refresh_live_output_mapping(output)
                 command = output.next_command(positions, result.activity)
                 command_text = self._emit_command(command)
-                self.recorder.add(positions)
+                if self.recorder.is_recording:
+                    self.recorder.add(self._positions_with_travel_controls(positions))
                 now = time.perf_counter()
                 if now - last_update > 0.08:
                     self._queue_latest(
@@ -3757,9 +4309,11 @@ class OsrScreenApp(tk.Tk):
         analysis_frame = self._prepare_analysis_frame(frame)
         result = analyzer.process(analysis_frame)
         positions = self._apply_six_axis_tuning(result.positions)
+        self._refresh_live_output_mapping(output)
         command = output.next_command(positions, result.activity)
         command_text = self._emit_command(command)
-        self.recorder.add(positions)
+        if self.recorder.is_recording:
+            self.recorder.add(self._positions_with_travel_controls(positions))
         now = time.perf_counter()
         if now - last_preview > 0.08:
             self._queue_latest(
@@ -3795,7 +4349,7 @@ class OsrScreenApp(tk.Tk):
         except AttributeError:
             return analysis_preview
         display = analysis_preview
-        if self.rtm_pose_3d_enabled.get() and preview_height == analysis_height and preview_width > analysis_width:
+        if self._rtm_pose_mode_active() and preview_height == analysis_height and preview_width > analysis_width:
             overlay = analysis_preview[:, :analysis_width].copy()
             panel = analysis_preview[:, analysis_width:].copy()
             overlay_display = cv2.resize(overlay, (capture_width, capture_height), interpolation=cv2.INTER_NEAREST)
@@ -3828,7 +4382,7 @@ class OsrScreenApp(tk.Tk):
         if self.output_mode.get() != "Six Axis":
             return dict(positions)
         tracker_mode = self._tracker_internal(self.tracker_mode.get())
-        if not RealtimeAnalyzer._is_hybrid_analysis_mode(tracker_mode) or self.rtm_pose_3d_enabled.get():
+        if not RealtimeAnalyzer._is_hybrid_analysis_mode(tracker_mode) or self._rtm_pose_mode_active():
             return dict(positions)
         tuned = dict(positions)
         global_gain = max(0.0, min(1.8, self.six_axis_intensity.get() / 100.0))
@@ -3868,6 +4422,49 @@ class OsrScreenApp(tk.Tk):
             scales[axis] = max(0.0, min(3.0, six_axis_scale * axis_scale))
         return scales
 
+    def _axis_position_inverts(self) -> dict[str, bool]:
+        global_invert = bool(self.six_axis_travel_invert.get())
+        return {
+            axis: global_invert ^ bool(self.axis_output_invert_vars[axis].get())
+            for axis in ("L1", "L2", "R0", "R1", "R2")
+        }
+
+    def _positions_with_travel_controls(self, positions: dict[str, float]) -> dict[str, float]:
+        scales = self._axis_position_scales()
+        inverts = self._axis_position_inverts()
+        mapped: dict[str, float] = {}
+        for axis, raw_value in positions.items():
+            try:
+                value = max(0.0, min(1.0, float(raw_value)))
+            except (TypeError, ValueError):
+                value = 0.5
+            scale = scales.get(axis, 1.0)
+            value = max(0.0, min(1.0, 0.5 + (value - 0.5) * scale))
+            if (axis == "L0" and self.invert.get()) or (axis != "L0" and inverts.get(axis, False)):
+                value = 1.0 - value
+            mapped[axis] = value
+        return mapped
+
+    def _mark_live_output_mapping_dirty(self) -> None:
+        self._live_output_mapping_dirty = True
+
+    def _refresh_live_output_mapping(self, output: MultiAxisSafeOutput) -> None:
+        if not self._live_output_mapping_dirty:
+            return
+        self._live_output_mapping_dirty = False
+        axes = self._active_axes()
+        output.axes = axes
+        output.update_mapping(
+            min_value=self.min_value.get(),
+            max_value=self.max_value.get(),
+            invert_l0=self.invert.get(),
+            axis_limits=self._axis_limits(axes),
+            position_scale=self.global_travel_scale.get(),
+            axis_position_scales=self._axis_position_scales(),
+            axis_position_inverts=self._axis_position_inverts(),
+            max_step=self.max_step.get() if self.enable_speed_limit.get() else 9999,
+        )
+
     def _new_output(self, interval_ms: int) -> MultiAxisSafeOutput:
         self._normalize_limits()
         axes = self._active_axes()
@@ -3884,6 +4481,7 @@ class OsrScreenApp(tk.Tk):
             startup_ramp_ms=self.startup_ramp_ms.get() if self.enable_startup_ramp.get() else 0,
             position_scale=self.global_travel_scale.get(),
             axis_position_scales=self._axis_position_scales(),
+            axis_position_inverts=self._axis_position_inverts(),
             enable_extreme_reset=self.enable_extreme_reset.get(),
             extreme_hold_ms=self.extreme_hold_ms.get(),
             enable_endpoint_guard=self.enable_endpoint_guard.get(),
@@ -3923,13 +4521,27 @@ class OsrScreenApp(tk.Tk):
                 if "record_count" in item and self.recorder.is_recording:
                     self.record_status.set(f"{self._t('录制中')}: {item['record_count']} {self._t('点')}")
                 if "rtm_model_path" in item:
-                    self.rtm_pose_3d_model_path.set(str(item["rtm_model_path"]))
-                    self.rtm_pose_3d_enabled.set(True)
+                    model_path = str(item["rtm_model_path"])
+                    model_mode = self._tracker_internal(str(item.get("rtm_model_mode", self._rtm_pose_3d_download_mode or self.tracker_mode.get())))
+                    if model_mode == RTM_POSE_2D_MODE:
+                        self.rtm_pose_2d_model_path.set(model_path)
+                    else:
+                        self.rtm_pose_3d_model_path.set(model_path)
+                    if self._rtm_pose_3d_download_target is not None:
+                        self._rtm_pose_3d_download_target.set(model_path)
+                    self._set_tracker_mode(model_mode if model_mode in (RTM_POSE_2D_MODE, RTM_POSE_3D_MODE) else RTM_POSE_2D_MODE)
+                    self._refresh_active_rtm_pose_model_path()
                 if "rtm_download_status" in item:
                     self.rtm_model_download_status_text.set(str(item["rtm_download_status"]))
                 if "rtm_download_done" in item:
                     self._rtm_pose_3d_downloading = False
-                    self.rtm_model_download_button_text.set(self._t("下载模型"))
+                    self._rtm_pose_3d_download_target = None
+                    self._rtm_pose_3d_download_mode = None
+                    self.rtm_model_download_button_text.set(self._t("下载/自动检测模型"))
+                if "capture_stopped" in item:
+                    if self.worker and not self.worker.is_alive():
+                        self.worker = None
+                    self._refresh_start_button_text()
                 if "ble_devices" in item:
                     devices = item["ble_devices"]
                     if devices:
@@ -4206,6 +4818,11 @@ class OsrScreenApp(tk.Tk):
             axis: self.six_axis_travel_scale_vars[axis].get()
             for axis in ("L1", "L2", "R0", "R1", "R2")
         }
+        cfg.extra["six_axis_travel_invert"] = self.six_axis_travel_invert.get()
+        cfg.extra["axis_output_inverts"] = {
+            axis: self.axis_output_invert_vars[axis].get()
+            for axis in ("L1", "L2", "R0", "R1", "R2")
+        }
         cfg.extra["six_axis_gains"] = {
             axis: self.six_axis_gain_vars[axis].get()
             for axis in ("L1", "L2", "R0", "R1", "R2")
@@ -4230,9 +4847,15 @@ class OsrScreenApp(tk.Tk):
         cfg.extra["pose_v2_six_axis_analysis"] = self.pose_v2_six_axis_analysis.get()
         cfg.extra["pose_v2_l0_weight"] = self.pose_v2_l0_weight.get()
         cfg.extra["pose_v2_six_axis_weight"] = self.pose_v2_six_axis_weight.get()
-        cfg.extra["rtm_pose_3d_enabled"] = self.rtm_pose_3d_enabled.get()
+        cfg.extra["rtm_pose_3d_enabled"] = self._rtm_pose_3d_mode_active()
+        cfg.extra["rtm_pose_2d_model_path"] = self.rtm_pose_2d_model_path.get()
         cfg.extra["rtm_pose_3d_model_path"] = self.rtm_pose_3d_model_path.get()
-        cfg.extra["rtm_pose_3d_weight"] = self.rtm_pose_3d_weight.get()
+        cfg.extra["rtm_pose_3d_weight"] = 100 if self._rtm_pose_mode_active() else 0
+        cfg.extra["rtm_hybrid_l0_enabled"] = self.rtm_hybrid_l0_enabled.get()
+        cfg.extra["rtm_hybrid_l0_weight"] = max(1, min(100, int(self.rtm_hybrid_l0_weight.get())))
+        cfg.extra["rtm_pose_gpu_enabled"] = self.rtm_pose_gpu_enabled.get()
+        cfg.extra["rtm_pose_flow_enabled"] = self.rtm_pose_flow_enabled.get()
+        cfg.extra["rtm_pose_kalman_enabled"] = self.rtm_pose_kalman_enabled.get()
         cfg.extra["l0_travel_scale"] = self.l0_travel_scale.get()
         cfg.extra["compression_latency"] = max(-5, min(5, int(self.compression_latency.get())))
         cfg.extra["measure_axis"] = self.measure_axis.get()

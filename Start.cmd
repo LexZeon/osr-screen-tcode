@@ -12,7 +12,7 @@ if exist "%~dp0OSR6-Realtime-Screen.exe" (
         pause
         exit /b 1
     )
-    timeout /t 2 /nobreak >nul
+    ping -n 3 127.0.0.1 >nul
     exit /b 0
 )
 

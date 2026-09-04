@@ -10,7 +10,7 @@ Tip: hover your mouse over buttons, sliders, and parameter names in the app. Sma
 
 ## Download
 
-For this test build, run `Start.cmd` directly from the test source folder. Zip packaging is reserved for a later formal build.
+For the Windows package, extract the whole folder first, then run `OSR6-Realtime-Screen.exe` or `Start.cmd`.
 
 For source code users, clone the repository and double-click `Start.cmd` or `Start-Source.cmd`.
 

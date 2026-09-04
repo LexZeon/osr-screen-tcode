@@ -2,6 +2,7 @@
 build/
 dist/
 release/
+models/
 logs/
 __pycache__/
 .pytest_cache/

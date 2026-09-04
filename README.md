@@ -6,13 +6,14 @@
 >
 > **Important six-axis warning:** Six Axis mode is only recommended when lighting is good, the main subject is clear, and the selected screen region is clean. If the image is unclear, crowded, dark, or unstable, start with `L0 Only` or `Log only` preview.
 
-Current version: `1.1.0`
+Current version: `1.1.2`
 
 
 
 ## Download
 
-- Test source folder: run `Start.cmd` directly from the source folder.
+- Windows package: extract the whole folder, then run `OSR6-Realtime-Screen.exe` or `Start.cmd`.
+- Source folder: run `Start.cmd` directly from the cloned repository.
 - English quick start: `Quick_Start.md`
 - Chinese quick start: `简易教程.md`
 - Full English manual: `User_Manual_EN.md`
@@ -30,7 +31,7 @@ After cloning the repository on Windows, double-click `Start.cmd` or `Start-Sour
 - USB serial and BLE UART output for TCode-compatible devices.
 - `L0 Only` and `Six Axis` output modes.
 - Hybrid analysis mode recommended for low-latency screen reading.
-- Test-only RTM Pose 3D skeleton analysis with a local ONNX model and adjustable weight.
+- RTM Pose 2D/3D dance modes with local ONNX models, lightweight keypoint optical-flow assist, and Kalman fusion.
 - Audio-only mode for rhythm-driven use.
 - Per-axis limits, total travel scaling, presets, smoothing, speed limit, dead zone, gating, and other comfort controls.
 - Measurement mode for saving safe upper/lower limits locally.
@@ -73,11 +74,12 @@ For infringement concerns, license corrections, suggestions, or collaboration: a
 >
 > **六轴模式重要警告：六轴只建议在光线好、主体清晰、框选区域干净的画面里使用。** 画面太暗、主体不清楚、无关运动太多或画面不稳定时，请先使用 `L0 Only` 或 `Log only` 预览。
 
-当前版本：`1.1.0`
+当前版本：`1.1.2`
 
 ## 下载
 
-- 测试源码目录：直接从源码目录运行 `Start.cmd`。
+- Windows 免安装包：先完整解压文件夹，再运行 `OSR6-Realtime-Screen.exe` 或 `Start.cmd`。
+- 源码目录：clone 仓库后直接运行 `Start.cmd`。
 - 英文简易教程：`Quick_Start.md`
 - 中文简易教程：`简易教程.md`
 - 英文完整手册：`User_Manual_EN.md`
@@ -95,7 +97,7 @@ For infringement concerns, license corrections, suggestions, or collaboration: a
 - 通过 USB 串口或 BLE UART 输出 TCode。
 - 支持 `L0 Only` 和 `Six Axis`。
 - 推荐使用低延迟的混合分析模式。
-- 测试版 RTM Pose 3D 骨架分析：使用本地 ONNX 模型，可调权重；权重 100% 时跳过基础画面分析。
+- RTM Pose 2D/3D 舞蹈分析模式：使用本地 ONNX 模型，并默认开启轻量关键点光流辅助和卡尔曼融合。
 - 支持只监听声音的节奏模式。
 - 支持每轴上下限、总行程倍率、预设、平滑、限速、死区、活动门控等调试项。
 - 测量模式可以手动遥控并保存本地安全上限/下限。

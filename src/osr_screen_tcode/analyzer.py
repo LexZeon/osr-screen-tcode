@@ -8,7 +8,7 @@ import time
 import cv2
 import numpy as np
 
-from .pose_backends import OptionalRtmPose3dBackend, RtmPose3dResult
+from .pose_backends import OptionalRtmPose2dBackend, OptionalRtmPose3dBackend, RtmPose3dResult
 
 
 SIX_AXES = ["L0", "L1", "L2", "R0", "R1", "R2"]
@@ -47,9 +47,16 @@ class RealtimeAnalyzer:
         pose_v2_dance_six_axis: bool = False,
         pose_v2_l0_weight: float | None = None,
         pose_v2_six_axis_weight: float | None = None,
+        rtm_pose_2d_enabled: bool = False,
+        rtm_pose_2d_model_path: str = "",
         rtm_pose_3d_enabled: bool = False,
         rtm_pose_3d_model_path: str = "",
         rtm_pose_3d_weight: float = 1.0,
+        rtm_hybrid_l0_enabled: bool = False,
+        rtm_hybrid_l0_weight: float = 0.30,
+        rtm_pose_gpu_enabled: bool = False,
+        rtm_pose_flow_enabled: bool = False,
+        rtm_pose_kalman_enabled: bool = False,
         compression_latency: int = 0,
     ) -> None:
         self.tracker_mode = tracker_mode
@@ -75,19 +82,41 @@ class RealtimeAnalyzer:
         v2_six_axis_weight = self.pose_six_axis_weight if pose_v2_six_axis_weight is None else float(pose_v2_six_axis_weight)
         self.pose_v2_l0_weight = max(0.0, min(1.0, v2_l0_weight)) if self.pose_v2_dance_six_axis else 0.0
         self.pose_v2_six_axis_weight = max(0.0, min(1.0, v2_six_axis_weight)) if self.pose_v2_dance_six_axis else 0.0
-        self.rtm_pose_3d_enabled = bool(rtm_pose_3d_enabled)
-        self.rtm_pose_3d_weight = max(0.0, min(1.0, float(rtm_pose_3d_weight))) if self.rtm_pose_3d_enabled else 0.0
-        self._rtm_pose_3d_backend = OptionalRtmPose3dBackend(rtm_pose_3d_model_path) if self.rtm_pose_3d_enabled else None
+        self.rtm_pose_2d_enabled = bool(rtm_pose_2d_enabled)
+        self.rtm_pose_3d_enabled = bool(rtm_pose_3d_enabled) and not self.rtm_pose_2d_enabled
+        self.rtm_pose_3d_weight = max(0.0, min(1.0, float(rtm_pose_3d_weight))) if self._rtm_pose_enabled() else 0.0
+        self.rtm_hybrid_l0_enabled = bool(rtm_hybrid_l0_enabled) if self._rtm_pose_enabled() else False
+        self.rtm_hybrid_l0_weight = max(0.01, min(1.0, float(rtm_hybrid_l0_weight))) if self.rtm_hybrid_l0_enabled else 0.0
+        self.rtm_pose_flow_enabled = bool(rtm_pose_flow_enabled) if self._rtm_pose_enabled() else False
+        self.rtm_pose_kalman_enabled = bool(rtm_pose_kalman_enabled) if self._rtm_pose_enabled() else False
+        self.rtm_pose_device = "cuda" if bool(rtm_pose_gpu_enabled) else "cpu"
+        self._rtm_pose_2d_backend = OptionalRtmPose2dBackend(rtm_pose_2d_model_path, device=self.rtm_pose_device) if self.rtm_pose_2d_enabled else None
+        self._rtm_pose_3d_backend = OptionalRtmPose3dBackend(rtm_pose_3d_model_path, device=self.rtm_pose_device) if self.rtm_pose_3d_enabled else None
         self._rtm_pose_3d_last: RtmPose3dResult | None = None
         self._rtm_pose_3d_last_positions: dict[str, float] | None = None
         self._rtm_pose_3d_last_confidence = 0.0
         self._rtm_pose_3d_last_frame = 0
         self._rtm_pose_3d_velocity = {axis: 0.0 for axis in SIX_AXES}
+        self._rtm_pose_3d_body_scale = 0.0
+        self._rtm_pose_3d_l0_reference_y: float | None = None
+        self._rtm_pose_3d_l0_raw = 0.5
+        self._rtm_pose_3d_axis_raw = {axis: 0.5 for axis in SIX_AXES}
+        self._rtm_pose_3d_r0_front_width = 0.0
+        self._rtm_pose_3d_r0_side_hint = 0.0
+        self._rtm_pose_3d_previous_hip_sample: tuple[float, np.ndarray, np.ndarray, float] | None = None
+        self._rtm_pose_3d_l0_reference_sample: tuple[float, np.ndarray, np.ndarray, float] | None = None
+        self._rtm_pose_3d_previous_axis_sample: tuple[float, dict[str, np.ndarray | float], float] | None = None
+        self._rtm_pose_3d_axis_reference_sample: tuple[float, dict[str, np.ndarray | float], float] | None = None
         self._rtm_pose_3d_lock = threading.Lock()
         self._rtm_pose_3d_pending = False
         self._rtm_pose_3d_last_ms = 0.0
         self._rtm_pose_3d_last_error = ""
         self._rtm_pose_3d_frame = 0
+        self._rtm_pose_3d_last_detection_frame = 0
+        self._rtm_pose_flow_gray: np.ndarray | None = None
+        self._rtm_pose_kalman_state: np.ndarray | None = None
+        self._rtm_pose_kalman_cov: np.ndarray | None = None
+        self._rtm_pose_kalman_time: float | None = None
         self.compression_latency = max(-5, min(5, int(compression_latency)))
         self._prev_gray: np.ndarray | None = None
         self._positions = {axis: 0.5 for axis in SIX_AXES}
@@ -170,10 +199,25 @@ class RealtimeAnalyzer:
         self._rtm_pose_3d_last_confidence = 0.0
         self._rtm_pose_3d_last_frame = 0
         self._rtm_pose_3d_velocity = {axis: 0.0 for axis in SIX_AXES}
+        self._rtm_pose_3d_body_scale = 0.0
+        self._rtm_pose_3d_l0_reference_y = None
+        self._rtm_pose_3d_l0_raw = 0.5
+        self._rtm_pose_3d_axis_raw = {axis: 0.5 for axis in SIX_AXES}
+        self._rtm_pose_3d_r0_front_width = 0.0
+        self._rtm_pose_3d_r0_side_hint = 0.0
+        self._rtm_pose_3d_previous_hip_sample = None
+        self._rtm_pose_3d_l0_reference_sample = None
+        self._rtm_pose_3d_previous_axis_sample = None
+        self._rtm_pose_3d_axis_reference_sample = None
         self._rtm_pose_3d_pending = False
         self._rtm_pose_3d_last_ms = 0.0
         self._rtm_pose_3d_last_error = ""
         self._rtm_pose_3d_frame = 0
+        self._rtm_pose_3d_last_detection_frame = 0
+        self._rtm_pose_flow_gray = None
+        self._rtm_pose_kalman_state = None
+        self._rtm_pose_kalman_cov = None
+        self._rtm_pose_kalman_time = None
 
     def process(self, frame_bgr: np.ndarray) -> AxisAnalysis:
         preview = frame_bgr.copy()
@@ -182,17 +226,18 @@ class RealtimeAnalyzer:
             if measured is None:
                 measured = self._active_positions()
                 confidence = 0.0
-            self._apply_measured_positions(measured, confidence, activity=0.0)
+            activity = max(0.0, min(1.0, confidence))
+            self._apply_measured_positions(measured, confidence, activity=activity)
             active = self._active_positions()
-            self._draw_preview(preview, active, confidence)
+            self._draw_preview(preview, active, confidence, draw_l0_line=False)
             preview = self._draw_rtm_pose_3d_preview(preview, pose_result)
-            return AxisAnalysis(active, confidence, 0.0, preview)
+            return AxisAnalysis(active, confidence, activity, preview)
         gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
         gray = cv2.GaussianBlur(gray, (5, 5), 0)
         if self._prev_gray is None:
             self._prev_gray = gray
-            self._draw_preview(preview, self._positions, 0.0)
-            if self.rtm_pose_3d_enabled:
+            self._draw_preview(preview, self._positions, 0.0, draw_l0_line=not self._rtm_pose_enabled())
+            if self._rtm_pose_enabled():
                 preview = self._draw_rtm_pose_3d_preview(preview)
             elif self.pose_l0_weight > 0.0 or self.pose_six_axis_weight > 0.0:
                 preview = self._append_pose_preview(preview, self._active_positions(), 0.0)
@@ -205,21 +250,31 @@ class RealtimeAnalyzer:
         mask = self._dominant_motion_mask(mask)
         activity = float(np.count_nonzero(mask)) / float(mask.size)
         flow = self._flow(gray)
-        measured, confidence = self._measure(gray, mask, flow, activity, preview)
-        if self.rtm_pose_3d_enabled and self.rtm_pose_3d_weight > 0.0:
+        if self._rtm_pose_enabled() and self.rtm_hybrid_l0_enabled:
+            l0, confidence = self._measure_l0(gray, mask, flow, activity, preview, "混合分析（推荐-非舞蹈）")
+            measured = self._active_positions()
+            measured["L0"] = l0
+        else:
+            measured, confidence = self._measure(gray, mask, flow, activity, preview)
+        if self._rtm_pose_enabled() and self.rtm_pose_3d_weight > 0.0:
             rtm_positions, rtm_confidence, pose_result = self._measure_rtm_pose_3d(frame_bgr)
             if rtm_positions is not None:
                 blend = min(1.0, self.rtm_pose_3d_weight * max(0.0, min(1.0, rtm_confidence)))
                 for axis in self.axes:
                     if axis in rtm_positions:
-                        measured[axis] = measured.get(axis, self._positions[axis]) * (1.0 - blend) + rtm_positions[axis] * blend
+                        if axis == "L0" and self.rtm_hybrid_l0_enabled:
+                            hybrid_weight = self.rtm_hybrid_l0_weight
+                            measured[axis] = measured.get(axis, self._positions[axis]) * hybrid_weight + rtm_positions[axis] * (1.0 - hybrid_weight)
+                        else:
+                            measured[axis] = measured.get(axis, self._positions[axis]) * (1.0 - blend) + rtm_positions[axis] * blend
                 confidence = max(confidence, rtm_confidence)
+                activity = max(activity, rtm_confidence * blend)
         self._apply_measured_positions(measured, confidence, activity)
 
         self._prev_gray = gray
         active = self._active_positions()
-        self._draw_preview(preview, active, confidence)
-        if self.rtm_pose_3d_enabled:
+        self._draw_preview(preview, active, confidence, draw_l0_line=not self._rtm_pose_enabled())
+        if self._rtm_pose_enabled():
             preview = self._draw_rtm_pose_3d_preview(preview, pose_result if "pose_result" in locals() else None)
         elif self.pose_v2_dance_six_axis and (self.pose_v2_l0_weight > 0.0 or self.pose_v2_six_axis_weight > 0.0):
             preview = self._pose_v2_split_preview(preview)
@@ -228,7 +283,13 @@ class RealtimeAnalyzer:
         return AxisAnalysis(active, confidence, activity, preview)
 
     def _rtm_pose_3d_only(self) -> bool:
-        return self.rtm_pose_3d_enabled and self.rtm_pose_3d_weight >= 0.999
+        return self._rtm_pose_enabled() and self.rtm_pose_3d_weight >= 0.999 and not self.rtm_hybrid_l0_enabled
+
+    def _rtm_pose_enabled(self) -> bool:
+        return self.rtm_pose_2d_enabled or self.rtm_pose_3d_enabled
+
+    def _rtm_pose_label(self) -> str:
+        return "RTM Pose 2D" if self.rtm_pose_2d_enabled else "RTM Pose 3D"
 
     def _apply_measured_positions(self, measured: dict[str, float], confidence: float, activity: float) -> None:
         for axis, value in measured.items():
@@ -289,7 +350,7 @@ class RealtimeAnalyzer:
         return value
 
     def _flow(self, gray: np.ndarray) -> np.ndarray:
-        if self._is_hybrid_analysis_mode(self.tracker_mode):
+        if self._is_hybrid_analysis_mode(self.tracker_mode) or (self._rtm_pose_enabled() and self.rtm_hybrid_l0_enabled):
             try:
                 if self._dis_flow is None:
                     self._dis_flow = cv2.DISOpticalFlow.create(cv2.DISOPTICAL_FLOW_PRESET_ULTRAFAST)
@@ -1537,22 +1598,223 @@ class RealtimeAnalyzer:
                 y += 14
 
     def _measure_rtm_pose_3d(self, frame_bgr: np.ndarray) -> tuple[dict[str, float] | None, float, RtmPose3dResult | None]:
-        backend = self._rtm_pose_3d_backend
+        backend = self._rtm_pose_backend()
         if backend is None:
             return None, 0.0, None
         self._rtm_pose_3d_frame += 1
+        self._apply_rtm_pose_optical_flow(frame_bgr)
         self._start_rtm_pose_3d_infer(frame_bgr)
         return self._latest_rtm_pose_3d_measurement()
 
+    def _rtm_pose_backend(self) -> OptionalRtmPose2dBackend | OptionalRtmPose3dBackend | None:
+        if self.rtm_pose_2d_enabled:
+            return self._rtm_pose_2d_backend
+        return self._rtm_pose_3d_backend
+
+    def _apply_rtm_pose_optical_flow(self, frame_bgr: np.ndarray) -> None:
+        if not self.rtm_pose_flow_enabled:
+            return
+        gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+        with self._rtm_pose_3d_lock:
+            previous_gray = self._rtm_pose_flow_gray
+            previous_result = self._rtm_pose_3d_last
+            self._rtm_pose_flow_gray = gray
+            frame_index = self._rtm_pose_3d_frame
+        if previous_gray is None or previous_result is None:
+            return
+
+        keypoints = np.asarray(previous_result.keypoints2d, dtype=np.float32)
+        scores = np.asarray(previous_result.scores, dtype=np.float32).reshape(-1)
+        if keypoints.ndim != 2 or keypoints.shape[0] < 17 or keypoints.shape[1] < 2:
+            return
+        count = min(17, len(keypoints), len(scores))
+        valid_indices = np.flatnonzero((scores[:count] >= 0.22) & np.isfinite(keypoints[:count, 0]) & np.isfinite(keypoints[:count, 1]))
+        if len(valid_indices) < 5:
+            return
+
+        prev_points = keypoints[valid_indices, :2].reshape(-1, 1, 2).astype(np.float32)
+        try:
+            next_points, status, err = cv2.calcOpticalFlowPyrLK(
+                previous_gray,
+                gray,
+                prev_points,
+                None,
+                winSize=(21, 21),
+                maxLevel=2,
+                criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 12, 0.03),
+            )
+        except cv2.error:
+            return
+        if next_points is None or status is None:
+            return
+
+        h, w = gray.shape[:2]
+        tracked = keypoints.copy()
+        tracked_scores = scores.copy()
+        flow_ok = status.reshape(-1).astype(bool)
+        if err is not None:
+            flow_ok &= err.reshape(-1) <= 32.0
+        usable = 0
+        for source_index, ok, point in zip(valid_indices, flow_ok, next_points.reshape(-1, 2)):
+            inside = -8.0 <= point[0] <= w + 8.0 and -8.0 <= point[1] <= h + 8.0
+            if ok and inside:
+                tracked[source_index, :2] = point
+                tracked_scores[source_index] = min(0.92, max(0.0, tracked_scores[source_index] * 0.94))
+                usable += 1
+            else:
+                tracked_scores[source_index] *= 0.55
+        if usable < 5:
+            return
+
+        result = self._rtm_pose_result_with_keypoints2d(previous_result, tracked, tracked_scores, f"{previous_result.status} + Flow")
+        if self.rtm_pose_kalman_enabled:
+            result = self._rtm_pose_kalman_predict_with_flow(result)
+        positions, confidence = (
+            self._positions_from_rtm_pose_2d(result, frame_bgr.shape[:2])
+            if self.rtm_pose_2d_enabled
+            else self._positions_from_rtm_pose_3d(result, frame_bgr.shape[:2])
+        )
+        if positions is not None:
+            self._store_rtm_pose_sample(result, positions, confidence * 0.92, frame_index, None, "")
+
+    def _store_rtm_pose_sample(
+        self,
+        result: RtmPose3dResult | None,
+        positions: dict[str, float] | None,
+        confidence: float,
+        frame_index: int,
+        elapsed_ms: float | None,
+        error: str,
+        *,
+        detection: bool = False,
+    ) -> None:
+        with self._rtm_pose_3d_lock:
+            old_positions = self._rtm_pose_3d_last_positions
+            old_frame = self._rtm_pose_3d_last_frame
+            if detection:
+                self._rtm_pose_3d_last_detection_frame = max(self._rtm_pose_3d_last_detection_frame, frame_index)
+            if result is not None:
+                self._rtm_pose_3d_last = result
+            if positions is not None:
+                frame_delta = max(1, frame_index - old_frame)
+                if old_positions:
+                    for axis, value in positions.items():
+                        previous = old_positions.get(axis, value)
+                        velocity = (value - previous) / frame_delta
+                        self._rtm_pose_3d_velocity[axis] = self._rtm_pose_3d_velocity.get(axis, 0.0) * 0.45 + velocity * 0.55
+                self._rtm_pose_3d_last_positions = positions
+                self._rtm_pose_3d_last_confidence = confidence
+                self._rtm_pose_3d_last_frame = max(self._rtm_pose_3d_last_frame, frame_index)
+            if elapsed_ms is not None:
+                self._rtm_pose_3d_last_ms = elapsed_ms
+            self._rtm_pose_3d_last_error = error
+
+    def _rtm_pose_result_with_keypoints2d(
+        self,
+        result: RtmPose3dResult,
+        keypoints2d: np.ndarray,
+        scores: np.ndarray,
+        status: str,
+    ) -> RtmPose3dResult:
+        points2d = np.asarray(keypoints2d, dtype=np.float32).copy()
+        points3d = np.asarray(result.keypoints3d, dtype=np.float32).copy()
+        if self.rtm_pose_2d_enabled and points3d.ndim == 2 and points3d.shape[0] >= points2d.shape[0] and points3d.shape[1] >= 2:
+            points3d[: points2d.shape[0], :2] = points2d[:, :2]
+        return RtmPose3dResult(points3d, points2d, np.asarray(scores, dtype=np.float32).reshape(-1), status=status)
+
+    def _rtm_pose_kalman_predict_with_flow(self, result: RtmPose3dResult) -> RtmPose3dResult:
+        keypoints = np.asarray(result.keypoints2d, dtype=np.float32)
+        scores = np.asarray(result.scores, dtype=np.float32).reshape(-1)
+        if keypoints.ndim != 2 or keypoints.shape[0] < 17:
+            return result
+        now = time.perf_counter()
+        with self._rtm_pose_3d_lock:
+            fused = self._rtm_pose_kalman_predict_with_flow_locked(keypoints, scores, now)
+        return self._rtm_pose_result_with_keypoints2d(result, fused, scores, f"{result.status} + Kalman")
+
+    def _rtm_pose_kalman_correct_detection(self, result: RtmPose3dResult) -> RtmPose3dResult:
+        if not self.rtm_pose_kalman_enabled:
+            return result
+        keypoints = np.asarray(result.keypoints2d, dtype=np.float32)
+        scores = np.asarray(result.scores, dtype=np.float32).reshape(-1)
+        if keypoints.ndim != 2 or keypoints.shape[0] < 17:
+            return result
+        now = time.perf_counter()
+        with self._rtm_pose_3d_lock:
+            fused = self._rtm_pose_kalman_correct_locked(keypoints, scores, now)
+        return self._rtm_pose_result_with_keypoints2d(result, fused, scores, f"{result.status} + Kalman")
+
+    def _rtm_pose_kalman_init_locked(self, keypoints: np.ndarray) -> None:
+        count = int(keypoints.shape[0])
+        self._rtm_pose_kalman_state = np.zeros((count, 4), dtype=np.float32)
+        self._rtm_pose_kalman_state[:, :2] = keypoints[:, :2]
+        self._rtm_pose_kalman_cov = np.repeat(np.eye(4, dtype=np.float32)[None, :, :] * 4.0, count, axis=0)
+        self._rtm_pose_kalman_time = time.perf_counter()
+
+    def _rtm_pose_kalman_predict_locked(self, now: float) -> float:
+        if self._rtm_pose_kalman_state is None or self._rtm_pose_kalman_cov is None:
+            return 1.0 / 45.0
+        last_time = self._rtm_pose_kalman_time if self._rtm_pose_kalman_time is not None else now
+        dt = max(1.0 / 120.0, min(0.20, now - last_time))
+        state = self._rtm_pose_kalman_state
+        cov = self._rtm_pose_kalman_cov
+        state[:, 0] += state[:, 2] * dt
+        state[:, 1] += state[:, 3] * dt
+        transition = np.array(((1.0, 0.0, dt, 0.0), (0.0, 1.0, 0.0, dt), (0.0, 0.0, 1.0, 0.0), (0.0, 0.0, 0.0, 1.0)), dtype=np.float32)
+        process_noise = np.diag((0.35, 0.35, 18.0, 18.0)).astype(np.float32) * dt
+        for index in range(cov.shape[0]):
+            cov[index] = transition @ cov[index] @ transition.T + process_noise
+        self._rtm_pose_kalman_time = now
+        return dt
+
+    def _rtm_pose_kalman_predict_with_flow_locked(self, keypoints: np.ndarray, scores: np.ndarray, now: float) -> np.ndarray:
+        if self._rtm_pose_kalman_state is None or self._rtm_pose_kalman_cov is None or self._rtm_pose_kalman_state.shape[0] != keypoints.shape[0]:
+            self._rtm_pose_kalman_init_locked(keypoints)
+            return keypoints.copy()
+        state = self._rtm_pose_kalman_state
+        cov = self._rtm_pose_kalman_cov
+        previous_xy = state[:, :2].copy()
+        dt = self._rtm_pose_kalman_predict_locked(now)
+        valid = (scores[: keypoints.shape[0]] >= 0.12) & np.isfinite(keypoints[:, 0]) & np.isfinite(keypoints[:, 1])
+        if np.any(valid):
+            blend = 0.78
+            state[valid, :2] = state[valid, :2] * (1.0 - blend) + keypoints[valid, :2] * blend
+            state[valid, 2:4] = state[valid, 2:4] * 0.50 + ((state[valid, :2] - previous_xy[valid]) / max(dt, 1e-3)) * 0.50
+            cov[valid, :2, :2] *= 0.82
+        return state[:, :2].copy()
+
+    def _rtm_pose_kalman_correct_locked(self, keypoints: np.ndarray, scores: np.ndarray, now: float) -> np.ndarray:
+        if self._rtm_pose_kalman_state is None or self._rtm_pose_kalman_cov is None or self._rtm_pose_kalman_state.shape[0] != keypoints.shape[0]:
+            self._rtm_pose_kalman_init_locked(keypoints)
+            return keypoints.copy()
+        self._rtm_pose_kalman_predict_locked(now)
+        state = self._rtm_pose_kalman_state
+        cov = self._rtm_pose_kalman_cov
+        observation = np.array(((1.0, 0.0, 0.0, 0.0), (0.0, 1.0, 0.0, 0.0)), dtype=np.float32)
+        identity = np.eye(4, dtype=np.float32)
+        count = min(keypoints.shape[0], len(scores))
+        for index in range(count):
+            confidence = float(scores[index])
+            if confidence < 0.05 or not np.isfinite(keypoints[index, 0]) or not np.isfinite(keypoints[index, 1]):
+                continue
+            measurement_noise = max(0.45, 12.0 * (1.0 - max(0.0, min(1.0, confidence))) ** 2 + 0.35)
+            r = np.eye(2, dtype=np.float32) * measurement_noise
+            innovation = keypoints[index, :2] - observation @ state[index]
+            innovation_cov = observation @ cov[index] @ observation.T + r
+            gain = cov[index] @ observation.T @ np.linalg.inv(innovation_cov)
+            state[index] = state[index] + gain @ innovation
+            cov[index] = (identity - gain @ observation) @ cov[index]
+        return state[:, :2].copy()
+
     def _start_rtm_pose_3d_infer(self, frame_bgr: np.ndarray) -> None:
-        backend = self._rtm_pose_3d_backend
+        backend = self._rtm_pose_backend()
         if backend is None:
             return
         interval = self._rtm_pose_3d_infer_interval()
         with self._rtm_pose_3d_lock:
             if self._rtm_pose_3d_pending:
                 return
-            if self._rtm_pose_3d_last is not None and self._rtm_pose_3d_frame - self._rtm_pose_3d_last_frame < interval:
+            if self._rtm_pose_3d_last is not None and self._rtm_pose_3d_frame - self._rtm_pose_3d_last_detection_frame < interval:
                 return
             self._rtm_pose_3d_pending = True
             frame_index = self._rtm_pose_3d_frame
@@ -1570,30 +1832,22 @@ class RealtimeAnalyzer:
                 if result is None:
                     error = backend.status
                 else:
-                    positions, confidence = self._positions_from_rtm_pose_3d(result, frame_shape)
+                    result = self._rtm_pose_kalman_correct_detection(result)
+                    positions, confidence = (
+                        self._positions_from_rtm_pose_2d(result, frame_shape)
+                        if self.rtm_pose_2d_enabled
+                        else self._positions_from_rtm_pose_3d(result, frame_shape)
+                    )
                     if positions is None:
                         error = result.status
             except Exception as exc:
-                error = f"RTM Pose 3D worker failed: {exc}"
+                error = f"{self._rtm_pose_label()} worker failed: {exc}"
             elapsed_ms = (time.perf_counter() - started) * 1000.0
             with self._rtm_pose_3d_lock:
-                old_positions = self._rtm_pose_3d_last_positions
-                old_frame = self._rtm_pose_3d_last_frame
-                if result is not None:
-                    self._rtm_pose_3d_last = result
-                if positions is not None:
-                    frame_delta = max(1, frame_index - old_frame)
-                    if old_positions:
-                        for axis, value in positions.items():
-                            previous = old_positions.get(axis, value)
-                            velocity = (value - previous) / frame_delta
-                            self._rtm_pose_3d_velocity[axis] = self._rtm_pose_3d_velocity.get(axis, 0.0) * 0.45 + velocity * 0.55
-                    self._rtm_pose_3d_last_positions = positions
-                    self._rtm_pose_3d_last_confidence = confidence
-                    self._rtm_pose_3d_last_frame = frame_index
                 self._rtm_pose_3d_last_ms = elapsed_ms
-                self._rtm_pose_3d_last_error = error
                 self._rtm_pose_3d_pending = False
+            store_frame = max(frame_index, self._rtm_pose_3d_frame)
+            self._store_rtm_pose_sample(result, positions, confidence, store_frame, elapsed_ms, error, detection=True)
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -1622,50 +1876,442 @@ class RealtimeAnalyzer:
         result: RtmPose3dResult,
         frame_shape: tuple[int, int],
     ) -> tuple[dict[str, float] | None, float]:
-        if result is None:
+        core = self._rtm_pose_3d_virtual_core(result, frame_shape)
+        if core is None:
             return None, 0.0
+
+        _h, _w = frame_shape
+        hip_mid = core["hip_mid_2d"]
+        confidence = float(core["confidence"])
+        if confidence <= 0.02:
+            return None, 0.0
+
+        positions = self._rtm_pose_3d_axes_from_previous_core(core, confidence)
+        return positions, confidence
+
+    def _positions_from_rtm_pose_2d(
+        self,
+        result: RtmPose3dResult,
+        frame_shape: tuple[int, int],
+    ) -> tuple[dict[str, float] | None, float]:
+        core = self._rtm_pose_3d_virtual_core(result, frame_shape)
+        if core is None:
+            return None, 0.0
+        confidence = float(core["confidence"])
+        if confidence <= 0.02:
+            return None, 0.0
+        positions = self._rtm_pose_3d_axes_from_previous_core(core, confidence)
+        return positions, confidence
+
+    def _rtm_pose_3d_axes_from_previous_core(self, core: dict[str, np.ndarray | float], confidence: float) -> dict[str, float]:
+        now = time.perf_counter()
+        hip_mid = np.asarray(core["hip_mid_2d"], dtype=np.float32)
+        hip_line = np.asarray(core["hip_line_2d"], dtype=np.float32)
+        hip_width = max(1.0, float(np.linalg.norm(hip_line)))
+        current_core = self._rtm_pose_3d_copy_core(core)
+        current_hip_sample = (now, hip_mid.copy(), hip_line.copy(), float(confidence))
+        current_axis_sample = (now, current_core, float(confidence))
+        previous = self._rtm_pose_3d_previous_hip_sample
+        previous_axis = self._rtm_pose_3d_previous_axis_sample
+
+        if previous is None or previous_axis is None:
+            self._rtm_pose_3d_previous_hip_sample = current_hip_sample
+            self._rtm_pose_3d_previous_axis_sample = current_axis_sample
+            return self._active_positions()
+
+        old_time, old_mid, old_line, old_confidence = previous
+        self._rtm_pose_3d_l0_reference_sample = previous
+        self._rtm_pose_3d_axis_reference_sample = previous_axis
+        self._rtm_pose_3d_previous_hip_sample = current_hip_sample
+        self._rtm_pose_3d_previous_axis_sample = current_axis_sample
+
+        if old_confidence < 0.20:
+            return self._active_positions()
+        old_width = max(1.0, float(np.linalg.norm(old_line)))
+        if old_width < 8.0:
+            return self._active_positions()
+        dt = now - old_time
+        if dt < 0.010 or dt > 0.450:
+            return self._active_positions()
+
+        signed_distance = self._rtm_pose_3d_predicted_hip_delta_y(hip_mid, old_mid, dt)
+        noise_floor = max(0.45, min(1.8, (hip_width + old_width) * 0.0035))
+        if abs(signed_distance) < noise_floor:
+            l0_target = 0.5
+        else:
+            distance_scale = max(9.0, (hip_width + old_width) * 0.17)
+            l0_target = 0.5 + self._centered_clamp((signed_distance / distance_scale) * 0.62, 0.42)
+
+        positions = {"L0": self._rtm_pose_3d_update_axis_raw("L0", self._bounded_l0(l0_target), confidence, primary=True)}
+        self._rtm_pose_3d_l0_raw = positions["L0"]
+        if self.output_mode == "Six Axis":
+            _old_axis_time, old_core, _old_axis_confidence = previous_axis
+            positions.update(self._rtm_pose_3d_six_axis_from_core_delta(current_core, old_core, dt, confidence))
+        return positions
+
+    @staticmethod
+    def _rtm_pose_3d_copy_core(core: dict[str, np.ndarray | float]) -> dict[str, np.ndarray | float]:
+        copied: dict[str, np.ndarray | float] = {}
+        for key, value in core.items():
+            copied[key] = value.copy() if isinstance(value, np.ndarray) else float(value)
+        return copied
+
+    def _rtm_pose_3d_six_axis_from_core_delta(
+        self,
+        core: dict[str, np.ndarray | float],
+        old_core: dict[str, np.ndarray | float],
+        dt: float,
+        confidence: float,
+    ) -> dict[str, float]:
+        hip_mid = np.asarray(core["hip_mid_2d"], dtype=np.float32)
+        old_hip_mid = np.asarray(old_core["hip_mid_2d"], dtype=np.float32)
+        hip_line_2d = np.asarray(core["hip_line_2d"], dtype=np.float32)
+        old_hip_line_2d = np.asarray(old_core["hip_line_2d"], dtype=np.float32)
+        shoulder_line = np.asarray(core["shoulder_line_2d"], dtype=np.float32)
+        old_shoulder_line = np.asarray(old_core["shoulder_line_2d"], dtype=np.float32)
+        pelvis_3d = np.asarray(core["pelvis_3d"], dtype=np.float32)
+        old_pelvis_3d = np.asarray(old_core["pelvis_3d"], dtype=np.float32)
+        hip_line_3d = np.asarray(core["hip_line_3d"], dtype=np.float32)
+        old_hip_line_3d = np.asarray(old_core["hip_line_3d"], dtype=np.float32)
+        shoulder_line_3d = np.asarray(core["shoulder_line_3d"], dtype=np.float32)
+        old_shoulder_line_3d = np.asarray(old_core["shoulder_line_3d"], dtype=np.float32)
+        torso_up_3d = np.asarray(core["torso_up_3d"], dtype=np.float32)
+        old_torso_up_3d = np.asarray(old_core["torso_up_3d"], dtype=np.float32)
+        torso_up_2d = np.asarray(core["torso_up_2d"], dtype=np.float32)
+        body_scale_2d = max(1.0, float(core["body_scale_2d"]))
+        old_body_scale_2d = max(1.0, float(old_core["body_scale_2d"]))
+        scale_2d = (body_scale_2d + old_body_scale_2d) * 0.5
+        scale_3d = max(0.08, (float(core["scale_3d"]) + float(old_core["scale_3d"])) * 0.5)
+
+        if self.rtm_pose_2d_enabled:
+            return self._rtm_pose_2d_six_axis_from_core_delta(core, old_core, dt, confidence, scale_2d)
+
+        x_delta = self._rtm_pose_3d_predicted_scalar_delta(float(hip_mid[0] - old_hip_mid[0]), dt, 3.2)
+        z_delta = self._rtm_pose_3d_predicted_scalar_delta(float(pelvis_3d[2] - old_pelvis_3d[2]), dt, scale_3d * 0.14)
+        r0_target = self._rtm_pose_3d_r0_from_hip_depth_balance(
+            hip_line_3d,
+            old_hip_line_3d,
+            shoulder_line_3d,
+            old_shoulder_line_3d,
+            hip_line_2d,
+            old_hip_line_2d,
+            scale_2d,
+            dt,
+        )
+        r1_target = self._rtm_pose_3d_r1_from_body_centerline(torso_up_2d, core, confidence)
+        r2_delta = self._rtm_pose_3d_predicted_angle_delta(
+            self._angle_delta_deg(self._rtm_pose_3d_pitch_angle(torso_up_3d), self._rtm_pose_3d_pitch_angle(old_torso_up_3d)),
+            dt,
+            4.0,
+        )
+        shoulder_width_delta = self._rtm_pose_3d_predicted_scalar_delta(
+            float(np.linalg.norm(shoulder_line) - np.linalg.norm(old_shoulder_line)),
+            dt,
+            max(1.8, scale_2d * 0.018),
+        )
+        targets = {
+            "L1": 0.5 + self._centered_clamp((-z_delta / scale_3d) * 0.62, 0.46),
+            "L2": 0.5 + self._centered_clamp((x_delta / max(10.0, scale_2d * 0.16)) * 0.38, 0.26),
+            "R0": r0_target,
+            "R1": r1_target,
+            "R2": 0.5
+            + self._centered_clamp(
+                (r2_delta / 28.0) * 0.22 + (shoulder_width_delta / max(8.0, scale_2d * 0.10)) * 0.24,
+                0.30,
+            ),
+        }
+        return {axis: self._rtm_pose_3d_update_axis_raw(axis, value, confidence, primary=False) for axis, value in targets.items()}
+
+    def _rtm_pose_2d_six_axis_from_core_delta(
+        self,
+        core: dict[str, np.ndarray | float],
+        old_core: dict[str, np.ndarray | float],
+        dt: float,
+        confidence: float,
+        scale_2d: float,
+    ) -> dict[str, float]:
+        hip_mid = np.asarray(core["hip_mid_2d"], dtype=np.float32)
+        old_hip_mid = np.asarray(old_core["hip_mid_2d"], dtype=np.float32)
+        hip_line = np.asarray(core["hip_line_2d"], dtype=np.float32)
+        old_hip_line = np.asarray(old_core["hip_line_2d"], dtype=np.float32)
+        shoulder_line = np.asarray(core["shoulder_line_2d"], dtype=np.float32)
+        old_shoulder_line = np.asarray(old_core["shoulder_line_2d"], dtype=np.float32)
+        torso_up = np.asarray(core["torso_up_2d"], dtype=np.float32)
+        body_scale = float(core["body_scale_2d"])
+        old_body_scale = float(old_core["body_scale_2d"])
+        hip_width = float(np.linalg.norm(hip_line))
+        old_hip_width = float(np.linalg.norm(old_hip_line))
+        shoulder_width = float(np.linalg.norm(shoulder_line))
+        old_shoulder_width = float(np.linalg.norm(old_shoulder_line))
+
+        x_delta = self._rtm_pose_3d_predicted_scalar_delta(float(hip_mid[0] - old_hip_mid[0]), dt, 3.2)
+        scale_delta = self._rtm_pose_3d_predicted_scalar_delta(body_scale - old_body_scale, dt, max(1.8, scale_2d * 0.018))
+        hip_width_delta = self._rtm_pose_3d_predicted_scalar_delta(hip_width - old_hip_width, dt, max(1.8, scale_2d * 0.018))
+        shoulder_width_delta = self._rtm_pose_3d_predicted_scalar_delta(shoulder_width - old_shoulder_width, dt, max(1.8, scale_2d * 0.018))
+
+        if self._rtm_pose_3d_r0_front_width <= 0.0:
+            self._rtm_pose_3d_r0_front_width = max(8.0, hip_width, old_hip_width)
+        elif hip_width > self._rtm_pose_3d_r0_front_width:
+            self._rtm_pose_3d_r0_front_width = self._rtm_pose_3d_r0_front_width * 0.82 + hip_width * 0.18
+        else:
+            self._rtm_pose_3d_r0_front_width = max(8.0, self._rtm_pose_3d_r0_front_width * 0.996)
+        front_width = max(8.0, self._rtm_pose_3d_r0_front_width)
+        width_narrow = max(0.0, min(1.0, (front_width - hip_width) / max(8.0, front_width * 0.55)))
+        torso_side = self._centered_clamp(float(torso_up[0]) / max(20.0, scale_2d * 0.28), 1.0)
+        if abs(torso_side) > 0.08:
+            self._rtm_pose_3d_r0_side_hint = 1.0 if torso_side > 0.0 else -1.0
+        side = self._rtm_pose_3d_r0_side_hint or (1.0 if hip_width_delta < 0.0 else -1.0)
+        r0_target = 0.5 + self._centered_clamp(side * width_narrow * 0.34 - (hip_width_delta / max(8.0, front_width * 0.45)) * 0.12, 0.34)
+
+        r1_target = self._rtm_pose_3d_r1_from_body_centerline(torso_up, core, confidence)
+        r2_signal = (
+            (shoulder_width_delta / max(8.0, scale_2d * 0.10)) * 0.20
+            + (scale_delta / max(10.0, scale_2d * 0.14)) * 0.12
+        )
+        targets = {
+            "L1": 0.5 + self._centered_clamp((scale_delta / max(12.0, scale_2d * 0.16)) * 0.16, 0.14),
+            "L2": 0.5 + self._centered_clamp((x_delta / max(10.0, scale_2d * 0.16)) * 0.38, 0.26),
+            "R0": r0_target,
+            "R1": r1_target,
+            "R2": 0.5 + self._centered_clamp(r2_signal, 0.22),
+        }
+        return {axis: self._rtm_pose_3d_update_axis_raw(axis, value, confidence, primary=False) for axis, value in targets.items()}
+
+    def _rtm_pose_3d_r1_from_body_centerline(
+        self,
+        torso_up_2d: np.ndarray,
+        core: dict[str, np.ndarray | float],
+        confidence: float,
+    ) -> float:
+        shoulder_confidence = float(core.get("shoulder_confidence", 0.0))
+        torso_len = float(np.linalg.norm(torso_up_2d))
+        if confidence < 0.20 or shoulder_confidence < 0.24 or torso_len < 12.0:
+            return self._rtm_pose_3d_axis_raw.get("R1", 0.5)
+        roll_angle = self._rtm_pose_3d_torso_roll_angle_2d(torso_up_2d)
+        return 0.5 + self._centered_clamp(roll_angle / 60.0, 0.5)
+
+    def _rtm_pose_3d_update_axis_raw(self, axis: str, target: float, confidence: float, primary: bool = False) -> float:
+        if axis == "R0":
+            blend = 0.88 if confidence >= 0.55 else 0.62
+        elif axis == "R1":
+            blend = 0.86 if confidence >= 0.55 else 0.64
+        else:
+            blend = 0.82 if primary and confidence >= 0.55 else 0.60 if primary else 0.68 if confidence >= 0.55 else 0.48
+        previous = self._rtm_pose_3d_axis_raw.get(axis, 0.5)
+        value = previous * (1.0 - blend) + max(0.0, min(1.0, target)) * blend
+        self._rtm_pose_3d_axis_raw[axis] = value
+        return value
+
+    def _rtm_pose_3d_predicted_scalar_delta(self, delta: float, dt: float, max_prediction: float) -> float:
+        velocity = delta / max(0.001, dt)
+        horizon = 0.016
+        if self.compression_latency > 0:
+            horizon += min(0.050, self.compression_latency * 0.008)
+        elif self.compression_latency < 0:
+            horizon *= 0.45
+        predicted_extra = max(-max_prediction, min(max_prediction, velocity * horizon))
+        return delta + predicted_extra
+
+    def _rtm_pose_3d_predicted_angle_delta(self, delta: float, dt: float, max_prediction: float) -> float:
+        predicted = self._rtm_pose_3d_predicted_scalar_delta(delta, dt, max_prediction)
+        return self._angle_delta_deg(predicted, 0.0)
+
+    def _rtm_pose_3d_r0_from_hip_depth_balance(
+        self,
+        hip_line: np.ndarray,
+        old_hip_line: np.ndarray,
+        shoulder_line: np.ndarray,
+        old_shoulder_line: np.ndarray,
+        hip_line_2d: np.ndarray,
+        old_hip_line_2d: np.ndarray,
+        scale_2d: float,
+        dt: float,
+    ) -> float:
+        hip_balance = self._rtm_pose_3d_depth_balance(hip_line)
+        old_hip_balance = self._rtm_pose_3d_depth_balance(old_hip_line)
+        shoulder_balance = self._rtm_pose_3d_depth_balance(shoulder_line)
+        old_shoulder_balance = self._rtm_pose_3d_depth_balance(old_shoulder_line)
+        hip_delta = self._rtm_pose_3d_predicted_scalar_delta(hip_balance - old_hip_balance, dt, 0.16)
+        shoulder_delta = self._rtm_pose_3d_predicted_scalar_delta(shoulder_balance - old_shoulder_balance, dt, 0.10)
+        predicted_hip = max(-1.0, min(1.0, hip_balance + hip_delta * 0.22))
+        predicted_shoulder = max(-1.0, min(1.0, shoulder_balance + shoulder_delta * 0.12))
+        depth_signal = predicted_hip * 0.76 + predicted_shoulder * 0.14
+
+        scale_2d = max(1.0, float(scale_2d))
+        hip_width = float(np.linalg.norm(hip_line_2d)) / scale_2d
+        old_hip_width = float(np.linalg.norm(old_hip_line_2d)) / scale_2d
+        if self._rtm_pose_3d_r0_front_width <= 0.0:
+            self._rtm_pose_3d_r0_front_width = max(0.04, hip_width, old_hip_width)
+        elif hip_width > self._rtm_pose_3d_r0_front_width:
+            self._rtm_pose_3d_r0_front_width = self._rtm_pose_3d_r0_front_width * 0.82 + hip_width * 0.18
+        else:
+            self._rtm_pose_3d_r0_front_width = max(0.04, self._rtm_pose_3d_r0_front_width * 0.996)
+
+        front_width = max(0.04, self._rtm_pose_3d_r0_front_width)
+        width_narrow = max(0.0, min(1.0, (front_width - hip_width) / max(0.04, front_width * 0.56)))
+        width_delta = max(-1.0, min(1.0, (old_hip_width - hip_width) / max(0.04, front_width * 0.42)))
+
+        if abs(depth_signal) >= 0.012:
+            self._rtm_pose_3d_r0_side_hint = 1.0 if depth_signal > 0.0 else -1.0
+        elif self._rtm_pose_3d_r0_side_hint == 0.0 and abs(width_delta) >= 0.018:
+            self._rtm_pose_3d_r0_side_hint = 1.0
+
+        side = self._rtm_pose_3d_r0_side_hint
+        width_signal = side * width_narrow * 0.36 + self._centered_clamp(width_delta * 0.18, 0.10)
+        combined = depth_signal * 0.58 + width_signal
+        if abs(combined) < 0.010:
+            combined = 0.0
+        return 0.5 + self._centered_clamp(combined, 0.46)
+
+    @staticmethod
+    def _rtm_pose_3d_depth_balance(line: np.ndarray) -> float:
+        length = float(np.linalg.norm(line))
+        if length < 1e-5:
+            return 0.0
+        return float(max(-1.0, min(1.0, line[2] / length)))
+
+    @staticmethod
+    def _angle_delta_deg(current: float, previous: float) -> float:
+        delta = current - previous
+        while delta > 180.0:
+            delta -= 360.0
+        while delta < -180.0:
+            delta += 360.0
+        return float(delta)
+
+    @staticmethod
+    def _rtm_pose_3d_line_angle_2d(line: np.ndarray) -> float:
+        if float(np.linalg.norm(line)) < 1e-5:
+            return 0.0
+        return RealtimeAnalyzer._normalize_pose_angle(float(np.degrees(np.arctan2(line[1], line[0]))))
+
+    @staticmethod
+    def _rtm_pose_3d_torso_roll_angle_2d(line: np.ndarray) -> float:
+        if float(np.linalg.norm(line)) < 1e-5:
+            return 0.0
+        return float(np.degrees(np.arctan2(line[0], -line[1])))
+
+    @staticmethod
+    def _rtm_pose_3d_horizontal_angle(vector: np.ndarray) -> float:
+        if float(np.linalg.norm(vector[[0, 2]])) < 1e-5:
+            return 0.0
+        return float(np.degrees(np.arctan2(vector[2], vector[0])))
+
+    @staticmethod
+    def _rtm_pose_3d_pitch_angle(vector: np.ndarray) -> float:
+        flat = float(np.linalg.norm(vector[:2]))
+        if flat < 1e-5:
+            return 0.0
+        return float(np.degrees(np.arctan2(vector[2], flat)))
+
+    def _rtm_pose_3d_predicted_hip_delta_y(self, hip_mid: np.ndarray, previous_mid: np.ndarray, dt: float) -> float:
+        delta_y = float(hip_mid[1] - previous_mid[1])
+        velocity_y = delta_y / max(0.001, dt)
+        horizon = 0.018
+        if self.compression_latency > 0:
+            horizon += min(0.055, self.compression_latency * 0.009)
+        elif self.compression_latency < 0:
+            horizon *= 0.45
+        max_prediction = 2.8 + max(0, self.compression_latency) * 0.9
+        predicted_extra = max(-max_prediction, min(max_prediction, velocity_y * horizon))
+        return delta_y + predicted_extra
+
+    def _rtm_pose_3d_stable_l0_reference_y(self, hip_y: float, virtual_half_len: float, confidence: float) -> float:
+        if self._rtm_pose_3d_l0_reference_y is None:
+            self._rtm_pose_3d_l0_reference_y = hip_y
+            return hip_y
+        reference_y = float(self._rtm_pose_3d_l0_reference_y)
+        distance = hip_y - reference_y
+        drift_window = max(8.0, virtual_half_len * 0.65)
+        if confidence >= 0.45 and abs(distance) <= drift_window:
+            alpha = 0.004 if self.compression_latency <= 0 else 0.0025
+            self._rtm_pose_3d_l0_reference_y = reference_y + distance * alpha
+        return float(self._rtm_pose_3d_l0_reference_y)
+
+    @staticmethod
+    def _rtm_pose_3d_virtual_core(result: RtmPose3dResult | None, frame_shape: tuple[int, int]) -> dict[str, np.ndarray | float] | None:
+        if result is None:
+            return None
         keypoints2d = np.asarray(result.keypoints2d, dtype=np.float32)
         keypoints3d = np.asarray(result.keypoints3d, dtype=np.float32)
         scores = np.asarray(result.scores, dtype=np.float32)
         if keypoints2d.ndim != 2 or keypoints2d.shape[0] < 17 or keypoints3d.ndim != 2 or keypoints3d.shape[0] < 17:
-            return None, 0.0
-        required = [5, 6, 11, 12]
-        if len(scores) < 17 or any(scores[index] < 0.22 for index in required):
-            return None, 0.0
-        h, w = frame_shape
+            return None
+        required = (11, 12, 13, 14)
+        if len(scores) < 17 or any(float(scores[index]) < 0.24 for index in required):
+            return None
+
         l_sh, r_sh = keypoints2d[5, :2], keypoints2d[6, :2]
         l_hip, r_hip = keypoints2d[11, :2], keypoints2d[12, :2]
+        l_knee, r_knee = keypoints2d[13, :2], keypoints2d[14, :2]
         shoulder_mid = (l_sh + r_sh) * 0.5
         hip_mid = (l_hip + r_hip) * 0.5
         hip_line = r_hip - l_hip
         shoulder_line = r_sh - l_sh
-        torso = shoulder_mid - hip_mid
-        body_height = max(24.0, float(np.linalg.norm(torso)) * 1.8)
-        body_width = max(18.0, float(np.linalg.norm(hip_line)))
+        left_thigh_mid = (l_hip + l_knee) * 0.5
+        right_thigh_mid = (r_hip + r_knee) * 0.5
+        thigh_midline = right_thigh_mid - left_thigh_mid
+        thigh_midline_mid = (left_thigh_mid + right_thigh_mid) * 0.5
+        left_thigh_len = float(np.linalg.norm(l_knee - l_hip))
+        right_thigh_len = float(np.linalg.norm(r_knee - r_hip))
+        torso_up = shoulder_mid - hip_mid
+        torso_len = float(np.linalg.norm(torso_up))
+        hip_width = float(np.linalg.norm(hip_line))
+        shoulder_width = float(np.linalg.norm(shoulder_line))
+        thigh_scale = max(left_thigh_len, right_thigh_len, hip_width)
+        if hip_width < 8.0 or thigh_scale < 14.0:
+            return None
 
-        pelvis3d = (keypoints3d[11, :3] + keypoints3d[12, :3]) * 0.5
-        shoulder3d = (keypoints3d[5, :3] + keypoints3d[6, :3]) * 0.5
-        torso3d = shoulder3d - pelvis3d
-        hip_line3d = keypoints3d[12, :3] - keypoints3d[11, :3]
-        scale3d = max(0.08, float(np.linalg.norm(torso3d)) + float(np.linalg.norm(hip_line3d)) * 0.65)
+        virtual_axis_dir = np.array([0.0, 1.0], dtype=np.float32)
+        virtual_half_len = max(torso_len * 0.10, min(torso_len * 0.24, hip_width * 0.52))
+        virtual_axis_start = hip_mid - virtual_axis_dir * virtual_half_len
+        virtual_axis_end = hip_mid + virtual_axis_dir * virtual_half_len
+        virtual_axis_mid = hip_mid
 
-        l0 = self._bounded_l0(float(hip_mid[1]) / max(1.0, h - 1.0))
-        l1 = 0.5 + self._centered_clamp(float(pelvis3d[2]) / (scale3d * 3.0), 0.26)
-        l2 = 0.5 + self._centered_clamp((float(hip_mid[0]) / max(1.0, w - 1.0) - 0.5) * 0.86, 0.30)
-        r0 = 0.5 + self._centered_clamp(float(torso[0]) / body_height * 0.75, 0.28)
-        r1 = 0.5 + self._centered_clamp(float(np.degrees(np.arctan2(hip_line[1], max(1.0, abs(hip_line[0]))))) / 95.0, 0.26)
-        r2 = 0.5 + self._centered_clamp(float(torso3d[2]) / (scale3d * 2.6), 0.26)
-        shoulder_roll = float(np.degrees(np.arctan2(shoulder_line[1], max(1.0, abs(shoulder_line[0])))))
-        r1 = 0.5 + self._centered_clamp((r1 - 0.5) + shoulder_roll / 220.0, 0.28)
+        pelvis_3d = (keypoints3d[11, :3] + keypoints3d[12, :3]) * 0.5
+        shoulder_3d = (keypoints3d[5, :3] + keypoints3d[6, :3]) * 0.5
+        torso_up_3d = shoulder_3d - pelvis_3d
+        hip_line_3d = keypoints3d[12, :3] - keypoints3d[11, :3]
+        shoulder_line_3d = keypoints3d[6, :3] - keypoints3d[5, :3]
+        torso_len_3d = float(np.linalg.norm(torso_up_3d))
+        hip_width_3d = float(np.linalg.norm(hip_line_3d))
+        shoulder_width_3d = float(np.linalg.norm(shoulder_line_3d))
+        scale_3d = max(0.08, torso_len_3d + hip_width_3d * 0.45 + shoulder_width_3d * 0.20)
+        virtual_3d = pelvis_3d + hip_line_3d / max(0.08, hip_width_3d) * max(0.04, hip_width_3d * 0.42)
 
         body_confidence = float(np.nanmean(scores[:17]))
-        confidence = max(0.0, min(1.0, (body_confidence - 0.18) / 0.55))
-        if confidence <= 0.02:
-            return None, 0.0
-        positions = {"L0": l0}
-        if self.output_mode == "Six Axis":
-            positions.update({"L1": l1, "L2": l2, "R0": r0, "R1": r1, "R2": r2})
-        return positions, confidence
+        core_confidence = float(min(scores[index] for index in required))
+        shoulder_confidence = float(min(scores[5], scores[6]))
+        confidence = max(0.0, min(1.0, ((body_confidence * 0.55 + core_confidence * 0.45) - 0.20) / 0.54))
+
+        return {
+            "shoulder_mid_2d": shoulder_mid,
+            "hip_mid_2d": hip_mid,
+            "left_thigh_mid_2d": left_thigh_mid,
+            "right_thigh_mid_2d": right_thigh_mid,
+            "thigh_midline_2d": thigh_midline,
+            "thigh_midline_mid_2d": thigh_midline_mid,
+            "virtual_axis_start_2d": virtual_axis_start,
+            "virtual_axis_end_2d": virtual_axis_end,
+            "virtual_axis_mid_2d": virtual_axis_mid,
+            "virtual_axis_dir_2d": virtual_axis_dir,
+            "hip_line_2d": hip_line,
+            "shoulder_line_2d": shoulder_line,
+            "torso_up_2d": torso_up,
+            "pelvis_3d": pelvis_3d,
+            "shoulder_mid_3d": shoulder_3d,
+            "virtual_3d": virtual_3d,
+            "torso_up_3d": torso_up_3d,
+            "hip_line_3d": hip_line_3d,
+            "shoulder_line_3d": shoulder_line_3d,
+            "scale_3d": float(scale_3d),
+            "virtual_axis_half_len_2d": float(virtual_half_len),
+            "thigh_scale_2d": float(max(24.0, hip_width * 1.35)),
+            "body_scale_2d": float(max(1.0, torso_len + hip_width * 0.45 + shoulder_width * 0.20)),
+            "body_height_2d": float(max(24.0, torso_len * 1.8)),
+            "shoulder_confidence": shoulder_confidence,
+            "confidence": float(confidence),
+        }
 
     def _rtm_pose_3d_infer_interval(self) -> int:
         if self.compression_latency <= 0:
@@ -1682,16 +2328,16 @@ class RealtimeAnalyzer:
         panel_w = int(max(180, min(300, w * 0.42)))
         panel = np.zeros((h, panel_w, 3), dtype=np.uint8)
         cv2.line(panel, (0, 0), (0, h - 1), (70, 70, 70), 1, cv2.LINE_AA)
-        cv2.putText(panel, "RTM Pose 3D", (10, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (225, 235, 245), 1, cv2.LINE_AA)
+        cv2.putText(panel, self._rtm_pose_label(), (10, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (225, 235, 245), 1, cv2.LINE_AA)
         cv2.putText(panel, "OpenMMLab MMPose / rtmlib", (10, 42), cv2.FONT_HERSHEY_SIMPLEX, 0.34, (120, 170, 230), 1, cv2.LINE_AA)
 
-        backend = self._rtm_pose_3d_backend
+        backend = self._rtm_pose_backend()
         if result is None:
             with self._rtm_pose_3d_lock:
                 result = self._rtm_pose_3d_last
 
         if result is None:
-            status = backend.status if backend is not None else "RTM Pose 3D: off"
+            status = backend.status if backend is not None else f"{self._rtm_pose_label()}: off"
             self._put_wrapped_status(panel, status, 10, 66, panel_w - 20, (120, 170, 255))
             self._draw_rtm_pose_3d_stats(panel)
             return np.concatenate((preview, panel), axis=1)
@@ -1709,7 +2355,11 @@ class RealtimeAnalyzer:
             last_frame = self._rtm_pose_3d_last_frame
             error = self._rtm_pose_3d_last_error
         age = max(0, self._rtm_pose_3d_frame - last_frame)
-        mode = f"RTM async x{self._rtm_pose_3d_infer_interval()}"
+        mode = f"{self._rtm_pose_label()} async x{self._rtm_pose_3d_infer_interval()}"
+        if self.rtm_pose_flow_enabled:
+            mode += " flow"
+        if self.rtm_pose_kalman_enabled:
+            mode += " kalman"
         if pending:
             mode += " running"
         cv2.putText(panel, mode, (10, h - 44), cv2.FONT_HERSHEY_SIMPLEX, 0.34, (130, 190, 235), 1, cv2.LINE_AA)
@@ -1753,8 +2403,7 @@ class RealtimeAnalyzer:
             (0, 6),
         )
 
-    @staticmethod
-    def _draw_rtm_pose_2d_overlay(preview: np.ndarray, result: RtmPose3dResult) -> None:
+    def _draw_rtm_pose_2d_overlay(self, preview: np.ndarray, result: RtmPose3dResult) -> None:
         keypoints = np.asarray(result.keypoints2d, dtype=np.float32)
         scores = np.asarray(result.scores, dtype=np.float32)
         if keypoints.ndim != 2 or keypoints.shape[0] < 17:
@@ -1772,10 +2421,38 @@ class RealtimeAnalyzer:
                 continue
             point = tuple(np.round(keypoints[index, :2]).astype(int))
             cv2.circle(preview, point, 3, (80, 255, 170), -1, cv2.LINE_AA)
-        cv2.putText(preview, "RTM Pose 3D", (8, 42), cv2.FONT_HERSHEY_SIMPLEX, 0.46, (80, 235, 255), 1, cv2.LINE_AA)
+        core = RealtimeAnalyzer._rtm_pose_3d_virtual_core(result, preview.shape[:2])
+        if core is not None:
+            hip_mid = tuple(np.round(core["hip_mid_2d"]).astype(int))
+            shoulder_mid = tuple(np.round(core["shoulder_mid_2d"]).astype(int))
+            cv2.line(preview, tuple(np.round(keypoints[11, :2]).astype(int)), tuple(np.round(keypoints[12, :2]).astype(int)), (255, 80, 210), 2, cv2.LINE_AA)
+            cv2.line(preview, hip_mid, shoulder_mid, (0, 220, 255), 2, cv2.LINE_AA)
+            previous = self._rtm_pose_3d_l0_reference_sample
+            if previous is not None:
+                _old_time, old_mid, old_line, old_confidence = previous
+                if old_confidence >= 0.20:
+                    old_start = tuple(np.round(old_mid - old_line * 0.5).astype(int))
+                    old_end = tuple(np.round(old_mid + old_line * 0.5).astype(int))
+                    old_center = tuple(np.round(old_mid).astype(int))
+                    cv2.line(preview, old_start, old_end, (255, 120, 40), 2, cv2.LINE_AA)
+                    cv2.circle(preview, old_center, 5, (255, 120, 40), -1, cv2.LINE_AA)
+            previous_axis = self._rtm_pose_3d_axis_reference_sample
+            if previous_axis is not None:
+                _old_time, old_core, old_confidence = previous_axis
+                if old_confidence >= 0.20:
+                    old_hip_mid_raw = np.asarray(old_core["hip_mid_2d"], dtype=np.float32)
+                    old_shoulder_mid_raw = np.asarray(old_core["shoulder_mid_2d"], dtype=np.float32)
+                    old_shoulder_line = np.asarray(old_core["shoulder_line_2d"], dtype=np.float32)
+                    old_hip_mid = tuple(np.round(old_hip_mid_raw).astype(int))
+                    old_shoulder_mid = tuple(np.round(old_shoulder_mid_raw).astype(int))
+                    old_l_shoulder = np.round(old_shoulder_mid_raw - old_shoulder_line * 0.5).astype(int)
+                    old_r_shoulder = np.round(old_shoulder_mid_raw + old_shoulder_line * 0.5).astype(int)
+                    cv2.line(preview, old_hip_mid, old_shoulder_mid, (255, 120, 40), 1, cv2.LINE_AA)
+                    cv2.line(preview, tuple(old_l_shoulder), tuple(old_r_shoulder), (255, 120, 40), 1, cv2.LINE_AA)
+            cv2.circle(preview, hip_mid, 5, (255, 80, 210), -1, cv2.LINE_AA)
+        cv2.putText(preview, self._rtm_pose_label(), (8, 42), cv2.FONT_HERSHEY_SIMPLEX, 0.46, (80, 235, 255), 1, cv2.LINE_AA)
 
-    @staticmethod
-    def _draw_rtm_pose_3d_panel(panel: np.ndarray, result: RtmPose3dResult) -> None:
+    def _draw_rtm_pose_3d_panel(self, panel: np.ndarray, result: RtmPose3dResult) -> None:
         keypoints = np.asarray(result.keypoints3d, dtype=np.float32)
         scores = np.asarray(result.scores, dtype=np.float32)
         h, w = panel.shape[:2]
@@ -1802,13 +2479,42 @@ class RealtimeAnalyzer:
         center = (min_xy + max_xy) * 0.5
         target = np.array([w * 0.52, h * 0.55], dtype=np.float32)
 
-        def pt(index: int) -> tuple[int, int]:
-            mapped = (projected[index] - center) * scale + target
+        def map_projected(point: np.ndarray) -> tuple[int, int]:
+            mapped = (point - center) * scale + target
             return int(np.clip(mapped[0], 8, w - 8)), int(np.clip(mapped[1], 56, h - 8))
+
+        def pt(index: int) -> tuple[int, int]:
+            return map_projected(projected[index])
 
         for start, end in RealtimeAnalyzer._rtm_pose_body_bones():
             if valid[start] and valid[end]:
                 cv2.line(panel, pt(start), pt(end), (245, 245, 245), 2, cv2.LINE_AA)
+        if valid[5] and valid[6] and valid[11] and valid[12]:
+            current_hip_mid = (projected[11] + projected[12]) * 0.5
+            current_shoulder_mid = (projected[5] + projected[6]) * 0.5
+            cv2.line(panel, map_projected(current_hip_mid), map_projected(current_shoulder_mid), (0, 220, 255), 2, cv2.LINE_AA)
+        previous = self._rtm_pose_3d_axis_reference_sample
+        if previous is not None:
+            _old_time, old_core, old_confidence = previous
+            old_hip_line = np.asarray(old_core["hip_line_3d"], dtype=np.float32)
+            old_shoulder_line = np.asarray(old_core["shoulder_line_3d"], dtype=np.float32)
+            old_pelvis = np.asarray(old_core["pelvis_3d"], dtype=np.float32) - origin
+            old_shoulder = np.asarray(old_core.get("shoulder_mid_3d", old_core["pelvis_3d"]), dtype=np.float32) - origin
+            if old_confidence >= 0.20 and float(np.linalg.norm(old_hip_line)) >= 0.08:
+                old_start_3d = old_pelvis - old_hip_line * 0.5
+                old_end_3d = old_pelvis + old_hip_line * 0.5
+                old_start = np.array([old_start_3d[0] + old_start_3d[2] * 0.36, old_start_3d[1] - old_start_3d[2] * 0.18])
+                old_end = np.array([old_end_3d[0] + old_end_3d[2] * 0.36, old_end_3d[1] - old_end_3d[2] * 0.18])
+                cv2.line(panel, map_projected(old_start), map_projected(old_end), (255, 120, 40), 2, cv2.LINE_AA)
+            if old_confidence >= 0.20 and float(np.linalg.norm(old_shoulder_line)) >= 0.08:
+                old_start_3d = old_shoulder - old_shoulder_line * 0.5
+                old_end_3d = old_shoulder + old_shoulder_line * 0.5
+                old_start = np.array([old_start_3d[0] + old_start_3d[2] * 0.36, old_start_3d[1] - old_start_3d[2] * 0.18])
+                old_end = np.array([old_end_3d[0] + old_end_3d[2] * 0.36, old_end_3d[1] - old_end_3d[2] * 0.18])
+                old_pelvis_2d = np.array([old_pelvis[0] + old_pelvis[2] * 0.36, old_pelvis[1] - old_pelvis[2] * 0.18])
+                old_shoulder_2d = np.array([old_shoulder[0] + old_shoulder[2] * 0.36, old_shoulder[1] - old_shoulder[2] * 0.18])
+                cv2.line(panel, map_projected(old_start), map_projected(old_end), (255, 120, 40), 1, cv2.LINE_AA)
+                cv2.line(panel, map_projected(old_pelvis_2d), map_projected(old_shoulder_2d), (255, 120, 40), 1, cv2.LINE_AA)
         for index in range(17):
             if not valid[index]:
                 continue
@@ -1839,10 +2545,11 @@ class RealtimeAnalyzer:
             cv2.rectangle(preview, (x, y), (x + w, y + h), (0, 190, 255), 1)
 
     @staticmethod
-    def _draw_preview(preview: np.ndarray, positions: dict[str, float], confidence: float) -> None:
+    def _draw_preview(preview: np.ndarray, positions: dict[str, float], confidence: float, draw_l0_line: bool = True) -> None:
         h, w = preview.shape[:2]
-        y = round(positions.get("L0", 0.5) * (h - 1))
-        cv2.line(preview, (0, y), (w, y), (80, 255, 80), 2)
+        if draw_l0_line:
+            y = round(positions.get("L0", 0.5) * (h - 1))
+            cv2.line(preview, (0, y), (w, y), (80, 255, 80), 2)
         labels = " ".join(f"{axis}:{value:.2f}" for axis, value in positions.items())
         cv2.putText(
             preview,

@@ -13,6 +13,10 @@ DEFAULT_AXIS_LIMITS = {axis: [0, 9999] for axis in AXES}
 DEFAULT_SIX_AXIS_GAINS = {"L1": 85, "L2": 60, "R0": 60, "R1": 38, "R2": 70}
 DEFAULT_SIX_AXIS_INVERTS = {"L1": False, "L2": False, "R0": False, "R1": False, "R2": False}
 DEFAULT_SIX_AXIS_TRAVEL_SCALES = {"L1": 1.0, "L2": 1.0, "R0": 1.0, "R1": 1.0, "R2": 1.0}
+DEFAULT_AXIS_OUTPUT_INVERTS = {"L1": False, "L2": False, "R0": False, "R1": False, "R2": False}
+RTM_POSE_2D_MODE = "RTM Pose 2D（推荐-舞蹈）"
+RTM_POSE_3D_MODE = "RTM Pose 3D（高延迟-舞蹈）"
+RTM_POSE_MODE = RTM_POSE_3D_MODE
 
 
 @dataclass
@@ -81,9 +85,22 @@ class AppConfig:
             f"{legacy_hybrid_name}（推荐）": "混合分析（推荐-非舞蹈）",
             "混合分析（推荐）": "混合分析（推荐-非舞蹈）",
             "Hybrid Analysis (Recommended)": "混合分析（推荐-非舞蹈）",
+            "Hybrid Analysis (Recommended - Non-Dance)": "混合分析（推荐-非舞蹈）",
+            "RTM Pose": RTM_POSE_3D_MODE,
+            "RTM Pose（推荐-舞蹈）": RTM_POSE_3D_MODE,
+            "RTM Pose 2D": RTM_POSE_2D_MODE,
+            "RTM Pose 2D（推荐-舞蹈）": RTM_POSE_2D_MODE,
+            "RTM Pose 2D (Recommended - Dance)": RTM_POSE_2D_MODE,
+            "RTM Pose 3D": RTM_POSE_3D_MODE,
+            "RTM Pose 3D（推荐-舞蹈）": RTM_POSE_3D_MODE,
+            "RTM Pose 3D（高延迟-舞蹈）": RTM_POSE_3D_MODE,
+            "RTM Pose (Recommended - Dance)": RTM_POSE_3D_MODE,
+            "RTM Pose 3D (Higher Latency - Dance)": RTM_POSE_3D_MODE,
         }
         if data.get("tracker_mode") in legacy_mode_labels:
             data["tracker_mode"] = legacy_mode_labels[data["tracker_mode"]]
+        if data.get("tracker_mode") == "混合分析（推荐-非舞蹈）" and bool(extra.get("rtm_pose_3d_enabled", False)):
+            data["tracker_mode"] = RTM_POSE_MODE
         if data.get("tracker_mode") == "混合分析（推荐-非舞蹈）" and not extra.get("hybrid_analysis_range_migration_v1"):
             data.setdefault("visual_stroke_scale", 0.72)
             data["response_curve"] = "Linear"
@@ -107,8 +124,18 @@ class AppConfig:
         extra.setdefault("pose_v2_l0_weight", 60)
         extra.setdefault("pose_v2_six_axis_weight", 60)
         extra.setdefault("rtm_pose_3d_enabled", False)
+        extra.setdefault("rtm_pose_2d_model_path", "")
         extra.setdefault("rtm_pose_3d_model_path", "")
         extra.setdefault("rtm_pose_3d_weight", 100)
+        extra.setdefault("rtm_hybrid_l0_enabled", False)
+        extra.setdefault("rtm_hybrid_l0_weight", 30)
+        extra.setdefault("rtm_pose_gpu_enabled", False)
+        extra.setdefault("rtm_pose_flow_enabled", True)
+        extra.setdefault("rtm_pose_kalman_enabled", True)
+        if not extra.get("rtm_pose_flow_kalman_default_on_v1"):
+            extra["rtm_pose_flow_enabled"] = True
+            extra["rtm_pose_kalman_enabled"] = True
+            extra["rtm_pose_flow_kalman_default_on_v1"] = True
         extra.setdefault("l0_travel_scale", data.get("global_travel_scale", 1.0))
         extra.setdefault("compression_latency", 0)
         extra.setdefault("show_more_settings", False)
@@ -116,6 +143,7 @@ class AppConfig:
         extra.setdefault("show_six_axis_tuning", False)
         extra.setdefault("show_rtm_pose_3d_settings", False)
         extra.setdefault("show_six_axis_travel_scales", False)
+        extra.setdefault("six_axis_travel_invert", False)
         extra.setdefault("six_axis_intensity", 65)
         extra.setdefault("six_axis_jitter_reduction", 55)
         extra.setdefault("six_axis_sensitivity_level", 5)
@@ -139,6 +167,13 @@ class AppConfig:
         extra["six_axis_travel_scales"] = {
             axis: max(0.0, min(3.0, float(stored_travel_scales.get(axis, DEFAULT_SIX_AXIS_TRAVEL_SCALES.get(axis, 1.0)))))
             for axis in DEFAULT_SIX_AXIS_TRAVEL_SCALES
+        }
+        stored_output_inverts = extra.get("axis_output_inverts")
+        if not isinstance(stored_output_inverts, dict):
+            stored_output_inverts = {}
+        extra["axis_output_inverts"] = {
+            axis: bool(stored_output_inverts.get(axis, DEFAULT_AXIS_OUTPUT_INVERTS.get(axis, False)))
+            for axis in DEFAULT_AXIS_OUTPUT_INVERTS
         }
         if not extra.get("six_axis_soft_default_v1"):
             if int(extra.get("six_axis_intensity", 65)) > 75:
@@ -177,8 +212,15 @@ class AppConfig:
             extra["pose_v2_l0_analysis"] = False
             extra["pose_v2_six_axis_analysis"] = False
         extra["rtm_pose_3d_enabled"] = bool(extra.get("rtm_pose_3d_enabled", False))
+        extra["rtm_pose_2d_model_path"] = str(extra.get("rtm_pose_2d_model_path", ""))
         extra["rtm_pose_3d_model_path"] = str(extra.get("rtm_pose_3d_model_path", ""))
         extra["rtm_pose_3d_weight"] = max(0, min(100, int(extra.get("rtm_pose_3d_weight", 100))))
+        extra["rtm_hybrid_l0_enabled"] = bool(extra.get("rtm_hybrid_l0_enabled", False))
+        extra["rtm_hybrid_l0_weight"] = max(1, min(100, int(extra.get("rtm_hybrid_l0_weight", 30))))
+        extra["rtm_pose_gpu_enabled"] = bool(extra.get("rtm_pose_gpu_enabled", False))
+        extra["rtm_pose_flow_enabled"] = bool(extra.get("rtm_pose_flow_enabled", False))
+        extra["rtm_pose_kalman_enabled"] = bool(extra.get("rtm_pose_kalman_enabled", False))
+        extra["six_axis_travel_invert"] = bool(extra.get("six_axis_travel_invert", False))
         extra["l0_travel_scale"] = max(0.0, min(3.0, float(extra.get("l0_travel_scale", data.get("global_travel_scale", 1.0)))))
         extra["compression_latency"] = max(-5, min(5, int(extra.get("compression_latency", 0))))
         data["global_travel_scale"] = max(0.0, min(3.0, float(data.get("global_travel_scale", 1.0))))

@@ -1,6 +1,6 @@
 # OSR6 Realtime Screen TCode User Manual
 
-Current version: `1.1.0`. For version history, see `version log` / `版本日志.txt` in the app folder.
+Current version: `1.1.2`. For version history, see `version log` / `版本日志.txt` in the app folder.
 
 > **Adults only: this software is intended for adults. Minors are prohibited.**
 >
@@ -114,6 +114,8 @@ If auxiliary axes are too weak, widen their per-axis limits slightly, raise `Ove
 Hover over buttons, sliders, and parameter labels to see short tooltips explaining what each item does.
 
 `Show More Settings` contains less common controls such as input source, audio, region coordinates, and advanced analysis parameters. For normal use, you can keep it collapsed.
+
+In RTM Pose 2D/3D dance modes, `RTM Optical Flow Assist` and `RTM Kalman Fusion` are enabled by default. Optical flow tracks the existing skeleton keypoints between model detections, and Kalman fusion uses those tracked points as prediction plus RTM detections as correction. `RTM GPU Acceleration` remains off by default; when enabled, the app tries CUDA and falls back to CPU if CUDA is unavailable.
 
 ## Starting Realtime Output
 

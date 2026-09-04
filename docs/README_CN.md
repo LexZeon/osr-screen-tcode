@@ -1,4 +1,4 @@
-# OSR6 Realtime Screen TCode v1.1.0
+# OSR6 Realtime Screen TCode v1.1.2
 
 
 **成年人使用提示：本项目面向成年人使用，未成年禁止入内。**
