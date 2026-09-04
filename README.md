@@ -100,7 +100,7 @@ This project was built with AI-assisted vibe coding. It is shared directly as a 
 
 This project learned from public open-source work around OSR/TCode tooling, realtime visual analysis, funscript generation, and simulator-style preview ideas, including projects such as FunGen, PoseFunscripter, and nb-3d-simulator. Please contact the maintainer if an acknowledgement or license notice should be corrected.
 
-Special thanks to **DK** and **1327** for technical guidance.
+Special thanks to **DK** and **机械纪元** for technical guidance.
 
 ## Contact
 
@@ -210,7 +210,7 @@ RTM Pose 2D 也可以不启用 GPU 加速，推理会运行在 Intel Ultra 9 CPU
 
 本项目参考和学习了公开开源社区里 OSR/TCode、实时视觉分析、funscript 生成和模拟预览相关思路，包括 FunGen、PoseFunscripter、nb-3d-simulator 等项目。如有鸣谢或许可证信息需要修正，请联系维护者。
 
-特别感谢 **DK** 和 **1327** 提供技术指导。
+特别感谢 **DK** 和 **机械纪元** 提供技术指导。
 
 ## 联系
 
