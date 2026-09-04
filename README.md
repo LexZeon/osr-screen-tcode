@@ -56,6 +56,7 @@ RTM Pose 2D can also run without GPU acceleration. This mode keeps inference on 
 - Chinese quick start: `简易教程.md`
 - Full English manual: `User_Manual_EN.md`
 - Full Chinese manual: `用户使用手册.md`
+- AI prompting guide for continued development: `AI_Prompting_Guide.md`
 
 Extract the whole Windows zip before running. Do not run the exe directly from inside the zip preview window.
 
@@ -166,6 +167,7 @@ RTM Pose 2D 也可以不启用 GPU 加速，推理会运行在 Intel Ultra 9 CPU
 - 中文简易教程：`简易教程.md`
 - 英文完整手册：`User_Manual_EN.md`
 - 中文完整手册：`用户使用手册.md`
+- 后续 AI 开发提示词指南：`AI_Prompting_Guide.md`
 
 请先完整解压 Windows 压缩包，再运行软件。不要直接在压缩包预览窗口里双击 exe。
 
