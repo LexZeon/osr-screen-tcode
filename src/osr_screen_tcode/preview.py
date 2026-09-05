@@ -8,6 +8,7 @@ from importlib.resources import files
 from pathlib import Path
 
 from .config import APP_DIR
+from . import APP_NAME, __version__
 
 
 class PreviewBridge:
@@ -20,6 +21,24 @@ class PreviewBridge:
         self._error: BaseException | None = None
         self.port = 0
         self.url = ""
+        self._device_context = self._make_device_context("SR6/OSR6", False, "en")
+
+    @staticmethod
+    def _make_device_context(device: str, mismatch: bool, language: str) -> dict:
+        note = ("预览形状与实际设备不同；展示映射前的受限轴指令，不是硬件位置反馈。" if mismatch else
+                "SR6/OSR6 参考模型；展示受限轴指令，不是硬件位置反馈。") if language == "zh" else (
+                "Preview shape differs from the actual device. Limited axes before device mapping, not hardware feedback." if mismatch else
+                "SR6/OSR6 reference model. Limited axis commands, not hardware position feedback.")
+        return {"device": device, "note": note, "version": __version__, "app": APP_NAME}
+
+    def set_device_context(self, device: str, mismatch: bool, language: str) -> None:
+        self._device_context = self._make_device_context(device, mismatch, language)
+        if self.is_running and self._loop is not None:
+            payload = self._context_payload()
+            self._loop.call_soon_threadsafe(lambda: asyncio.create_task(self._broadcast(payload)))
+
+    def _context_payload(self) -> str:
+        return json.dumps({"type": "event", "name": "device_context", "data": self._device_context})
 
     @property
     def is_running(self) -> bool:
@@ -64,6 +83,7 @@ class PreviewBridge:
         html = source.read_text(encoding="utf-8")
         html = html.replace("ws://localhost:8080/ofs", self.url)
         html = html.replace("ws://localhost:9090", self.url)
+        html = html.replace("__OSR_PREVIEW_CONTEXT__", json.dumps(self._device_context).replace("<", "\\u003c"))
         APP_DIR.mkdir(parents=True, exist_ok=True)
         preview_path = APP_DIR / "osr6_3d_preview.html"
         preview_path.write_text(html, encoding="utf-8")
@@ -111,6 +131,7 @@ class PreviewBridge:
         async def handler(websocket, *_args) -> None:
             self._clients.add(websocket)
             try:
+                await websocket.send(self._context_payload())
                 async for message in websocket:
                     await self._handle_message(websocket, message)
             finally:

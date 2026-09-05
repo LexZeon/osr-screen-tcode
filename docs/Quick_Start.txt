@@ -1,5 +1,7 @@
 Adults only: this project is intended for adults. Minors are prohibited.
 
+> **SR6/OSR6 Realtime Screen TCode High Hardware Compatibility v2.0.0-test.3:** BETA prerelease with Windows portable and source ZIPs. Extract the entire Windows folder and run `Start.cmd`; Python is not required for the portable build. Models and optional GPU runtimes are downloaded in-app, not bundled. Device measurement/sweep instructions concern native TCode hardware; new experimental hardware and custom bindings are described in [Device Compatibility](Device_Compatibility_2.0.md). For optional GPU installation and current changes, see the [main README](../README.md).
+
 IMPORTANT SIX-AXIS WARNING:
 Six-axis mode is only recommended when the video/screen has good lighting, a clear main subject, and a clean selected region. If the picture is unclear, use L0 or Log only preview first.
 
@@ -8,7 +10,7 @@ Before your first real session, use measurement mode to save upper and lower lim
 Tip: hover your mouse over buttons, sliders, and parameter names. Small tooltips explain what each item does.
 
 With a device:
-1. Double-click OSR6-Realtime-Screen.exe, or double-click Start.cmd.
+1. Double-click SR6-OSR6-Realtime-Screen-TCode-High-Hardware-Compatibility.exe, or double-click Start.cmd.
 2. On first run, click the restore-defaults button once and confirm.
 3. In the left device panel, choose USB serial or BLE.
 4. Click connect and confirm the app shows a connected status.

@@ -33,6 +33,10 @@ def _configure_windows_dpi_awareness() -> None:
 
 _configure_windows_dpi_awareness()
 
+from .gpu_runtime import activate_local_runtime
+
+activate_local_runtime()
+
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
@@ -42,7 +46,7 @@ from PIL import Image, ImageTk
 
 from .analyzer import SIX_AXES, RealtimeAnalyzer
 from .audio import AudioAnalyzer, AudioCapture, list_audio_devices
-from . import __version__
+from . import APP_NAME, __version__
 from .capture import ScreenCapture, ScreenRegion, virtual_screen_bounds
 from .config import (
     AppConfig,
@@ -55,6 +59,10 @@ from .config import (
     RTM_POSE_MODE,
 )
 from .preview import PreviewBridge
+from .device_controls import DeviceControls
+from .gpu_controls import GpuControls
+from .ui_widgets import WideCombobox, monitor_workarea
+from .device_backends import IntifaceSink, NATIVE_FAMILIES
 from .recorder import MultiAxisFunscriptRecorder
 from .sinks import (
     BleSink,
@@ -165,7 +173,7 @@ UI_TEXT_EN = {
     "输出": "Output",
     "串口": "Serial Port",
     "波特率": "Baudrate",
-    "自动检测 OSR6": "Auto Detect OSR6",
+    "自动检测 SR6/OSR6": "Auto Detect SR6/OSR6",
     "BLE 名称": "BLE Name",
     "扫描": "Scan",
     "BLE 地址": "BLE Address",
@@ -179,7 +187,7 @@ UI_TEXT_EN = {
     "居中": "Center",
     "中等测试": "Medium Test",
     "上下全幅测试": "Full L0 Test",
-    "OSR6 六轴轻测": "OSR6 Six-Axis Test",
+    "SR6/OSR6 六轴轻测": "SR6/OSR6 Six-Axis Test",
     "恢复所有默认设置": "Restore Defaults",
     "开始实时输出": "Start Realtime Output",
     "显示预览": "Show Preview",
@@ -340,8 +348,8 @@ UI_TEXT_EN = {
     "上下全幅测试完成，已回中": "Full L0 test complete, centered",
     "上下全幅测试失败": "Full L0 test failed",
     "请先停止实时输出，再做六轴轻测。": "Stop realtime output before running the six-axis test.",
-    "OSR6 六轴轻测中": "OSR6 six-axis test running",
-    "OSR6 六轴轻测完成，已回中": "OSR6 six-axis test complete, centered",
+    "SR6/OSR6 六轴轻测中": "SR6/OSR6 six-axis test running",
+    "SR6/OSR6 六轴轻测完成，已回中": "SR6/OSR6 six-axis test complete, centered",
     "六轴轻测失败": "Six-axis test failed",
     "已应用安全预设": "Applied safe preset",
     "已应用标准预设": "Applied standard preset",
@@ -378,12 +386,12 @@ TOOLTIPS = {
     "Six Axis：六轴": "同时输出 L0/L1/L2/R0/R1/R2。",
     "确认开始": "按当前选择的模式开始实时输出。",
     "取消": "关闭当前确认窗口，不启动输出。",
-    "连接设备": "选择 USB 串口或 BLE，并连接 OSR6 控制器。",
+    "连接设备": "选择 USB 串口或 BLE，并连接 SR6/OSR6 控制器。",
     "输出": "选择只看日志、USB 串口或 BLE UART 输出。",
     "串口": "USB 或蓝牙串口号，例如 COMx。",
     "刷新": "重新扫描电脑上的串口或声音设备。",
     "波特率": "串口通信速度；OSR 常见为 115200。",
-    "自动检测 OSR6": "从可用串口里猜测最可能的 OSR6 控制口。",
+    "自动检测 SR6/OSR6": "从可用串口里猜测最可能的 SR6/OSR6 控制口。",
     "BLE 名称": "按蓝牙设备名称过滤扫描结果。",
     "扫描": "扫描附近 BLE UART 设备。",
     "BLE 地址": "BLE 设备地址，扫描后会自动填入。",
@@ -397,7 +405,7 @@ TOOLTIPS = {
     "居中": "发送回中命令。",
     "中等测试": "发送较小幅度的安全测试动作。",
     "上下全幅测试": "只测试 L0 上下轴的完整范围。",
-    "OSR6 六轴轻测": "逐个轻微测试 L0/L1/L2/R0/R1/R2。",
+    "SR6/OSR6 六轴轻测": "逐个轻微测试 L0/L1/L2/R0/R1/R2。",
     "开始实时输出": "开始读取输入来源并控制设备。",
     "恢复所有默认设置": "把所有参数恢复到新安装时的默认值；点击后会先二次确认。",
     "显示预览": "打开 3D 预览；显示的是已经过上下限、速度和平滑限制后的真实输出。",
@@ -487,7 +495,7 @@ TOOLTIPS = {
     "基础分析 RTM 权重": "RTM Pose 是独立舞蹈模式，不接入混合分析权重。",
     "混合分析 L0 权重": "勾选后才会额外运行混合分析，只把它的 L0 按这个权重混入 RTM；不勾选时 RTM 保持 100% 模型并节省算力。",
     "当前本模型分析权重": "显示当前 RTM 模型在 L0 中占多少；未勾选混合分析时为 100%。",
-    "RTM GPU 加速": "默认关闭。勾选后尝试用 CUDA GPU 运行 RTM 模型；如果本机没有 CUDA 推理环境，会自动回落 CPU。",
+    "RTM GPU 加速": "默认关闭。CUDA 适用于 NVIDIA，运行库较大；DirectML 支持 DirectX 12 的 AMD/NVIDIA/Intel，运行库较小。两者使用同一模型，准确度需同视频对比，不保证 CUDA 必然更准确。后台检测/安装，失败回退 CPU；安装或切换运行库需重启。",
     "RTM 光流辅助": "默认开启。用上一帧骨架关键点在新画面里做轻量追踪，补足两次模型检测之间的运动。",
     "RTM 卡尔曼融合": "默认开启。用光流作为预测，用 RTM 检测点作为观测进行融合，减少关键点跳动。",
     "反转": "反转这个输出方向；只改变最终轴方向，不改变识别算法。",
@@ -529,12 +537,12 @@ TOOLTIPS_EN = {
     "Six Axis：六轴": "Output L0/L1/L2/R0/R1/R2 together.",
     "确认开始": "Start realtime output with the selected settings.",
     "取消": "Close this dialog without starting output.",
-    "连接设备": "Choose USB serial or BLE, then connect the OSR6 controller.",
+    "连接设备": "Choose USB serial or BLE, then connect the SR6/OSR6 controller.",
     "输出": "Choose log-only, USB serial, or BLE UART output.",
     "串口": "USB or Bluetooth serial port, such as COMx.",
     "刷新": "Scan serial or audio devices again.",
     "波特率": "Serial speed. OSR devices commonly use 115200.",
-    "自动检测 OSR6": "Pick the serial port that most likely belongs to OSR6.",
+    "自动检测 SR6/OSR6": "Pick the serial port that most likely belongs to SR6/OSR6.",
     "BLE 名称": "Filter BLE scan results by device name.",
     "扫描": "Scan nearby BLE UART devices.",
     "BLE 地址": "BLE device address, filled after scanning.",
@@ -548,7 +556,7 @@ TOOLTIPS_EN = {
     "居中": "Send a center command.",
     "中等测试": "Send a small safe test motion.",
     "上下全幅测试": "Test the full L0 vertical range only.",
-    "OSR6 六轴轻测": "Lightly test L0/L1/L2/R0/R1/R2 one by one.",
+    "SR6/OSR6 六轴轻测": "Lightly test L0/L1/L2/R0/R1/R2 one by one.",
     "开始实时输出": "Start reading the selected input and controlling the device.",
     "恢复所有默认设置": "Restore factory defaults after a confirmation prompt.",
     "显示预览": "Open the 3D preview. It shows the real output after limits, speed, and smoothing.",
@@ -638,7 +646,7 @@ TOOLTIPS_EN = {
     "基础分析 RTM 权重": "RTM Pose is a separate dance mode and does not use Hybrid Analysis weighting.",
     "混合分析 L0 权重": "When checked, Hybrid Analysis runs only for L0 and is mixed into RTM by this weight. When unchecked, RTM stays 100% model-driven and saves CPU.",
     "当前本模型分析权重": "Shows how much RTM model analysis currently contributes to L0. It is 100% when Hybrid L0 is unchecked.",
-    "RTM GPU 加速": "Off by default. When checked, RTM Pose tries CUDA GPU inference; if CUDA is unavailable, it automatically falls back to CPU.",
+    "RTM GPU 加速": "Off by default. CUDA (NVIDIA) has larger runtime libraries; DirectML (DirectX 12 AMD/NVIDIA/Intel) has smaller ones. Both use the same model; compare the same video before claiming an accuracy advantage. Background checks/install; CPU fallback on failure. Restart after runtime installation or switching.",
     "RTM 光流辅助": "On by default. Tracks the previous skeleton keypoints in the next frame to fill motion between model detections.",
     "RTM 卡尔曼融合": "On by default. Uses optical flow as prediction and RTM detections as observations to reduce keypoint jitter.",
     "反转": "Invert this output direction. It changes the final axis direction only, not the recognition algorithm.",
@@ -720,7 +728,7 @@ class Tooltip:
             self.after_id = None
 
 
-class OsrScreenApp(tk.Tk):
+class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
     def __init__(
         self,
         auto_connect: bool = False,
@@ -730,7 +738,7 @@ class OsrScreenApp(tk.Tk):
     ) -> None:
         super().__init__()
         self.ui_language = "en"
-        self.title(f"OSR6 Realtime Screen TCode v{__version__}")
+        self.title(f"{APP_NAME} v{__version__}")
         self.geometry("1040x700")
         self.minsize(960, 620)
         if enforce_age_gate and not os.environ.get("OSR_SCREEN_TCODE_SKIP_AGE_GATE"):
@@ -740,9 +748,11 @@ class OsrScreenApp(tk.Tk):
         self.ui_language = self._choose_ui_language(ui_language)
         self.config_model.extra["ui_language"] = self.ui_language
         self.frame_queue: queue.Queue[dict[str, object]] = queue.Queue(maxsize=3)
+        self.control_queue: queue.SimpleQueue[dict[str, object]] = queue.SimpleQueue()
         self.stop_event = threading.Event()
         self.worker: threading.Thread | None = None
         self.sink = LogSink()
+        self._output_context = threading.local()
         self.connected = False
         self._connecting = False
         self._connect_worker: threading.Thread | None = None
@@ -766,10 +776,12 @@ class OsrScreenApp(tk.Tk):
             self.config_model.extra["play_preset_initialized_v1"] = True
         self.refresh_ports()
         self.refresh_audio_devices()
-        if self.config_model.serial_port:
+        if self._family_id() not in NATIVE_FAMILIES:
+            pass
+        elif self.config_model.serial_port:
             self.serial_port.set(self.config_model.serial_port)
             self.refresh_ports()
-        else:
+        elif self.config_model.last_sink in ("Serial COM", "USB Serial"):
             self.autodetect_device()
         self.after(50, self._poll_worker)
         self.after(400, self._startup_actions)
@@ -1089,34 +1101,6 @@ class OsrScreenApp(tk.Tk):
         messagebox.showwarning(self._t("模型不匹配"), text)
         return False
 
-    def _rtm_pose_cuda_available(self) -> bool:
-        try:
-            import onnxruntime as ort
-
-            return "CUDAExecutionProvider" in set(ort.get_available_providers())
-        except Exception:
-            return False
-
-    def _rtm_pose_gpu_status_message(self, enabled: bool) -> str:
-        if not enabled:
-            return self._t("RTM GPU 状态：CPU")
-        if self._rtm_pose_cuda_available():
-            return self._t("RTM GPU 状态：CUDA 可用")
-        return self._t("RTM GPU 状态：未检测到 CUDA，自动使用 CPU")
-
-    def _schedule_rtm_pose_gpu_status_refresh(self) -> None:
-        if not hasattr(self, "rtm_pose_gpu_status_text"):
-            return
-        if not self.rtm_pose_gpu_enabled.get():
-            self.rtm_pose_gpu_status_text.set(self._rtm_pose_gpu_status_message(False))
-            return
-        self.rtm_pose_gpu_status_text.set(self._t("RTM GPU 状态：检测中..."))
-        self.after(25, self._refresh_rtm_pose_gpu_status)
-
-    def _refresh_rtm_pose_gpu_status(self) -> None:
-        if hasattr(self, "rtm_pose_gpu_status_text"):
-            self.rtm_pose_gpu_status_text.set(self._rtm_pose_gpu_status_message(self.rtm_pose_gpu_enabled.get()))
-
     def _running_analysis_label(self) -> str:
         mode = self._tracker_display(self._tracker_internal(self.tracker_mode.get()))
         if self.ui_language == "en":
@@ -1242,7 +1226,9 @@ class OsrScreenApp(tk.Tk):
         self.rtm_model_download_button_text = tk.StringVar(value=self._t("下载/自动检测模型"))
         self.rtm_model_download_status_text = tk.StringVar(value="")
         self.rtm_pose_gpu_enabled = tk.BooleanVar(value=bool(cfg.extra.get("rtm_pose_gpu_enabled", False)))
+        self.rtm_pose_gpu_backend = tk.StringVar(value=cfg.extra.get("rtm_pose_gpu_backend", "cuda"))
         self.rtm_pose_gpu_status_text = tk.StringVar()
+        self._build_gpu_state()
         self.rtm_pose_flow_enabled = tk.BooleanVar(value=bool(cfg.extra.get("rtm_pose_flow_enabled", True)))
         self.rtm_pose_kalman_enabled = tk.BooleanVar(value=bool(cfg.extra.get("rtm_pose_kalman_enabled", True)))
         self._rtm_pose_3d_downloading = False
@@ -1288,7 +1274,7 @@ class OsrScreenApp(tk.Tk):
         self.six_axis_sensitivity_level = tk.IntVar(value=int(cfg.extra.get("six_axis_sensitivity_level", 5)))
         self.start_button_text = tk.StringVar(value=self._t("开始实时输出"))
         self.show_more_settings = tk.BooleanVar(value=bool(cfg.extra.get("show_more_settings", False)))
-        self.show_measurement_limits = tk.BooleanVar(value=bool(cfg.extra.get("show_measurement_limits", False)))
+        self.show_measurement_limits = tk.BooleanVar(value=bool(cfg.extra.get("show_measurement_limits", True)))
         self.show_six_axis_tuning = tk.BooleanVar(value=bool(cfg.extra.get("show_six_axis_tuning", False)))
         self.show_rtm_pose_3d_settings = tk.BooleanVar(value=bool(cfg.extra.get("show_rtm_pose_3d_settings", False)))
         self.show_six_axis_travel_scales = tk.BooleanVar(value=bool(cfg.extra.get("show_six_axis_travel_scales", False)))
@@ -1314,6 +1300,7 @@ class OsrScreenApp(tk.Tk):
         self.axis = tk.StringVar(value=cfg.axis)
         self.interval_ms = tk.IntVar(value=cfg.output_interval_ms)
         self.sink_type = tk.StringVar(value=cfg.last_sink)
+        self._build_device_vars()
         self.serial_port = tk.StringVar(value=cfg.serial_port)
         self.baudrate = tk.IntVar(value=cfg.baudrate)
         self.ble_name = tk.StringVar(value=cfg.ble_name)
@@ -1364,9 +1351,10 @@ class OsrScreenApp(tk.Tk):
         self.show_rtm_pose_3d_settings.trace_add("write", lambda *_args: self._refresh_rtm_pose_3d_settings())
         self.show_six_axis_travel_scales.trace_add("write", lambda *_args: self._refresh_six_axis_travel_scales())
         self.rtm_pose_gpu_enabled.trace_add("write", lambda *_args: self._schedule_rtm_pose_gpu_status_refresh())
+        self.rtm_pose_gpu_backend.trace_add("write", lambda *_args: self._on_gpu_backend_changed())
         self.tracker_mode.trace_add("write", lambda *_args: self._on_tracker_mode_changed())
         self.rtm_pose_model_path.trace_add("write", lambda *_args: self._store_active_rtm_pose_model_path())
-        self.sink_type.trace_add("write", lambda *_args: self._refresh_ble_settings())
+        self.sink_type.trace_add("write", self._on_native_output_changed)
         self.pose_l0_analysis.trace_add("write", lambda *_args: self._sync_pose_mode_selection("v1"))
         self.pose_six_axis_analysis.trace_add("write", lambda *_args: self._sync_pose_mode_selection("v1"))
         self.pose_v2_dance_six_axis.trace_add("write", lambda *_args: self._sync_pose_mode_selection("v2_mode"))
@@ -1457,6 +1445,7 @@ class OsrScreenApp(tk.Tk):
             self.rtm_hybrid_l0_enabled,
             self.rtm_hybrid_l0_weight,
             self.rtm_pose_gpu_enabled,
+            self.rtm_pose_gpu_backend,
             self.rtm_pose_flow_enabled,
             self.rtm_pose_kalman_enabled,
             self.tracker_mode,
@@ -1498,6 +1487,7 @@ class OsrScreenApp(tk.Tk):
             self.measure_live,
         ]
         variables.extend(self.axis_min_vars.values())
+        variables.extend(self._device_config_variables())
         variables.extend(self.axis_max_vars.values())
         variables.extend(self.six_axis_travel_scale_vars.values())
         variables.extend(self.axis_output_invert_vars.values())
@@ -1598,10 +1588,18 @@ class OsrScreenApp(tk.Tk):
         self._configure_style()
         self.columnconfigure(0, weight=0)
         self.columnconfigure(1, weight=1)
-        self.rowconfigure(0, weight=1)
+        self.rowconfigure(1, weight=1)
+
+        header = ttk.Frame(self, padding=(12, 6))
+        header.grid(row=0, column=0, columnspan=2, sticky="ew")
+        header.columnconfigure(0, weight=1)
+        product_label = ttk.Label(header, text=f"{APP_NAME}  v{__version__}", wraplength=900)
+        product_label.grid(row=0, column=0, sticky="ew")
+        header.bind("<Configure>", lambda event: product_label.configure(wraplength=max(240, event.width - 24)))
+        ttk.Label(header, text=self._dt("合作与侵权联系：aivnailedeng@gmail.com", "Cooperation / copyright: aivnailedeng@gmail.com")).grid(row=1, column=0, sticky="w")
 
         sidebar_shell = ttk.Frame(self)
-        sidebar_shell.grid(row=0, column=0, sticky="ns")
+        sidebar_shell.grid(row=1, column=0, sticky="ns")
         sidebar_shell.rowconfigure(0, weight=1)
         sidebar_shell.columnconfigure(0, weight=1)
         sidebar_canvas = tk.Canvas(sidebar_shell, width=340, highlightthickness=0)
@@ -1628,7 +1626,7 @@ class OsrScreenApp(tk.Tk):
         sidebar_canvas.bind("<Leave>", lambda _event: sidebar_canvas.unbind_all("<MouseWheel>"))
 
         preview = ttk.Frame(self, padding=(0, 12, 12, 12))
-        preview.grid(row=0, column=1, sticky="nsew")
+        preview.grid(row=1, column=1, sticky="nsew")
         preview.rowconfigure(1, weight=1, minsize=420)
         preview.columnconfigure(0, weight=1, minsize=650)
 
@@ -1937,6 +1935,20 @@ class OsrScreenApp(tk.Tk):
             self.ble_settings_frame.grid()
         else:
             self.ble_settings_frame.grid_remove()
+        if hasattr(self, "serial_settings_frame"):
+            if self.sink_type.get() in ("Serial COM", "USB Serial"):
+                self.serial_settings_frame.grid()
+            else:
+                self.serial_settings_frame.grid_remove()
+
+    def _on_native_output_changed(self, *_args) -> None:
+        if not hasattr(self, "native_connection_frame"):
+            return
+        if self._family_id() in NATIVE_FAMILIES and (self.connected or self._connecting):
+            self.stop()
+            self.disconnect_sink()
+        self._refresh_ble_settings()
+        self._refresh_device_controls()
 
     def _manual_test_controls(self, parent: ttk.Frame, row: int) -> int:
         ttk.Button(parent, text="居中", command=self.send_center).grid(row=row, column=0, sticky="ew")
@@ -1946,7 +1958,7 @@ class OsrScreenApp(tk.Tk):
             row=row, column=0, columnspan=3, sticky="ew", pady=(4, 0)
         )
         row += 1
-        ttk.Button(parent, text="OSR6 六轴轻测", command=self.send_six_axis_test).grid(
+        ttk.Button(parent, text="SR6/OSR6 六轴轻测", command=self.send_six_axis_test).grid(
             row=row, column=0, columnspan=3, sticky="ew", pady=(4, 8)
         )
         return row + 1
@@ -2001,7 +2013,7 @@ class OsrScreenApp(tk.Tk):
     def _source_controls(self, parent: ttk.Frame, row: int) -> int:
         row = self._section(parent, "输入来源", row)
         ttk.Label(parent, text="来源").grid(row=row, column=0, sticky="w", pady=2)
-        ttk.Combobox(
+        WideCombobox(
             parent,
             textvariable=self.source_mode,
             values=("Screen", "Video File", "Audio Only"),
@@ -2021,7 +2033,7 @@ class OsrScreenApp(tk.Tk):
     def _audio_controls(self, parent: ttk.Frame, row: int) -> int:
         row = self._section(parent, "声音监听（PMV）", row)
         ttk.Label(parent, text="声音分析").grid(row=row, column=0, sticky="w", pady=2)
-        ttk.Combobox(
+        WideCombobox(
             parent,
             textvariable=self.audio_mode,
             values=("Audio Level", "Dynamic Accent", "Beat Pulse"),
@@ -2030,7 +2042,7 @@ class OsrScreenApp(tk.Tk):
         ).grid(row=row, column=1, columnspan=2, sticky="ew", pady=2)
         row += 1
         ttk.Label(parent, text="声音设备").grid(row=row, column=0, sticky="w", pady=2)
-        self.audio_device_combo = ttk.Combobox(parent, textvariable=self.audio_device, values=(), width=14)
+        self.audio_device_combo = WideCombobox(parent, textvariable=self.audio_device, values=(), width=14)
         self.audio_device_combo.grid(row=row, column=1, sticky="ew", pady=2)
         ttk.Button(parent, text="刷新", command=self.refresh_audio_devices).grid(row=row, column=2, sticky="ew", padx=(4, 0))
         row += 1
@@ -2048,7 +2060,7 @@ class OsrScreenApp(tk.Tk):
     def _tracking_controls(self, parent: ttk.Frame, row: int) -> int:
         row = self._section(parent, "高级参数", row)
         ttk.Label(parent, text="输出模式").grid(row=row, column=0, sticky="w", pady=2)
-        ttk.Combobox(
+        WideCombobox(
             parent,
             textvariable=self.output_mode,
             values=("L0 Only", "Six Axis"),
@@ -2057,7 +2069,7 @@ class OsrScreenApp(tk.Tk):
         ).grid(row=row, column=1, columnspan=2, sticky="ew", pady=2)
         row += 1
         ttk.Label(parent, text="分析模式").grid(row=row, column=0, sticky="w", pady=2)
-        ttk.Combobox(
+        WideCombobox(
             parent,
             textvariable=self.tracker_mode,
             values=self._tracker_choices(),
@@ -2111,7 +2123,7 @@ class OsrScreenApp(tk.Tk):
         )
         row += 1
         ttk.Label(parent, text="响应曲线").grid(row=row, column=0, sticky="w", pady=2)
-        ttk.Combobox(
+        WideCombobox(
             parent,
             textvariable=self.response_curve,
             values=("Linear", "Soft", "Sharp", "Ease In"),
@@ -2120,7 +2132,7 @@ class OsrScreenApp(tk.Tk):
         ).grid(row=row, column=1, columnspan=2, sticky="ew", pady=2)
         row += 1
         ttk.Label(parent, text="空闲").grid(row=row, column=0, sticky="w", pady=2)
-        ttk.Combobox(
+        WideCombobox(
             parent,
             textvariable=self.idle_mode,
             values=("Hold", "Center"),
@@ -2144,28 +2156,37 @@ class OsrScreenApp(tk.Tk):
             row=row, column=0, columnspan=3, sticky="ew", pady=(0, 4)
         )
         row += 1
+        row = self._device_selector_controls(parent, row)
+        connection_parent, connection_row = parent, row + 1
+        self.native_connection_frame = ttk.Frame(parent)
+        self.native_connection_frame.columnconfigure(1, weight=1)
+        self.native_connection_frame.grid(row=row, column=0, columnspan=3, sticky="ew")
+        parent, row = self.native_connection_frame, 0
         ttk.Label(parent, text="输出").grid(row=row, column=0, sticky="w", pady=2)
-        ttk.Combobox(
+        self.native_output_combo = WideCombobox(
             parent,
             textvariable=self.sink_type,
             values=("Log only", "Serial COM", "BLE UART"),
             state="readonly",
             width=14,
-        ).grid(row=row, column=1, columnspan=2, sticky="ew", pady=2)
-        row += 1
-
+        )
+        self.native_output_combo.grid(row=row, column=1, columnspan=2, sticky="ew", pady=2)
+        self.serial_settings_frame = ttk.Frame(parent)
+        self.serial_settings_frame.columnconfigure(1, weight=1)
+        self.serial_settings_frame.grid(row=1, column=0, columnspan=3, sticky="ew")
+        parent, row = self.serial_settings_frame, 0
         ttk.Label(parent, text="串口").grid(row=row, column=0, sticky="w", pady=2)
-        self.port_combo = ttk.Combobox(parent, textvariable=self.serial_port, values=(), width=14)
+        self.port_combo = WideCombobox(parent, textvariable=self.serial_port, values=(), width=14)
         self.port_combo.grid(row=row, column=1, sticky="ew", pady=2)
         ttk.Button(parent, text="刷新", command=self.refresh_ports).grid(row=row, column=2, sticky="ew", padx=(4, 0))
         row += 1
         row = self._entry(parent, "波特率", self.baudrate, row)
-        ttk.Button(parent, text="自动检测 OSR6", command=self.autodetect_device).grid(
+        ttk.Button(parent, text="自动检测 SR6/OSR6", command=self.autodetect_device).grid(
             row=row, column=0, columnspan=3, sticky="ew", pady=(4, 0)
         )
         row += 1
 
-        self.ble_settings_frame = ttk.Frame(parent)
+        self.ble_settings_frame = ttk.Frame(self.native_connection_frame)
         self.ble_settings_frame.columnconfigure(1, weight=1)
         ble_row = 0
         ttk.Label(self.ble_settings_frame, text="BLE 名称").grid(row=ble_row, column=0, sticky="w", pady=2)
@@ -2177,18 +2198,21 @@ class OsrScreenApp(tk.Tk):
         ble_row += 1
         ttk.Label(self.ble_settings_frame, text="写入 UUID").grid(row=ble_row, column=0, sticky="w", pady=2)
         ttk.Entry(self.ble_settings_frame, textvariable=self.ble_write_uuid, width=18).grid(row=ble_row, column=1, columnspan=2, sticky="ew", pady=2)
-        self.ble_settings_frame.grid(row=row, column=0, columnspan=3, sticky="ew")
-        row += 1
+        self.ble_settings_frame.grid(row=2, column=0, columnspan=3, sticky="ew")
+        parent = connection_parent
+        row = self._external_device_controls(parent, connection_row)
         self.connect_button = ttk.Button(parent, textvariable=self.connect_button_text, command=self.connect_and_center, style="Primary.TButton")
         self.connect_button.grid(
             row=row, column=0, columnspan=2, sticky="ew", pady=(4, 0)
         )
         ttk.Button(parent, text="断开", command=self.disconnect_sink).grid(row=row, column=2, sticky="ew", padx=(4, 0), pady=(4, 0))
         row += 1
-        ttk.Button(parent, text="查询设备轴", command=self.query_device_axes).grid(
+        self.query_axes_button = ttk.Button(parent, text="查询设备轴", command=self.query_device_axes)
+        self.query_axes_button.grid(
             row=row, column=0, columnspan=3, sticky="ew", pady=(4, 0)
         )
         self._refresh_ble_settings()
+        self._refresh_device_controls()
         return row + 1
 
     def _quick_controls(self, parent: ttk.Frame, row: int) -> int:
@@ -2333,9 +2357,7 @@ class OsrScreenApp(tk.Tk):
         rtm_gpu_check = ttk.Checkbutton(box, text="RTM GPU 加速", variable=self.rtm_pose_gpu_enabled)
         rtm_gpu_check.grid(row=6, column=0, columnspan=3, sticky="w", pady=(5, 0))
         Tooltip(rtm_gpu_check, self._tooltip_text("RTM GPU 加速"))
-        ttk.Label(box, textvariable=self.rtm_pose_gpu_status_text, foreground="#555", wraplength=330).grid(
-            row=7, column=0, columnspan=3, sticky="w", pady=(0, 2)
-        )
+        self._gpu_status_controls(box, 7, self.rtm_pose_gpu_enabled, self.rtm_pose_gpu_status_text)
         rtm_flow_check = ttk.Checkbutton(box, text="RTM 光流辅助", variable=self.rtm_pose_flow_enabled)
         rtm_flow_check.grid(row=8, column=0, columnspan=3, sticky="w", pady=(5, 0))
         Tooltip(rtm_flow_check, self._tooltip_text("RTM 光流辅助"))
@@ -2350,7 +2372,7 @@ class OsrScreenApp(tk.Tk):
         box = ttk.LabelFrame(parent, text="测量模式", padding=8)
         box.columnconfigure(1, weight=1)
         ttk.Label(box, text="轴").grid(row=0, column=0, sticky="w", pady=2)
-        axis_combo = ttk.Combobox(
+        axis_combo = WideCombobox(
             box,
             textvariable=self.measure_axis,
             values=SIX_AXES,
@@ -2725,6 +2747,7 @@ class OsrScreenApp(tk.Tk):
             rtm_hybrid_l0_enabled=self._rtm_pose_mode_active() and self.rtm_hybrid_l0_enabled.get(),
             rtm_hybrid_l0_weight=self.rtm_hybrid_l0_weight.get() / 100.0,
             rtm_pose_gpu_enabled=self.rtm_pose_gpu_enabled.get(),
+            rtm_pose_gpu_backend=self.rtm_pose_gpu_backend.get(),
             rtm_pose_flow_enabled=self.rtm_pose_flow_enabled.get(),
             rtm_pose_kalman_enabled=self.rtm_pose_kalman_enabled.get(),
             compression_latency=self.compression_latency.get(),
@@ -2777,7 +2800,11 @@ class OsrScreenApp(tk.Tk):
             pass
 
     def _connection_snapshot(self) -> dict[str, object]:
+        if self._family_id() not in NATIVE_FAMILIES:
+            return self._external_snapshot()
         kind = self.sink_type.get()
+        if kind == "Log only":
+            return {"kind": kind}
         return {
             "kind": kind,
             "serial_port": extract_serial_device(self.serial_port.get()),
@@ -2788,6 +2815,12 @@ class OsrScreenApp(tk.Tk):
 
     def _open_sink_from_snapshot(self, snapshot: dict[str, object]) -> object:
         kind = str(snapshot["kind"])
+        if kind == "Intiface":
+            if "bindings" in snapshot:
+                return IntifaceSink(str(snapshot["url"]), snapshot["device"], limit=float(snapshot["limit"]),
+                                    bindings=snapshot["bindings"])
+            return IntifaceSink(str(snapshot["url"]), snapshot["device"], str(snapshot["feature"]),
+                                str(snapshot["axis"]), float(snapshot["limit"]))
         if kind in ("USB Serial", "Serial COM"):
             return SerialSink(str(snapshot["serial_port"]), int(snapshot["baudrate"]))
         if kind == "BLE UART":
@@ -2797,6 +2830,9 @@ class OsrScreenApp(tk.Tk):
     def _set_connecting(self, active: bool) -> None:
         self._connecting = active
         self.connect_button_text.set(self._t("连接中...") if active else self._t("连接并回中"))
+        if not active and self._family_id() not in NATIVE_FAMILIES:
+            self.connect_button_text.set(self._dt("连接设备", "Connect Device"))
+        self._set_device_controls_busy(active or bool(self.worker and self.worker.is_alive()))
         for name in ("connect_button", "monitor_connect_button"):
             button = getattr(self, name, None)
             if button is None:
@@ -2820,20 +2856,23 @@ class OsrScreenApp(tk.Tk):
         self._set_connecting(False)
         kind = str(item.get("kind", self.sink_type.get()))
         self.status.set(f"{self._t('已连接')}: {kind}")
-        if kind in ("USB Serial", "Serial COM"):
+        if kind == "Intiface":
+            self.device_status.set(f"{self._t('设备')}: {self.sink.device.display_name or self.sink.device.name}")
+            self.external_status.set(self._dt("已连接，等待开始输出。", "Connected; waiting for output to start."))
+        elif kind in ("USB Serial", "Serial COM"):
             self.device_status.set(f"{self._t('设备')}: {self._t('已连接')} {item.get('serial_port', '')}")
         elif kind == "BLE UART":
             self.device_status.set(f"{self._t('设备')}: {self._t('已连接')} BLE {item.get('ble_address', '')}")
         else:
             self.device_status.set(f"{self._t('设备')}: {self._t('日志模式')}")
         self._save_config()
-        if bool(item.get("center_after", False)):
+        if bool(item.get("center_after", False)) and kind != "Intiface":
             try:
                 self.send_center(interval_ms=600)
                 self.status.set(self._t("已连接并回中"))
             except Exception as exc:
                 self.status.set(f"{self._t('回中失败')}: {exc}")
-        if self._start_after_connect and not self.worker:
+        if self._start_after_connect and not (self.worker and self.worker.is_alive()):
             self._start_after_connect = False
             self.after(0, self._begin_realtime_output)
 
@@ -2862,17 +2901,30 @@ class OsrScreenApp(tk.Tk):
         self.status.set(self._t("连接超时"))
 
     def _start_connection_worker(self, center_after: bool = False) -> None:
+        if self._gpu_installing:
+            self._start_after_connect = False
+            self.status.set(self._dt("请等待 GPU 运行库安装完成。", "Wait for GPU runtime installation to finish."))
+            return
         if self._connecting:
             self.status.set(self._t("正在连接，连接成功后请再试一次。"))
             return
-        snapshot = self._connection_snapshot()
+        if self.worker and self.worker.is_alive():
+            self.status.set(self._dt("请先停止实时输出，再更换连接。", "Stop realtime output before changing connections."))
+            return
+        try:
+            snapshot = self._connection_snapshot()
+        except (ValueError, tk.TclError) as exc:
+            self._start_after_connect = False
+            self.status.set(str(exc))
+            self.external_status.set(str(exc))
+            return
         kind = str(snapshot["kind"])
         self._connect_attempt_id += 1
         attempt_id = self._connect_attempt_id
         self._close_sink_safely(self.sink)
         self.sink = LogSink()
         self.connected = False
-        if kind not in ("USB Serial", "Serial COM", "BLE UART"):
+        if kind not in ("USB Serial", "Serial COM", "BLE UART", "Intiface"):
             self.sink.open()
             self.connected = True
             self.status.set(f"{self._t('已连接')}: {kind}")
@@ -2924,6 +2976,8 @@ class OsrScreenApp(tk.Tk):
         self._start_connection_worker(center_after=True)
 
     def disconnect_sink(self) -> None:
+        if self.worker and self.worker.is_alive():
+            self.stop()
         self._connect_attempt_id += 1
         self._start_after_connect = False
         self._set_connecting(False)
@@ -2974,17 +3028,26 @@ class OsrScreenApp(tk.Tk):
             self._start_after_connect = True
             self.connect_sink()
             if not self.connected:
-                self.status.set(self._t("正在连接，连接成功后会开始实时输出"))
+                if self._connecting:
+                    self.status.set(self._t("正在连接，连接成功后会开始实时输出"))
                 self._startup_window_geometry = None
                 return
             self._start_after_connect = False
         self._begin_realtime_output()
 
     def _begin_realtime_output(self) -> None:
+        if self._gpu_installing or (self._gpu_restart_required and self.rtm_pose_gpu_enabled.get()):
+            self.status.set(self._dt("GPU 运行库安装后请重启软件；也可关闭 GPU 使用 CPU。", "Restart after GPU installation, or disable GPU to use CPU."))
+            return
         if self.worker and self.worker.is_alive():
             return
         if not self.connected:
             return
+        if isinstance(self.sink, IntifaceSink):
+            if any(axis != "L0" for axis in self.sink.axes) and self.output_mode.get() != "Six Axis":
+                self.status.set(self._dt("跟随其他轴时，请在开始弹窗中选择六轴输出。", "Select Six Axis in the start dialog when following an axis other than L0."))
+                return
+            self.sink.resume_output()
         self._normalize_limits()
         self._script_history.clear()
         self._six_axis_stable_positions = {axis: 0.5 for axis in SIX_AXES}
@@ -2992,6 +3055,7 @@ class OsrScreenApp(tk.Tk):
         self.stop_event.clear()
         self.worker = threading.Thread(target=self._run_capture, daemon=True)
         self.worker.start()
+        self._set_device_controls_busy(True)
         self._refresh_start_button_text()
         self.status.set(self._t("实时输出中"))
         self._restore_start_geometry_once()
@@ -3009,7 +3073,7 @@ class OsrScreenApp(tk.Tk):
         dialog = tk.Toplevel(self)
         dialog.title(self._t("开始实时输出前确认"))
         dialog.transient(self)
-        dialog.resizable(False, False)
+        dialog.resizable(True, True)
         dialog.grab_set()
 
         mode = tk.StringVar(value=self.output_mode.get() if self.output_mode.get() in ("L0 Only", "Six Axis") else "L0 Only")
@@ -3076,11 +3140,7 @@ class OsrScreenApp(tk.Tk):
             rtm_popup_model_l0_text.set(f"{self._t('当前本模型分析权重')}: {model_weight}%")
 
         def refresh_popup_gpu_status(*_args: object) -> None:
-            if not rtm_pose_gpu_enabled.get():
-                rtm_pose_gpu_status_text.set(self._rtm_pose_gpu_status_message(False))
-                return
-            rtm_pose_gpu_status_text.set(self._t("RTM GPU 状态：检测中..."))
-            dialog.after(25, lambda: rtm_pose_gpu_status_text.set(self._rtm_pose_gpu_status_message(True)) if dialog.winfo_exists() else None)
+            self._schedule_rtm_pose_gpu_status_refresh()
 
         def sync_popup_pose_mode(source: str) -> None:
             nonlocal pose_popup_syncing
@@ -3137,8 +3197,18 @@ class OsrScreenApp(tk.Tk):
         refresh_popup_gpu_status()
         refresh_popup_rtm_model_path()
 
-        body = ttk.Frame(dialog, padding=14)
-        body.grid(row=0, column=0, sticky="nsew")
+        dialog.columnconfigure(0, weight=1)
+        dialog.rowconfigure(0, weight=1)
+        scroll = tk.Canvas(dialog, highlightthickness=0)
+        scroll.grid(row=0, column=0, sticky="nsew")
+        scrollbar = ttk.Scrollbar(dialog, orient="vertical", command=scroll.yview)
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        scroll.configure(yscrollcommand=scrollbar.set)
+        body = ttk.Frame(scroll, padding=14)
+        body_window = scroll.create_window(0, 0, window=body, anchor="nw")
+        body.bind("<Configure>", lambda _event: scroll.configure(scrollregion=scroll.bbox("all")))
+        scroll.bind("<Configure>", lambda event: scroll.itemconfigure(body_window, width=event.width))
+        dialog.bind("<MouseWheel>", lambda event: scroll.yview_scroll(-int(event.delta / 120), "units"))
         body.columnconfigure(0, weight=1)
 
         ttk.Label(body, text="开始实时输出前确认", font=("", 11, "bold")).grid(row=0, column=0, sticky="w")
@@ -3187,7 +3257,7 @@ class OsrScreenApp(tk.Tk):
         analysis = ttk.LabelFrame(body, text="分析", padding=8)
         analysis.grid(row=4, column=0, sticky="ew", pady=(8, 0))
         analysis.columnconfigure(1, weight=1)
-        ttk.Combobox(
+        WideCombobox(
             analysis,
             textvariable=tracker,
             values=self._tracker_choices(),
@@ -3234,9 +3304,7 @@ class OsrScreenApp(tk.Tk):
         rtm_popup_gpu_check = ttk.Checkbutton(rtm_popup_frame, text="RTM GPU 加速", variable=rtm_pose_gpu_enabled)
         rtm_popup_gpu_check.grid(row=6, column=0, columnspan=3, sticky="w", pady=(5, 0))
         Tooltip(rtm_popup_gpu_check, self._tooltip_text("RTM GPU 加速"))
-        ttk.Label(rtm_popup_frame, textvariable=rtm_pose_gpu_status_text, foreground="#555", wraplength=360).grid(
-            row=7, column=0, columnspan=3, sticky="ew", pady=(0, 2)
-        )
+        self._gpu_status_controls(rtm_popup_frame, 7, rtm_pose_gpu_enabled, rtm_pose_gpu_status_text)
         rtm_popup_flow_check = ttk.Checkbutton(rtm_popup_frame, text="RTM 光流辅助", variable=rtm_pose_flow_enabled)
         rtm_popup_flow_check.grid(row=8, column=0, columnspan=3, sticky="w", pady=(5, 0))
         Tooltip(rtm_popup_flow_check, self._tooltip_text("RTM 光流辅助"))
@@ -3279,14 +3347,18 @@ class OsrScreenApp(tk.Tk):
         refresh_limits()
         ttk.Label(body, textvariable=limits_text, wraplength=420, foreground="#333").grid(row=5, column=0, sticky="ew", pady=(10, 0))
 
-        buttons = ttk.Frame(body)
-        buttons.grid(row=6, column=0, sticky="ew", pady=(14, 0))
+        buttons = ttk.Frame(dialog, padding=14)
+        buttons.grid(row=1, column=0, columnspan=2, sticky="ew")
         buttons.columnconfigure((0, 1), weight=1)
 
         def cancel() -> None:
             dialog.destroy()
 
         def confirm() -> None:
+            if self._gpu_installing or (self._gpu_restart_required and rtm_pose_gpu_enabled.get()):
+                messagebox.showwarning(self._dt("GPU 运行库", "GPU Runtime"), self._dt(
+                    "请等待安装结束后重启软件；或关闭 GPU 使用 CPU。", "Wait for installation and restart the app, or disable GPU to use CPU."), parent=dialog)
+                return
             self.output_mode.set(mode.get())
             self.tracker_mode.set(tracker.get())
             rtm_mode_selected = self._rtm_pose_mode_active(tracker.get())
@@ -3325,23 +3397,34 @@ class OsrScreenApp(tk.Tk):
         self._install_tooltips(dialog)
         self._localize_widget_tree(dialog)
         dialog.update_idletasks()
-        x = self.winfo_rootx() + max(0, (self.winfo_width() - dialog.winfo_width()) // 2)
-        y = self.winfo_rooty() + max(0, (self.winfo_height() - dialog.winfo_height()) // 2)
-        dialog.geometry(f"+{x}+{y}")
+        left, top, right, bottom = monitor_workarea(self)
+        width = min(max(560, body.winfo_reqwidth() + 24), right - left - 40)
+        height = min(body.winfo_reqheight() + buttons.winfo_reqheight(), bottom - top - 80)
+        x = max(left, min(self.winfo_rootx() + (self.winfo_width() - width) // 2, right - width))
+        y = max(top, min(self.winfo_rooty() + (self.winfo_height() - height) // 2, bottom - height - 40))
+        dialog.geometry(f"{width}x{height}+{x}+{y}")
         self.wait_window(dialog)
         return bool(result["ok"])
 
     def stop(self) -> None:
+        self._start_after_connect = False
         self.stop_event.set()
-        if self.worker and self.worker.is_alive():
-            self.worker.join(timeout=2)
-        self.worker = None
+        if isinstance(self.sink, IntifaceSink):
+            self.sink.stop_output()
+        # Let Tk service outstanding variable reads while the worker observes stop_event.
+        # The output latch above is immediate; a new worker cannot start until this one exits.
+        if not self.worker or not self.worker.is_alive():
+            self.worker = None
+        self._set_device_controls_busy(self._connecting or bool(self.worker))
         self._startup_window_geometry = None
         self._refresh_start_button_text()
         self.status.set(self._t("已停止") if self.connected else self._t("未连接"))
 
     def estop(self) -> None:
         self.stop()
+        if isinstance(self.sink, IntifaceSink):
+            self.status.set(self._dt("已请求设备停止", "Device stop requested"))
+            return
         self.send_center(interval_ms=600)
         self.status.set(self._t("已急停并回中"))
 
@@ -3416,6 +3499,7 @@ class OsrScreenApp(tk.Tk):
             self.rtm_hybrid_l0_enabled.set(False)
             self.rtm_hybrid_l0_weight.set(30)
             self.rtm_pose_gpu_enabled.set(False)
+            self.rtm_pose_gpu_backend.set("cuda")
             self.rtm_pose_flow_enabled.set(True)
             self.rtm_pose_kalman_enabled.set(True)
             self._set_tracker_mode(defaults.tracker_mode)
@@ -3434,7 +3518,7 @@ class OsrScreenApp(tk.Tk):
             self.six_axis_jitter_reduction.set(55)
             self.six_axis_sensitivity_level.set(5)
             self.show_more_settings.set(False)
-            self.show_measurement_limits.set(False)
+            self.show_measurement_limits.set(True)
             self.show_six_axis_tuning.set(False)
             self.show_rtm_pose_3d_settings.set(False)
             self.show_six_axis_travel_scales.set(False)
@@ -3453,6 +3537,7 @@ class OsrScreenApp(tk.Tk):
             self.axis.set(defaults.axis)
             self.interval_ms.set(defaults.output_interval_ms)
             self.sink_type.set(defaults.last_sink)
+            self._reset_device_config()
             self.serial_port.set(defaults.serial_port)
             self.baudrate.set(defaults.baudrate)
             self.ble_name.set(defaults.ble_name)
@@ -3509,6 +3594,12 @@ class OsrScreenApp(tk.Tk):
         else:
             payload = command.encode()
             text = payload.decode("ascii").strip()
+        if getattr(self._output_context, "sink", self.sink) is not self.sink:
+            return text
+        if threading.current_thread() is self.worker and self.stop_event.is_set():
+            return text
+        if isinstance(self.sink, IntifaceSink) and threading.current_thread() is threading.main_thread():
+            self.sink.resume_output()
         self.sink.write(payload)
         self.preview_bridge.broadcast_tcode(text)
         return text
@@ -3586,6 +3677,9 @@ class OsrScreenApp(tk.Tk):
         self.status.set(f"{self._t('已保存')} {axis} {label}: {value:04d}")
 
     def send_small_test(self) -> None:
+        if self._family_id() not in NATIVE_FAMILIES:
+            self.status.set(self._dt("此测试仅适用于 TCode 设备。", "This test is for TCode devices only."))
+            return
         if self.worker and self.worker.is_alive():
             messagebox.showwarning(self._t("正在运行"), self._t("请先停止实时输出，再做中等测试。"))
             return
@@ -3622,6 +3716,9 @@ class OsrScreenApp(tk.Tk):
         self.status.set(self._t("中等测试完成"))
 
     def send_full_l0_test(self) -> None:
+        if self._family_id() not in NATIVE_FAMILIES:
+            self.status.set(self._dt("此测试仅适用于 TCode 设备。", "This test is for TCode devices only."))
+            return
         if self.worker and self.worker.is_alive():
             messagebox.showwarning(self._t("正在运行"), self._t("请先停止实时输出，再做上下全幅测试。"))
             return
@@ -3638,6 +3735,7 @@ class OsrScreenApp(tk.Tk):
         max_value = self.max_value.get()
 
         def worker() -> None:
+            self._output_context.sink = test_sink
             output = MultiAxisSafeOutput(
                 axes,
                 min_value,
@@ -3676,9 +3774,13 @@ class OsrScreenApp(tk.Tk):
             except Exception as exc:
                 self._queue_latest({"error": f"{self._t('上下全幅测试失败')}: {exc}"})
 
+        test_sink = self.sink
         threading.Thread(target=worker, daemon=True).start()
 
     def send_six_axis_test(self) -> None:
+        if self._family_id() not in NATIVE_FAMILIES:
+            self.status.set(self._dt("此测试仅适用于 TCode 设备。", "This test is for TCode devices only."))
+            return
         if self.worker and self.worker.is_alive():
             messagebox.showwarning(self._t("正在运行"), self._t("请先停止实时输出，再做六轴轻测。"))
             return
@@ -3699,6 +3801,7 @@ class OsrScreenApp(tk.Tk):
         max_value = self.max_value.get()
 
         def worker() -> None:
+            self._output_context.sink = test_sink
             output = MultiAxisSafeOutput(
                 axes,
                 min_value,
@@ -3718,7 +3821,7 @@ class OsrScreenApp(tk.Tk):
             center = {axis: 0.5 for axis in axes}
             try:
                 command = output.next_command(center, 1.0)
-                self._queue_latest({"command": self._emit_command(command), "status_text": self._t("OSR6 六轴轻测中")})
+                self._queue_latest({"command": self._emit_command(command), "status_text": self._t("SR6/OSR6 六轴轻测中")})
                 time.sleep(0.35)
                 for axis in axes:
                     for value in (0.35, 0.65, 0.5):
@@ -3729,10 +3832,11 @@ class OsrScreenApp(tk.Tk):
                         time.sleep(0.35)
                 center_command = output.center_command(600)
                 self._queue_latest({"command": self._emit_command(center_command)})
-                self._queue_latest({"status_text": self._t("OSR6 六轴轻测完成，已回中")})
+                self._queue_latest({"status_text": self._t("SR6/OSR6 六轴轻测完成，已回中")})
             except Exception as exc:
                 self._queue_latest({"error": f"{self._t('六轴轻测失败')}: {exc}"})
 
+        test_sink = self.sink
         threading.Thread(target=worker, daemon=True).start()
 
     def apply_safe_preset(self) -> None:
@@ -4169,6 +4273,7 @@ class OsrScreenApp(tk.Tk):
         overlay.focus_force()
 
     def _run_capture(self) -> None:
+        self._output_context.sink = self.sink
         self._normalize_limits()
         fps = max(1, min(120, self.fps.get()))
         period = 1.0 / fps
@@ -4206,6 +4311,7 @@ class OsrScreenApp(tk.Tk):
                 rtm_hybrid_l0_enabled=self._rtm_pose_mode_active() and self.rtm_hybrid_l0_enabled.get(),
                 rtm_hybrid_l0_weight=self.rtm_hybrid_l0_weight.get() / 100.0,
                 rtm_pose_gpu_enabled=self.rtm_pose_gpu_enabled.get(),
+                rtm_pose_gpu_backend=self.rtm_pose_gpu_backend.get(),
                 rtm_pose_flow_enabled=self.rtm_pose_flow_enabled.get(),
                 rtm_pose_kalman_enabled=self.rtm_pose_kalman_enabled.get(),
                 compression_latency=self.compression_latency.get(),
@@ -4218,6 +4324,8 @@ class OsrScreenApp(tk.Tk):
         except Exception as exc:
             self._queue_latest({"error": str(exc)})
         finally:
+            if isinstance(self.sink, IntifaceSink) and self._output_context.sink is self.sink:
+                self.sink.stop_output()
             self._queue_latest({"capture_stopped": True})
 
     def _run_screen(
@@ -4489,6 +4597,9 @@ class OsrScreenApp(tk.Tk):
         )
 
     def _queue_latest(self, item: dict[str, object]) -> None:
+        if any(key in item for key in ("connection_success", "connection_error", "device_scan", "gpu_event", "capture_stopped", "error")):
+            self.control_queue.put(item)
+            return
         try:
             if self.frame_queue.full():
                 self.frame_queue.get_nowait()
@@ -4497,9 +4608,26 @@ class OsrScreenApp(tk.Tk):
             pass
 
     def _poll_worker(self) -> None:
+        if self.worker is not None and not self.worker.is_alive():
+            self.worker = None
+            self._set_device_controls_busy(self._connecting)
+            self._refresh_start_button_text()
+        if isinstance(self.sink, IntifaceSink) and self.sink.error is not None:
+            message = str(self.sink.error)
+            self.stop()
+            self.disconnect_sink()
+            self.status.set(f"Intiface: {message}")
+            self.external_status.set(self._dt("设备连接中断或指令被拒绝，请重新扫描连接。", "Connection interrupted or command rejected. Scan and reconnect."))
         try:
             while True:
-                item = self.frame_queue.get_nowait()
+                try:
+                    item = self.control_queue.get_nowait()
+                except queue.Empty:
+                    item = self.frame_queue.get_nowait()
+                if "device_scan" in item:
+                    self._finish_device_scan(item)
+                if "gpu_event" in item:
+                    self._finish_gpu_event(item)
                 if "connection_success" in item:
                     self._finish_connection_success(item)
                 if "connection_error" in item:
@@ -4541,6 +4669,7 @@ class OsrScreenApp(tk.Tk):
                 if "capture_stopped" in item:
                     if self.worker and not self.worker.is_alive():
                         self.worker = None
+                        self._set_device_controls_busy(False)
                     self._refresh_start_button_text()
                 if "ble_devices" in item:
                     devices = item["ble_devices"]
@@ -4854,6 +4983,7 @@ class OsrScreenApp(tk.Tk):
         cfg.extra["rtm_hybrid_l0_enabled"] = self.rtm_hybrid_l0_enabled.get()
         cfg.extra["rtm_hybrid_l0_weight"] = max(1, min(100, int(self.rtm_hybrid_l0_weight.get())))
         cfg.extra["rtm_pose_gpu_enabled"] = self.rtm_pose_gpu_enabled.get()
+        cfg.extra["rtm_pose_gpu_backend"] = self.rtm_pose_gpu_backend.get()
         cfg.extra["rtm_pose_flow_enabled"] = self.rtm_pose_flow_enabled.get()
         cfg.extra["rtm_pose_kalman_enabled"] = self.rtm_pose_kalman_enabled.get()
         cfg.extra["l0_travel_scale"] = self.l0_travel_scale.get()
@@ -4894,6 +5024,7 @@ class OsrScreenApp(tk.Tk):
         cfg.ble_service_uuid = self.ble_service_uuid.get()
         cfg.ble_write_uuid = self.ble_write_uuid.get()
         cfg.last_sink = self.sink_type.get()
+        self._save_device_config()
         cfg.audio_mode = self.audio_mode.get()
         cfg.audio_gain = self.audio_gain.get()
         cfg.audio_threshold = self.audio_threshold.get()
@@ -4902,6 +5033,7 @@ class OsrScreenApp(tk.Tk):
         cfg.save()
 
     def on_close(self) -> None:
+        self._cancel_gpu_tasks()
         if self._config_save_after_id is not None:
             try:
                 self.after_cancel(self._config_save_after_id)
@@ -4916,7 +5048,7 @@ class OsrScreenApp(tk.Tk):
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(prog="osr6-realtime", description="OSR6 Realtime Screen TCode GUI")
+    parser = argparse.ArgumentParser(prog="osr6-realtime", description=f"{APP_NAME} GUI")
     parser.add_argument("--auto-connect", action="store_true", help="Connect to the selected serial device at startup")
     parser.add_argument("--center", action="store_true", help="Send center command after auto-connect")
     parser.add_argument("--language", choices=("auto", "zh", "cn", "en"), default="auto", help="Interface language override")

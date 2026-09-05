@@ -1,61 +1,52 @@
-# GitHub Release Page Draft
+# SR6/OSR6 Realtime Screen TCode High Hardware Compatibility v2.0.0-test.3
 
-
-**Adults only: this project is intended for adults. Minors are prohibited.**
+> **BETA / PRE-RELEASE: experimental features, NOT stable 2.0.0.**
+> **测试预发布：新增硬件兼容及 GPU 功能仍在测试，不是 2.0.0 稳定版。**
 
 ## English
 
-OSR6 realtime screen-reading TCode output tool v1.0.0.
+**Adults only. Minors are prohibited.** Start with `Log only`, narrow travel limits and low intensity. Keep emergency stop accessible. Six-axis mode requires a clear subject and good lighting; preview is not actual device feedback.
 
-**IMPORTANT SIX-AXIS WARNING:** Six-axis mode is only recommended with good lighting, a clear main subject, and a clean selected screen region. If the image is unclear, start with L0 mode or Log only preview.
+- Original OSR / SR6/OSR6 TCode serial/BLE output is retained. SR6 and OSR6 refer to the same hardware family here.
+- Experimental Intiface routing: The Handy, Lovense, Kiiroo / FeelTechnology, Vorze, We-Vibe, Satisfyer, MysteryVibe and Motorbunny, limited to detected functions. OSSM requires TCode-compatible firmware. **Autoblow is not enabled.**
+- Custom mode binds L0/L1/L2/R0/R1/R2 to selected device functions, initially unbound. New hardware has not been physically validated; compatibility and motion quality are not guaranteed. Other devices show a labelled SR6/OSR6 reference preview, not their actual shape.
+- RTM Pose 2D/3D can select CUDA or ONNX + DirectML. GPU is off by default. CUDA requires NVIDIA and a larger runtime; DirectML has a smaller runtime and supports compatible DirectX 12 AMD/NVIDIA/Intel GPUs. Size does not imply guaranteed accuracy differences.
+- In-app runtime installation works in portable and source builds, with actual byte/percentage progress, component names, verification and CPU fallback. Restart after installation/backend switching when prompted. AMD hardware and all model/backend combinations still need testing.
+- Full-width dropdowns, scrollable start dialog, clearer GPU detection/status, separate test settings and custom mappings.
 
-It reads a selected screen region, video files, or audio rhythm and outputs L0 or six-axis TCode for OSR6 / OSR-compatible devices. This release includes USB serial, BLE, measurement mode, locally saved limits, presets, six-axis sensitivity, curve preview, 3D preview, and emergency stop.
+### Downloads
 
-First run: open `OSR6-Realtime-Screen.exe`, confirm the adults-only warning, choose English or Chinese, restore defaults once, then use measurement mode to save safe upper/lower limits. Limits are saved locally, so do not restore defaults again next time if output already works. Hover over buttons, sliders and parameter names for small tooltips.
+Choose **Windows.zip** for normal use. Extract the complete folder, then double-click **Start.cmd** or the exe; Python is not required. Keep `_internal` beside the exe. Windows security software may warn about this unsigned test build.
 
-Downloads:
+Choose **Source.zip** for source code with `Start.cmd` / `Start-Source.cmd` (Python 3.10+ required if no runtime is available). Both archives contain README, bilingual tutorials/manuals, changelog, licenses and acknowledgements.
 
-- OSR6-Realtime-Screen-v1.0.0-Windows.zip: portable Windows package. It starts with an adults-only warning, then lets you choose English or Chinese.
-- osr-screen-tcode-source-v1.0.0.zip: source archive.
+**No local models or optional CUDA/cuDNN/NVIDIA/DirectML runtimes are bundled.** Download them inside the app. CPU inference dependencies and installer tooling are included in Windows.zip. Intiface Central and GPU drivers are separate installations. Checksums: `SHA256SUMS.txt`.
 
-Quick guides:
+Branch: `2.0.0-High-Hardware-Compatibility-BETA`. Tag: `v2.0.0-test.3`. This prerelease does not replace the stable release or merge into `main`.
 
-- Quick_Start.md: fastest English tutorial, including preview-only use without hardware.
-- 简易教程.md: 中文简易教程，包含没有机器也能先预览的用法。
-- User_Manual_EN.md: full English manual.
-- 用户使用手册.md: 完整中文使用手册。
-
-Statement: this project was built through vibe coding. A human did the real testing, product judgment, tuning and direction; AI helped write and reshape the code. It is a practical tool, not magic. Issues, PRs and real hardware feedback are welcome.
-
-Contact: infringement concerns, license corrections, suggestions and collaboration: aivnailedeng@gmail.com
-Discord community: https://discord.gg/E7RY3rdKw
-Discord note: if you join the community, follow the adults-only restriction. The server/relevant channels should be configured as age-restricted so minors cannot access adult content.
+Thanks to **“电话机”** for volunteer testing and suggestions. The name is intentionally unchanged in English.
 
 ## 中文
 
-OSR6 实时屏幕读取 TCode 输出工具 v1.0.0。
+**仅限成年人使用，未成年人禁止使用。** 请先用 `Log only` 预览，再使用窄行程、低强度测试，并确保可以随时急停。六轴只适合光线好、主体清晰的画面；预览不代表设备真实位置。
 
-**重要警告：六轴模式只建议在光线好、主体清晰、框选区域干净的画面里使用。** 如果画面不清楚，请先用 L0 模式或 Log only 预览。
+- 保留 OSR / SR6/OSR6 原有 TCode 串口/BLE 输出。本项目中 SR6 与 OSR6 并列表示同一设备在不同平台的名称。
+- 通过 Intiface 尝试适配 The Handy、Lovense、Kiiroo / FeelTechnology、Vorze、We-Vibe、Satisfyer、MysteryVibe、Motorbunny，仅限扫描出的型号和功能。OSSM 需要 TCode 兼容固件；**Autoblow 尚未开放输出**。
+- 自定义设备可绑定 L0/L1/L2/R0/R1/R2 与设备交互，默认全部不绑定。新增设备尚未经实体硬件验证，**兼容不保证效果好或全系列支持**。没有对应外形的硬件会提示使用 SR6/OSR6 参考预览。
+- RTM Pose 2D/3D 可选 CUDA 与 ONNX + DirectML，GPU 默认关闭。CUDA 用于 NVIDIA，运行库较大；DirectML 运行库较小，用于支持 DirectX 12 的 AMD/NVIDIA/Intel 显卡。不把体积差异当作准确率保证。
+- 免安装 exe 和源码版都支持软件内安装运行库，显示真实百分比、大小、组件和当前阶段；校验失败可重试，推理失败回退 CPU。安装或切换后按提示重启；AMD 真机及不同模型组合仍待测试。
+- 优化下拉列表完整显示、开始输出弹窗滚动、GPU 检测与状态；保留独立测试设置，不覆盖正式版设置。
 
-它可以读取屏幕框选区域、视频文件或声音节奏，实时输出 L0 或六轴 TCode，用于 OSR6 / OSR 兼容设备。这个版本包含 USB 串口、BLE、测量模式、本地保存上下限、五档预设、六轴敏感度、曲线预览、3D 预览和急停。
+### 下载与启动
 
-第一次使用：打开 `OSR6-Realtime-Screen.exe`，先确认成年人警告，再选择中文或 English，然后恢复默认设置一次，再用测量模式保存安全上限/下限。上下限会保存到本地，下次如果能正常输出就不用再恢复默认。鼠标悬浮在按钮、滑块和参数名上会有小字解释。
+普通用户下载 **Windows.zip**，**完整解压后双击 Start.cmd** 或 exe，无需另装 Python。不要单独移走 exe，也不要在 ZIP 内运行。此测试版未做代码签名，Windows 安全软件可能提示未知发布者。
 
-下载：
+源码用户下载 **Source.zip**，使用 `Start.cmd` / `Start-Source.cmd`；没有可用环境时需要 Python 3.10+。两个包均包含 README、中英文教程/手册、版本日志、许可证与第三方鸣谢。
 
-- OSR6-Realtime-Screen-v1.0.0-Windows.zip：免安装 Windows 版，启动后先弹成年人警告，再选择中文或 English。
-- osr-screen-tcode-source-v1.0.0.zip：开源源码包。
+**两个包均不含本地模型、CUDA/cuDNN、NVIDIA 可选运行库或 DirectML 二进制文件。** 有需要时在软件内下载；Windows 包包含 CPU 推理必需依赖和安装工具。Intiface Central 与显卡驱动需要另装。`SHA256SUMS.txt` 提供文件校验值。
 
-简易教程：
+发布分支为 `2.0.0-High-Hardware-Compatibility-BETA`，标签为 `v2.0.0-test.3`。不合并到 `main`，不替换已有正式版。
 
-- Quick_Start.md：英文快速上手，也写了没设备怎么先看预览。
-- 简易教程.md：中文快速上手，也写了没机器怎么先看预览。
-- User_Manual_EN.md：英文完整手册。
-- 用户使用手册.md：中文完整手册。
+感谢 **“电话机”** 参与志愿测试并提供建议；英文也保留带引号的中文名字。
 
-声明：这个项目是 vibe code 做出来的。我负责真实测试、体验判断、功能取舍和调参，AI 辅助写代码。它不是神秘黑盒，也不假装完美；欢迎 issue、PR 和实测反馈。
-
-联系：侵权、许可证修正、建议、合作反馈请发 aivnailedeng@gmail.com
-
-
-Discord 提醒：如果进入交流群，请遵守成年人限制。服务器/相关频道建议设置为年龄受限，未成年禁止进入或查看相关内容。
+合作、侵权、许可证修正与建议 / Contact: **aivnailedeng@gmail.com**

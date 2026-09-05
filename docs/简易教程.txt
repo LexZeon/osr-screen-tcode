@@ -1,5 +1,7 @@
 成年人使用提示：本项目面向成年人使用，未成年禁止入内。
 
+> **SR6/OSR6 Realtime Screen TCode High Hardware Compatibility v2.0.0-test.3：** BETA 预发布提供 Windows 免安装和源码 ZIP。完整解压后双击 `Start.cmd`；免安装版无需另装 Python。模型与可选 GPU 运行库在软件内下载，不随包分发。测量与原有测试动作针对原生 TCode 设备，新增硬件与自定义绑定请看[设备兼容说明](Device_Compatibility_2.0.md)，不保证兼容效果。GPU 一键安装等最新说明见[主 README](../README.md)。
+
 重要警告：
 六轴模式只建议在光线好、主体清晰、框选区域干净的画面里使用。画面太暗、遮挡多、主体不清楚、裁切太近或无关运动太多时，请先用 L0 或 Log only 预览。
 
@@ -8,7 +10,7 @@
 提示：鼠标光标悬浮在按钮、滑块、参数名上，会出现小字解释，告诉你这个功能是干嘛的。
 
 有设备：
-1. 优先双击 OSR6-Realtime-Screen.exe，或双击 Start.cmd。
+1. 优先双击 SR6-OSR6-Realtime-Screen-TCode-High-Hardware-Compatibility.exe，或双击 Start.cmd。
 2. 第一次打开，先点“恢复所有默认设置”，确认一次。
 3. 在左侧连接区域选择 USB 串口或 BLE。
 4. 点连接，确认软件显示已连接。

@@ -1,4 +1,6 @@
-# OSR6 Realtime Screen TCode v1.1.2
+# SR6/OSR6 Realtime Screen TCode High Hardware Compatibility v2.0.0-test.3
+
+> **SR6/OSR6 Realtime Screen TCode High Hardware Compatibility v2.0.0-test.3：** BETA 预发布提供 Windows 免安装和源码 ZIP。完整解压后双击 `Start.cmd`；免安装版无需另装 Python。模型与可选 GPU 运行库在软件内下载，不随包分发。测量与原有测试动作针对原生 TCode 设备，新增硬件与自定义绑定请看[设备兼容说明](Device_Compatibility_2.0.md)，不保证兼容效果。GPU 一键安装等最新说明见[主 README](../README.md)。
 
 
 **成年人使用提示：本项目面向成年人使用，未成年禁止入内。**
@@ -14,8 +16,8 @@
 提示：鼠标光标悬浮在按钮、滑块、参数名上，会出现小字解释，告诉你这个功能是干嘛的。
 ## 直接运行
 
-1. 解压压缩包。
-2. 优先双击 OSR6-Realtime-Screen.exe，或双击 Start.cmd。
+1. 下载 Windows BETA ZIP 并完整解压；源码用户则 clone 仓库或解压 Source ZIP。
+2. 双击项目根目录的 Start.cmd。
 3. 第一次使用，建议先点“恢复所有默认设置”。
 4. 连接 OSR6 设备。
 5. 用“测量模式”保存安全上限和下限。

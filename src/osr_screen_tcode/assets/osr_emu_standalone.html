@@ -3,23 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>nb 3D模拟器</title>
+    <title>SR6/OSR6 Realtime Screen TCode High Hardware Compatibility - Preview</title>
     <style>
         body { margin:0; overflow:hidden; background:#1a1a1a; }
         #container { width:100vw; display:block; }
+        #deviceContext { color:#eee; background:#202824; padding:8px 56px 8px 14px; font:14px/1.4 Arial,sans-serif; overflow-wrap:anywhere; }
+        #deviceNote { display:block; color:#efc675; font-size:13px; }
         /* 顶部控制栏 */
         .control-bar {
-            height:60px;
+            min-height:60px;
             background:#2d2d2d;
-            display:flex;
+            display:grid;
+            grid-template-columns:minmax(90px, 240px) minmax(100px, 340px) auto;
+            justify-content:start;
             align-items:center;
             gap:10px;
-            padding:0 15px;
+            padding:8px 15px;
+            box-sizing:border-box;
             overflow:hidden;
             transition: height 0.3s ease;
         }
         .control-bar.hide {
-            height:0;
+            display:none;
         }
         select, input, button {
             padding:6px 10px;
@@ -28,11 +33,15 @@
             border-radius:4px;
         }
         input {
-            width:320px;
+            width:100%;
+            box-sizing:border-box;
+            min-width:0;
             background:#3d3d3d;
             color:#fff;
         }
         select {
+            min-width:0;
+            width:100%;
             background:#3d3d3d;
             color:#fff;
         }
@@ -72,9 +81,23 @@
             max-width:420px;
             word-break:break-all;
         }
+        @media (max-width:600px) {
+            .control-bar { grid-template-columns:minmax(0,1fr) auto; }
+            .control-bar select { grid-column:1 / -1; }
+        }
     </style>
 </head>
 <body>
+    <div id="deviceContext"><span id="deviceName"></span><span id="deviceNote"></span></div>
+    <script>
+        function showDeviceContext(context) {
+            document.title = context.app + ' - Preview';
+            document.getElementById('deviceName').textContent = context.app + ' | v' + context.version + ' | ' + context.device;
+            document.getElementById('deviceNote').textContent = context.note;
+            window.dispatchEvent(new Event('resize'));
+        }
+        showDeviceContext(__OSR_PREVIEW_CONTEXT__);
+    </script>
     <!-- 符号按钮 ≡ 悬浮提示文字 -->
     <button id="toggleBar" title="显示/隐藏设置">≡</button>
 
@@ -106,6 +129,8 @@
         } catch (e) {
             console.error('OSR Emulator init failed:', e);
         }
+        const referenceTarget = osr ? osr.controls.target.clone() : null;
+        const referenceCameraOffset = osr ? osr.camera.position.clone().sub(referenceTarget) : null;
 
         // ----- 轴映射 -----
         const axisMap = {
@@ -138,12 +163,17 @@
 
         // 动态更新容器高度，消除底部灰色条
         function resizeContainer() {
-            if (controlBar.classList.contains('hide')) {
-                container.style.height = '100vh';
-            } else {
-                container.style.height = 'calc(100vh - 60px)';
+            const controlsHeight = controlBar.getBoundingClientRect().height;
+            const noticeHeight = document.getElementById('deviceContext').offsetHeight;
+            container.style.height = Math.max(100, window.innerHeight - controlsHeight - noticeHeight) + 'px';
+            if (osr && referenceCameraOffset) {
+                const aspect = container.clientWidth / container.clientHeight;
+                osr.camera.position.copy(referenceTarget).add(referenceCameraOffset.clone().multiplyScalar(Math.max(1, 0.9 / aspect)));
+                osr.camera.updateProjectionMatrix();
+                osr.controls.update();
             }
         }
+        window.addEventListener('resize', resizeContainer);
         resizeContainer();
 
         // 切换控制栏显示隐藏
@@ -281,6 +311,9 @@
                     const evtName = data.name;
                     const msgData = data.data || {};
                     switch (evtName) {
+                        case 'device_context':
+                            showDeviceContext(msgData);
+                            break;
                         case 'time_change':
                             currentTime = msgData.time || 0;
                             break;

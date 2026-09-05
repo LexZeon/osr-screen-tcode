@@ -1,5 +1,7 @@
 # Quick Start
 
+> **SR6/OSR6 Realtime Screen TCode High Hardware Compatibility v2.0.0-test.3:** BETA prerelease with Windows portable and source ZIPs. Extract the entire Windows folder and run `Start.cmd`; Python is not required for the portable build. Models and optional GPU runtimes are downloaded in-app, not bundled. Device measurement/sweep instructions concern native TCode hardware; new experimental hardware and custom bindings are described in [Device Compatibility](Device_Compatibility_2.0.md). For optional GPU installation and current changes, see the [main README](../README.md).
+
 **Adults only: this project is intended for adults. Minors are prohibited.**
 
 **IMPORTANT SIX-AXIS WARNING:** Six-axis mode is only recommended when the video/screen has good lighting, a clear main subject, and a clean selected region. If the picture is unclear, start with L0 mode or Log only preview first.
@@ -10,13 +12,13 @@ Tip: hover your mouse over buttons, sliders, and parameter names in the app. Sma
 
 ## Download
 
-For the Windows package, extract the whole folder first, then run `OSR6-Realtime-Screen.exe` or `Start.cmd`.
+For the Windows package, extract the whole folder first, then run `SR6-OSR6-Realtime-Screen-TCode-High-Hardware-Compatibility.exe` or `Start.cmd`.
 
 For source code users, clone the repository and double-click `Start.cmd` or `Start-Source.cmd`.
 
 ## With An OSR6 Device
 
-1. Double-click `OSR6-Realtime-Screen.exe`, or double-click `Start.cmd`.
+1. Double-click `SR6-OSR6-Realtime-Screen-TCode-High-Hardware-Compatibility.exe`, or double-click `Start.cmd`.
 
 2. Read the adults-only warning and continue only if you are 18+.
 

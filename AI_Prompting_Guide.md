@@ -1,10 +1,25 @@
 # AI Prompting Guide
 
-Use this guide when asking an AI coding assistant to continue work on **OSR6 Realtime Screen TCode**. It gives the assistant enough project context to make small, careful changes without damaging stable behavior.
+## Active 2.0 Test Work
+
+- Current test: `2.0.0-test.3`; formal release remains `1.1.2`.
+- Read `docs/Device_Compatibility_2.0.md` before changing device support.
+- `device_backends.py` implements capability-based Intiface output; `device_controls.py` owns the new device-selection UI.
+- Preserve the original analysis files and TCode mapper. Keep device I/O asynchronous and test stopping, stale output and reconnect identity.
+- Test settings are isolated in `.osr_screen_tcode_2_0_test`. Do not package tests or include models.
+- Display the device name as `SR6/OSR6`. Cooperation/copyright contact: `aivnailedeng@gmail.com`.
+- 新增适配尚未经真机验证，Autoblow 当前未开放输出，不应写成已支持全部品牌型号。
+- Custom mode is second in the device list. Bind only actual Intiface functions on one device; default unbound. Retain duplicate rejection, identity validation and timing-gap tests.
+- Measurement/axis limits default open on first use and reset; preserve a later saved collapse choice.
+- `gpu_runtime.py` / `gpu_downloads.py` / `gpu_controls.py` own optional CUDA/DirectML installation for source and portable builds. Frozen builds run bundled pip and GPU probes in hidden child processes via `__main__.py`. Publish only a separately verified runtime overlay in the test user directory, never numpy/OpenCV. Report real downloaded bytes and installation stages. Restart after installation/backend switching; never modify the formal runtime. `directml_pose.py` only adapts the inference session, preserving rtmlib's pose algorithms. Never package downloadable models or optional GPU runtimes.
+- Use `ui_widgets.WideCombobox` for new dropdowns so complete option text remains accessible independently of sidebar width. GPU backend choice is a shared, saved preference in both model settings and the start dialog.
+- Display the full name including `High Hardware Compatibility`. Keep Python/CLI and repository identifiers compatible. Future package filenames replace `/` with `-`; never use literal asterisks.
+
+Use this guide when asking an AI coding assistant to continue work on **SR6/OSR6 Realtime Screen TCode High Hardware Compatibility**. It gives the assistant enough project context to make small, careful changes without damaging stable behavior.
 
 ## Project Context
 
-- Project name: OSR6 Realtime Screen TCode.
+- Project name: SR6/OSR6 Realtime Screen TCode High Hardware Compatibility.
 - Platform: Windows desktop app.
 - Current formal version: v1.1.2.
 - Main purpose: read a selected screen region in realtime, analyze visible motion with low latency, and output TCode to OSR/SR6/OSR6-compatible devices through USB serial or BLE.
@@ -14,7 +29,7 @@ Use this guide when asking an AI coding assistant to continue work on **OSR6 Rea
 ## Good Starting Prompt
 
 ```text
-You are the feature-development AI for this OSR6 Realtime Screen TCode project.
+You are the feature-development AI for this SR6/OSR6 Realtime Screen TCode High Hardware Compatibility project.
 Do not rewrite the whole project. First read the existing source, then make the smallest safe change.
 Keep L0 stable unless I explicitly ask to change it.
 If UI text changes, update both English and Chinese.
@@ -32,7 +47,7 @@ After finishing, tell me what changed, which files changed, how it was verified,
 - `src/osr_screen_tcode/analyzer.py`: screen analysis, pose/RTM position calculation, smoothing, axis output.
 - `src/osr_screen_tcode/config.py`: settings defaults and persistence.
 - `src/osr_screen_tcode/tcode.py`: TCode formatting and output path.
-- `src/osr_screen_tcode/connection.py`: USB serial and BLE connection handling.
+- `src/osr_screen_tcode/sinks.py`: USB serial and BLE connection handling.
 - `src/osr_screen_tcode/pose_backends.py`: local RTM Pose model loading and inference helpers.
 
 ## Development Rules
@@ -65,8 +80,8 @@ After finishing, tell me what changed, which files changed, how it was verified,
 For a formal release, prepare:
 
 - Windows portable release folder with exe, `Start.cmd`, required dependencies, README, quick start, manuals, changelog, license, and acknowledgements.
-- Windows zip named with the version, for example `OSR6-Realtime-Screen-v1.1.2-Windows.zip`.
-- Source zip named with the version, for example `OSR6-Realtime-Screen-v1.1.2-Source.zip`.
+- Windows zip named with the approved version, for example `SR6-OSR6-Realtime-Screen-TCode-High-Hardware-Compatibility-v2.0.0-Windows.zip` (future formal build).
+- Source zip named with the approved version, for example `SR6-OSR6-Realtime-Screen-TCode-High-Hardware-Compatibility-v2.0.0-Source.zip` (future formal build).
 - No `.git`, cache folders, local privacy paths, model files, `.onnx` files, or development build leftovers in the zips.
 - Extract-and-run startup check for the Windows zip when packaging has changed.
 
@@ -89,11 +104,11 @@ For a formal release, prepare:
 
 # AI 提示词指南
 
-当你想让 AI 编程助手继续开发 **OSR6 Realtime Screen TCode** 时，可以把这份指南作为固定上下文。它能帮助 AI 在现有源码基础上做小而稳的修改，避免破坏已经稳定的功能。
+当你想让 AI 编程助手继续开发 **SR6/OSR6 Realtime Screen TCode High Hardware Compatibility** 时，可以把这份指南作为固定上下文。它能帮助 AI 在现有源码基础上做小而稳的修改，避免破坏已经稳定的功能。
 
 ## 项目背景
 
-- 项目名称：OSR6 Realtime Screen TCode。
+- 项目名称：SR6/OSR6 Realtime Screen TCode High Hardware Compatibility。
 - 平台：Windows 桌面软件。
 - 当前正式版本：v1.1.2。
 - 核心用途：实时读取用户框选的屏幕区域，低延迟分析画面运动，并通过 USB 串口或 BLE 向 OSR/SR6/OSR6 兼容设备输出 TCode。
@@ -103,7 +118,7 @@ For a formal release, prepare:
 ## 推荐起始提示词
 
 ```text
-你是这个 OSR6 Realtime Screen TCode 项目里的功能开发专用 AI。
+你是这个 SR6/OSR6 Realtime Screen TCode High Hardware Compatibility 项目里的功能开发专用 AI。
 不要重写整个项目。先读现有源码，再做最小、安全的修改。
 除非我明确要求，否则保持 L0 稳定。
 如果修改 UI 文字，记得同步中文和英文。
@@ -121,7 +136,7 @@ For a formal release, prepare:
 - `src/osr_screen_tcode/analyzer.py`：屏幕分析、pose/RTM 位置计算、平滑、各轴输出。
 - `src/osr_screen_tcode/config.py`：设置默认值和本地保存。
 - `src/osr_screen_tcode/tcode.py`：TCode 格式和输出路径。
-- `src/osr_screen_tcode/connection.py`：USB 串口和 BLE 连接。
+- `src/osr_screen_tcode/sinks.py`：USB 串口和 BLE 连接。
 - `src/osr_screen_tcode/pose_backends.py`：本地 RTM Pose 模型加载和推理辅助。
 
 ## 开发原则
@@ -154,8 +169,8 @@ For a formal release, prepare:
 正式版需要准备：
 
 - Windows 免安装发布文件夹，包含 exe、`Start.cmd`、必要依赖、README、简易教程、用户手册、版本日志、许可证和鸣谢。
-- 带版本号的 Windows zip，例如 `OSR6-Realtime-Screen-v1.1.2-Windows.zip`。
-- 带版本号的源码 zip，例如 `OSR6-Realtime-Screen-v1.1.2-Source.zip`。
+- 带批准版本号的 Windows zip，例如 `SR6-OSR6-Realtime-Screen-TCode-High-Hardware-Compatibility-v2.0.0-Windows.zip`（后续正式版）。
+- 带批准版本号的源码 zip，例如 `SR6-OSR6-Realtime-Screen-TCode-High-Hardware-Compatibility-v2.0.0-Source.zip`（后续正式版）。
 - zip 里不能包含 `.git`、缓存目录、本地隐私路径、模型文件、`.onnx` 文件、开发构建中间产物。
 - 如果重新打包了 Windows zip，要解压到临时目录并启动 exe，确认不会闪退。
 

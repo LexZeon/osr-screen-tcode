@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 
-APP_DIR = Path.home() / ".osr_screen_tcode"
+APP_DIR = Path.home() / ".osr_screen_tcode_2_0_test"
 CONFIG_PATH = APP_DIR / "config.json"
 AXES = ("L0", "L1", "L2", "R0", "R1", "R2")
 DEFAULT_AXIS_LIMITS = {axis: [0, 9999] for axis in AXES}
@@ -55,6 +55,12 @@ class AppConfig:
     ble_service_uuid: str = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
     ble_write_uuid: str = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
     last_sink: str = "Serial COM"
+    device_family: str = "tcode"
+    intiface_url: str = "ws://127.0.0.1:12345"
+    external_axis: str = "L0"
+    external_limit: float = 20.0
+    custom_bindings: dict[str, str] = field(default_factory=dict)
+    custom_binding_signature: str = ""
     audio_mode: str = "Audio Level"
     audio_gain: float = 2.5
     audio_threshold: float = 0.02
@@ -130,6 +136,7 @@ class AppConfig:
         extra.setdefault("rtm_hybrid_l0_enabled", False)
         extra.setdefault("rtm_hybrid_l0_weight", 30)
         extra.setdefault("rtm_pose_gpu_enabled", False)
+        extra.setdefault("rtm_pose_gpu_backend", "cuda")
         extra.setdefault("rtm_pose_flow_enabled", True)
         extra.setdefault("rtm_pose_kalman_enabled", True)
         if not extra.get("rtm_pose_flow_kalman_default_on_v1"):
@@ -139,7 +146,7 @@ class AppConfig:
         extra.setdefault("l0_travel_scale", data.get("global_travel_scale", 1.0))
         extra.setdefault("compression_latency", 0)
         extra.setdefault("show_more_settings", False)
-        extra.setdefault("show_measurement_limits", False)
+        extra.setdefault("show_measurement_limits", True)
         extra.setdefault("show_six_axis_tuning", False)
         extra.setdefault("show_rtm_pose_3d_settings", False)
         extra.setdefault("show_six_axis_travel_scales", False)
@@ -218,6 +225,8 @@ class AppConfig:
         extra["rtm_hybrid_l0_enabled"] = bool(extra.get("rtm_hybrid_l0_enabled", False))
         extra["rtm_hybrid_l0_weight"] = max(1, min(100, int(extra.get("rtm_hybrid_l0_weight", 30))))
         extra["rtm_pose_gpu_enabled"] = bool(extra.get("rtm_pose_gpu_enabled", False))
+        if extra.get("rtm_pose_gpu_backend") not in {"cuda", "directml"}:
+            extra["rtm_pose_gpu_backend"] = "cuda"
         extra["rtm_pose_flow_enabled"] = bool(extra.get("rtm_pose_flow_enabled", False))
         extra["rtm_pose_kalman_enabled"] = bool(extra.get("rtm_pose_kalman_enabled", False))
         extra["six_axis_travel_invert"] = bool(extra.get("six_axis_travel_invert", False))
@@ -225,10 +234,22 @@ class AppConfig:
         extra["compression_latency"] = max(-5, min(5, int(extra.get("compression_latency", 0))))
         data["global_travel_scale"] = max(0.0, min(3.0, float(data.get("global_travel_scale", 1.0))))
         extra["show_more_settings"] = bool(extra.get("show_more_settings", False))
-        extra["show_measurement_limits"] = bool(extra.get("show_measurement_limits", False))
+        extra["show_measurement_limits"] = bool(extra.get("show_measurement_limits", True))
         extra["show_six_axis_tuning"] = bool(extra.get("show_six_axis_tuning", False))
         extra["show_rtm_pose_3d_settings"] = bool(extra.get("show_rtm_pose_3d_settings", False))
         extra["show_six_axis_travel_scales"] = bool(extra.get("show_six_axis_travel_scales", False))
+        if data.get("external_axis", "L0") not in AXES:
+            data["external_axis"] = "L0"
+        bindings = data.get("custom_bindings", {})
+        data["custom_bindings"] = {axis: key for axis, key in bindings.items()
+                                   if axis in AXES and isinstance(key, str) and 0 < len(key) < 100} if isinstance(bindings, dict) else {}
+        if not isinstance(data.get("custom_binding_signature", ""), str):
+            data["custom_binding_signature"] = ""
+        try:
+            limit = float(data.get("external_limit", 20))
+            data["external_limit"] = max(0, min(100, limit)) if limit == limit else 20
+        except (TypeError, ValueError):
+            data["external_limit"] = 20
         allowed = {field.name for field in cls.__dataclass_fields__.values()}
         return cls(**{k: v for k, v in data.items() if k in allowed})
 

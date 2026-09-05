@@ -1,4 +1,6 @@
-# OSR6 Realtime Screen TCode User Manual
+# SR6/OSR6 Realtime Screen TCode High Hardware Compatibility User Manual
+
+> **SR6/OSR6 Realtime Screen TCode High Hardware Compatibility v2.0.0-test.3:** BETA prerelease with Windows portable and source ZIPs. Extract the entire Windows folder and run `Start.cmd`; Python is not required for the portable build. Models and optional GPU runtimes are downloaded in-app, not bundled. Device measurement/sweep instructions concern native TCode hardware; new experimental hardware and custom bindings are described in [Device Compatibility](Device_Compatibility_2.0.md). For optional GPU installation and current changes, see the [main README](../README.md).
 
 Current version: `1.1.2`. For version history, see `version log` / `版本日志.txt` in the app folder.
 
@@ -10,7 +12,7 @@ Current version: `1.1.2`. For version history, see `version log` / `版本日志
 
 ## Overview
 
-OSR6 Realtime Screen TCode is a local Windows tool for OSR/SR6/OSR6-style TCode-compatible devices. It can read a selected screen region, video file, or audio rhythm, then convert the detected motion into realtime TCode output through USB serial or BLE UART.
+SR6/OSR6 Realtime Screen TCode High Hardware Compatibility is a local Windows tool for OSR/SR6/OSR6-style TCode-compatible devices. It can read a selected screen region, video file, or audio rhythm, then convert the detected motion into realtime TCode output through USB serial or BLE UART.
 
 The app saves the main settings locally, including limits, travel scales, play preset, six-axis sensitivity, serial/BLE information, audio settings, and advanced tuning. On the next launch, the app keeps your previous values.
 
@@ -31,7 +33,7 @@ Recommended first-use flow:
 In the extracted folder, double-click:
 
 ```text
-OSR6-Realtime-Screen.exe
+SR6-OSR6-Realtime-Screen-TCode-High-Hardware-Compatibility.exe
 ```
 
 You can also double-click:

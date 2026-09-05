@@ -1,50 +1,22 @@
 # Publish Checklist
 
+Product: **SR6/OSR6 Realtime Screen TCode High Hardware Compatibility**.
+Approved BETA prerelease: **2.0.0-test.3**, not stable 2.0.0.
 
-**Adults only: this project is intended for adults. Minors are prohibited.**
+1. Work in the Git clone on `2.0.0-High-Hardware-Compatibility-BETA`. Never force-push, merge into main or replace a stable tag without approval.
+2. Update README, bilingual manuals, changelog, UI and acknowledgements. Keep **“电话机”** unchanged in both languages.
+3. Run automated tests and syntax checks. Build the current clone, not a sibling editable install, with `SR6-OSR6-Realtime-Screen-TCode-High-Hardware-Compatibility.spec`.
+4. Prepare Windows and source folders/ZIPs using `tools/build_release.py`. Include Start.cmd, README, docs, changelog, licenses and third-party notices. Windows includes the exe, CPU dependencies and installer tooling.
+5. Reject trained models, optional GPU runtimes, .git, .venv, caches, logs, local settings and private paths. Source must contain no compiled executables or build intermediates. Do not bundle CUDA/cuDNN/NVIDIA/DirectML downloads.
+6. Extract the actual Windows ZIP to a fresh temporary folder and verify Start.cmd opens the app without exiting. Test without driving hardware. Verify frozen in-app GPU installation in a disposable user profile.
+7. Commit source/docs/tests, push the BETA branch normally, and tag `v2.0.0-test.3`. Create a draft prerelease, upload both ZIPs plus SHA256SUMS.txt, verify asset sizes, then publish with prerelease=true and make_latest=false.
 
-Use this folder for GitHub release v1.0.0.
+## Asset Names
 
-## Repository Files
+- `SR6-OSR6-Realtime-Screen-TCode-High-Hardware-Compatibility-v2.0.0-test.3-Windows.zip`
+- `SR6-OSR6-Realtime-Screen-TCode-High-Hardware-Compatibility-v2.0.0-test.3-Source.zip`
+- `SHA256SUMS.txt`
 
-Upload or commit the contents of:
+Release body: `GitHub发布页文案.md`. Highlight experimental hardware, unverified physical compatibility, unsigned exe, adults-only restriction and conservative testing.
 
-`osr-screen-tcode-source-v1.0.0/`
-
-Recommended repository name:
-
-`osr-screen-tcode`
-
-## Release Tag
-
-`v1.0.0`
-
-## Release Title
-
-`OSR6 Realtime Screen TCode v1.0.0`
-
-## Release Assets
-
-Upload these files to the GitHub Release:
-
-1. `OSR6-Realtime-Screen-v1.0.0-Windows.zip`
-2. `osr-screen-tcode-source-v1.0.0.zip`
-
-This release uses one unified Windows package. The app shows an adults-only warning first, then lets the user choose English or Chinese.
-
-Optional but useful beside release assets:
-
-- `Quick_Start.md`
-- `简易教程.md`
-
-## Release Body
-
-Use the text in `GitHub发布页文案.md`. It is English first, then Chinese.
-
-## Contact Line
-
-For infringement concerns, license corrections, suggestions, or collaboration: aivnailedeng@gmail.com
-Discord community: https://discord.gg/E7RY3rdKw
-
-
-Discord 提醒：如果进入交流群，请遵守成年人限制。服务器/相关频道建议设置为年龄受限，未成年禁止进入或查看相关内容。
+Contact: aivnailedeng@gmail.com

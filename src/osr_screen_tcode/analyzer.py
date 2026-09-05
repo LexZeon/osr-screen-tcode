@@ -58,6 +58,7 @@ class RealtimeAnalyzer:
         rtm_pose_flow_enabled: bool = False,
         rtm_pose_kalman_enabled: bool = False,
         compression_latency: int = 0,
+        rtm_pose_gpu_backend: str = "cuda",
     ) -> None:
         self.tracker_mode = tracker_mode
         self.output_mode = output_mode
@@ -89,7 +90,7 @@ class RealtimeAnalyzer:
         self.rtm_hybrid_l0_weight = max(0.01, min(1.0, float(rtm_hybrid_l0_weight))) if self.rtm_hybrid_l0_enabled else 0.0
         self.rtm_pose_flow_enabled = bool(rtm_pose_flow_enabled) if self._rtm_pose_enabled() else False
         self.rtm_pose_kalman_enabled = bool(rtm_pose_kalman_enabled) if self._rtm_pose_enabled() else False
-        self.rtm_pose_device = "cuda" if bool(rtm_pose_gpu_enabled) else "cpu"
+        self.rtm_pose_device = ("directml" if rtm_pose_gpu_backend == "directml" else "cuda") if bool(rtm_pose_gpu_enabled) else "cpu"
         self._rtm_pose_2d_backend = OptionalRtmPose2dBackend(rtm_pose_2d_model_path, device=self.rtm_pose_device) if self.rtm_pose_2d_enabled else None
         self._rtm_pose_3d_backend = OptionalRtmPose3dBackend(rtm_pose_3d_model_path, device=self.rtm_pose_device) if self.rtm_pose_3d_enabled else None
         self._rtm_pose_3d_last: RtmPose3dResult | None = None

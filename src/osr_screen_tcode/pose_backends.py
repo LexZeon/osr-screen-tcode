@@ -16,17 +16,33 @@ class RtmPose3dResult:
 
 def _resolve_onnxruntime_device(requested_device: str) -> tuple[str, str]:
     requested = str(requested_device or "cpu").strip().lower()
-    if requested != "cuda":
+    if requested not in {"cuda", "directml"}:
         return "cpu", "CPU"
     try:
         import onnxruntime as ort
+        from .gpu_runtime import preload_cuda_runtime
 
+        if requested == "cuda":
+            preload_cuda_runtime()
         providers = set(ort.get_available_providers())
     except Exception:
         providers = set()
-    if "CUDAExecutionProvider" in providers:
+    if requested == "directml" and "DmlExecutionProvider" in providers:
+        return "directml", "DirectML GPU"
+    if requested == "cuda" and "CUDAExecutionProvider" in providers:
         return "cuda", "CUDA GPU"
     return "cpu", "GPU unavailable, using CPU"
+
+
+def _create_pose_model(model_type, path: str, input_size: tuple[int, int], device: str):
+    if device == "directml":
+        from .directml_pose import create_directml_pose
+
+        return create_directml_pose(model_type, path, input_size)
+    model = model_type(path, model_input_size=input_size, backend="onnxruntime", device=device)
+    if device == "cuda" and "CUDAExecutionProvider" not in model.session.get_providers():
+        raise RuntimeError("CUDA provider fell back to CPU")
+    return model
 
 
 class OptionalRtmPose3dBackend:
@@ -65,11 +81,11 @@ class OptionalRtmPose3dBackend:
         try:
             from rtmlib import RTMPose3d
 
-            self._model = RTMPose3d(str(path), model_input_size=(288, 384), backend="onnxruntime", device=self.device)
+            self._model = _create_pose_model(RTMPose3d, str(path), (288, 384), self.device)
             self._status = f"RTM Pose 3D: loaded ({self.device_status})"
             return True
         except Exception as exc:
-            if self.requested_device == "cuda" and self.device == "cuda":
+            if self.device in {"cuda", "directml"}:
                 try:
                     from rtmlib import RTMPose3d
 
@@ -90,6 +106,10 @@ class OptionalRtmPose3dBackend:
         try:
             keypoints3d, scores, _keypoints_simcc, keypoints2d = self._model(image_bgr)
         except Exception as exc:
+            if self.device in {"cuda", "directml"}:
+                self.device, self.device_status = "cpu", "GPU failed, using CPU"
+                self._model = None
+                return self.infer(image_bgr)
             self._status = f"RTM Pose 3D infer failed: {exc}"
             return None
         keypoints3d = np.asarray(keypoints3d)
@@ -149,11 +169,11 @@ class OptionalRtmPose2dBackend:
         try:
             from rtmlib import RTMPose
 
-            self._model = RTMPose(str(path), model_input_size=(192, 256), backend="onnxruntime", device=self.device)
+            self._model = _create_pose_model(RTMPose, str(path), (192, 256), self.device)
             self._status = f"RTM Pose 2D: loaded ({self.device_status})"
             return True
         except Exception as exc:
-            if self.requested_device == "cuda" and self.device == "cuda":
+            if self.device in {"cuda", "directml"}:
                 try:
                     from rtmlib import RTMPose
 
@@ -174,6 +194,10 @@ class OptionalRtmPose2dBackend:
         try:
             keypoints2d, scores = self._model(image_bgr)
         except Exception as exc:
+            if self.device in {"cuda", "directml"}:
+                self.device, self.device_status = "cpu", "GPU failed, using CPU"
+                self._model = None
+                return self.infer(image_bgr)
             self._status = f"RTM Pose 2D infer failed: {exc}"
             return None
         keypoints2d = np.asarray(keypoints2d)
