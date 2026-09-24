@@ -1,41 +1,6 @@
-Adults only: this project is intended for adults. Minors are prohibited.
+2.0.0-test.18 source test
 
-> **SR6/OSR6 Realtime Screen TCode High Hardware Compatibility v2.0.0-test.3:** BETA prerelease with Windows portable and source ZIPs. Extract the entire Windows folder and run `Start.cmd`; Python is not required for the portable build. Models and optional GPU runtimes are downloaded in-app, not bundled. Device measurement/sweep instructions concern native TCode hardware; new experimental hardware and custom bindings are described in [Device Compatibility](Device_Compatibility_2.0.md). For optional GPU installation and current changes, see the [main README](../README.md).
-
-IMPORTANT SIX-AXIS WARNING:
-Six-axis mode is only recommended when the video/screen has good lighting, a clear main subject, and a clean selected region. If the picture is unclear, use L0 or Log only preview first.
-
-Before your first real session, use measurement mode to save upper and lower limits that fit your own device and comfort range. These limits are saved locally. If output works normally next time, do not restore defaults again unless you want to reset everything.
-
-Tip: hover your mouse over buttons, sliders, and parameter names. Small tooltips explain what each item does.
-
-With a device:
-1. Double-click SR6-OSR6-Realtime-Screen-TCode-High-Hardware-Compatibility.exe, or double-click Start.cmd.
-2. On first run, click the restore-defaults button once and confirm.
-3. In the left device panel, choose USB serial or BLE.
-4. Click connect and confirm the app shows a connected status.
-5. Use measurement mode to move L0 manually.
-6. Save a comfortable safe upper limit.
-7. Save a comfortable safe lower limit.
-8. Click realtime output.
-9. In the popup, choose Screen mode.
-10. Choose L0 first, then try Six Axis only when the picture is clear and stable.
-11. Select the screen region to read.
-12. Use the recommended hybrid analysis mode first.
-13. Start with the middle preset and increase intensity only after it feels stable.
-
-Preview without a device:
-1. Set output to Log only.
-2. Click Show Preview.
-3. Open a moving video or page.
-4. Click realtime output.
-5. Select Screen and L0, then choose the moving region.
-6. Watch the curve and preview. Log only will not control hardware.
-
-See the full illustrated tutorial beside the release packages: Quick_Start.md.
-
-Contact: infringement concerns, license corrections, suggestions and collaboration: aivnailedeng@gmail.com
-Discord community: https://discord.gg/E7RY3rdKw
-
-Discord note: if you join the community, follow the adults-only restriction. The server/relevant channels should be configured as age-restricted so minors cannot access adult content.
-
+Double-click Start.cmd, select Log only, then select Analysis Preview.
+No hardware is needed. No test.18 exe/ZIP is available.
+Read README.md, docs/Test_2.0.0_test18.md and Start.md.
+Robot-arm compatibility is unverified. Existing SR6/OSR6 TCode transport is retained.

@@ -1,10 +1,203 @@
-SR6/OSR6 Realtime Screen TCode High Hardware Compatibility 版本日志
+SR6/OSR6 Realtime Screen TCode 版本日志
 
 版本号规则：
 - 每次发给别人使用前，都要更新这里。
 - 小修复递增最后一位，例如 0.9.1。
 - 功能明显变化递增中间位，例如 0.10.0。
-- 当前版本：2.0.0-test.3。
+- 当前版本：2.0.0-test.25。
+
+2.0.0-test.25 - 2026-09-24
+- 后续按用户授权整理源码预发布：显示名称统一为 SR6/OSR6 Realtime Screen TCode，移除兼容性宣传，同步界面、模拟器、元数据、教程和未来构建名称；使用2.0.0-beta分支与v2.0.0-test.25预发布标签，保留旧版本，不提供新exe运行包。
+- 默认融合参考在短暂缺测时结合弱主体像素跟踪、已确认节奏预测和更短的稳定速度减速接续；仍最多2秒，单帧识别闪回不刷新期限，稳定重捕获后平滑接回。
+- 独立保留主体估计框、原点与三轴，用淡色虚线和A?区分；没有同帧可靠背景时不把屏幕位移当成扣除运镜的实测，不写入观测历史或目标到达比例。
+- 修正慢节奏确认窗口过短的问题；未确认往复不凭速度生成周期，全／半／1/4仅续接已确认行程。暂停、切镜头、重设参考和输入变化清除旧规律。
+- 大量角点丢失时先核对粗略场景结构，避免仍相似的模糊画面直接误判为切镜头。强测量门槛与v1、直接Pose输出路径保留。
+- 中英文预览/说明同步，无新设置；独立预览保持0.2.2-test，默认640与最终输出链路保留。验证和限制见docs/Test_2.0.0_test25.md；无打包、提交或推送。
+- English: bounded weak-subject and output continuity for default fused v2, with dashed A? estimates, slow-rhythm fitting and a short decelerating velocity bridge. Keep the two-second deadline, require stable reacquisition to renew it, and stop on explicit pauses/cuts/resets. No synthetic observations or target-arrival claims. See docs/Test_2.0.0_test25.md.
+
+2.0.0-test.24 - 2026-09-24
+- 框选、采集和预览统一物理像素坐标；修正整个虚拟桌面与单屏尺寸混算，以及负 X/Y 被归零导致左侧／上方屏幕读错的问题。支持混合 DPI、不同分辨率、横竖屏与跨屏区域。
+- 屏幕区域严格验证，越界或纯空隙区域提示重选，绝不静默移动；跨屏空隙固定填黑。低频检查显示器布局／分辨率，变化后停止并要求重新框选。
+- 新深色屏幕快照框选器，青绿选框、选内明亮／选外变暗、各屏编号和分辨率、坐标尺寸及确认／重选／取消按钮；窄屏采用紧凑布局。快照只在内存中用于框选，确认后启动分析时使用新的实时采集。
+- 修改区域前需先停止分析；采集使用已确认的区域快照，界面区分真实采集尺寸、分析图像尺寸与预览缩放，防止显示区域与实际读取不一致。
+- 主程序和独立 Pose Preview Lab 0.2.2-test 共用框选与坐标逻辑；中英文和启动说明同步。默认处理最长边 640、原分析与最终倍率／输出链路保留。
+- 验证结果、文件范围及残余限制见 docs/Test_2.0.0_test24.md。本轮仅测试源码与 Start.cmd/Start.md，无打包、提交或推送。
+- English: physical-pixel screen selection/capture, signed multi-monitor coordinates, deterministic black desktop gaps, strict bounds and display-change rejection. A dark in-memory snapshot picker provides a bright selected area, display labels and compact action cards. Capture size, analysis size and preview scaling are distinct. Standalone Lab 0.2.2-test shares the fixes; analysis/output algorithms and default 640 processing edge remain. Validation: docs/Test_2.0.0_test24.md.
+
+2.0.0-test.23 - 2026-09-24
+- 对照公开 v1.1.2：相同参数下混合 v1 的核心数值保留；记录默认平滑、灵敏度、行程等差异，不将核心一致等同于最终输出一致。
+- v2 借鉴 v1 区域光流：主体运动框多组采样估计中心，必要时使用正反向验证的 DIS 补点，主副轴共用同一中心；保持独立运镜验证与刚性主体原有精确路径。
+- 保留少量背景的身份；变形时不再因换采样点跳到局部小块。按组评估尺度噪声，拒绝主体锚点与背景静止拟合相矛盾的恢复。
+- 变形主体短暂缺失后，用最近可靠帧重测最多 0.25 秒的完整位移，补回漏掉的运动；须独立验证背景与主体，且同一段只累计一次。
+- 变形框保存连续角点，避免小旋转反复取外接框导致显示边界和恢复范围膨胀；实际中英文窗口复验。
+- 黄框／中心和中英文诊断同步；全／半／1/4 行程与 RTM 旋转共用，所有最终输出倍率及设置规则保留。测试结果与边界见 docs/Test_2.0.0_test23.md。
+
+2.0.0-test.22 - 2026-09-12
+- v2 新增主体固定图像锚点 A，三轴原点不再每帧取变化的采样框中心；短暂丢点后独立重测主体和背景的完整位移，防止漏帧后位置错开。
+- 客体 T? 使用自身图像连续验证，主体失败不会直接清除仍可验证的客体。无可靠客体时，以已确认主体往复推定 V? 假定客体，明确区别于实测接触。
+- 修复目标有效／失效反复交替导致 L0 锁在一点；重新接入须连续稳定，期间跟随主体。修复旧区域暴露背景被误判为主体静止，统一过滤低于拟合精度的尺度噪声。
+- 保留 v1、直接 Pose、产品的设置／默认逻辑与最终输出；全／半行程及可选 RTM 旋转共用。
+- 开发检查的延后清理曾意外覆盖本机测试偏好，原配置未能恢复，已设为默认值并用 Log only；修正关闭时机并新增 tests/run_tests.py 隔离入口。事故、验证与剩余限制见 docs/Test_2.0.0_test22.md。
+
+2.0.0-test.21 - 2026-09-12
+- 融合参考新增独立目标边界候选与多点跟踪，目标用自己的外观验证；橙色 T? 不再取自轴附近端点或会聚参考，E?/S?/P? 改为灰色区分。
+- 目标与三轴原点均可靠时，按原点到目标的距离比例接续 L0：远离大、靠近小，估计到达 100% 为分析底部；换源从当前输出接续，越过候选则撤销，防止倍频。
+- 目标画外、遮挡或切镜头后接触双方都未出现时，按画面可见物体的往复继续分析；不把屏幕边缘或代理相位标成到达位置。主运动与目标跟踪独立；主运动也缺失时才沿用已确认规律最多 2 秒。
+- 全／半行程及可选 RTM 旋转辅助共享改动，暂停在已确认到达点可完成连续收尾。中英文、保存／默认、最终倍率与限制链路保留。验证与限制见 docs/Test_2.0.0_test21.md。
+
+2.0.0-test.20 - 2026-09-12
+- 修正 T? 总贴近三维轴的误导：E? 仅是轨迹端点，S? 仅是局部缩放中心，T? 是区域外会聚候选，均不能确认真实接触。不会人为拉远标记位置。
+- 远处目标改用径向支持与外推误差判定，弱单帧可利用已有短时历史图像重新跟踪最多 54 个前景点与 36 个背景点。独立验证较长帧间的运镜，只定位候选，不重复累计位移；附加跟踪不开启昂贵的快速补匹配。
+- 按不确定度减弱候选点抖动；短暂缺失时由已知运镜修正像素位置，但不刷新证据时间。原 v1、直接 Pose、最终行程与限位链路、2 秒延续策略和保存设置保留。
+- 验证与限制见 docs/Test_2.0.0_test20.md。纯平移、很小幅度和语义交互目标仍可能无法定位；未连接设备、安装依赖、打包、提交或推送。
+
+2.0.0-test.19 - 2026-09-11
+- v2 新增默认融合参考：统一方向后结合主轴连续位移、往复中心相位和可靠交互候选；远离目标 L0 大、靠近 L0 小。独立交互参考同步修正方向，旧参考和已保存选择保留。
+- 画面以 T? 标注往复目标估计并区分交互候选／轨迹端点；多组采样圆点与贡献说明显示实际支持。不能确认真实接触。
+- 仅从观测确认规律，识别不清时最多延续 L0 2 秒，最后 0.5 秒渐慢停住；暂停、切镜头、采样长断档、尺寸变化与重设参考停止。预测标记与原始观测分离，恢复时连续接手。
+- 同一区域最多九组空间平衡估计，保留并重新验证最多 54 个分散采样点；区域验证先于平均修正，重复帧不清掉有效点。全／半行程共享融合与延续，保留离散行程和余弦缓动。
+- 相关测试、完整回归、启动和界面检查见 docs/Test_2.0.0_test19.md。无新增模型／依赖，未打包、提交或推送。
+
+2.0.0-test.18 - 2026-09-08
+- v2 区域选择按当前往复、曾往复且仍能跟踪、当前持续幅度排序；历史随跟踪区域移动，切换需连续证据，抖动不累计成大行程。三轴和预览标注实际采用区域。
+- 快速小区域在具备充分局部特征与独立背景时可通过验证；快速但支持不足先保持，不直接清空全部参考。强模糊／变形仍可能丢失。
+- 新增可保存的 v2 L0 参考：三维运动轴（默认）、往复中心 C、交互点候选 P?（实验）。按往复相位或有条件的靠近／远离生成 L0，来源切换从当前目标接续，暂停保持；P? 不确认真实接触。
+- 全／半行程共用区域和往复证据，保留离散余弦行程。中英文、保存／恢复默认及启动确认同步；五档、行程倍率、最终输出限制与模拟器链路保留。
+- 验证：主程序完整 252 项、Lab 28 项通过；后续显示调整相关 17 项及最终点参考／全半行程 15 项复验通过。中英文启动、可见界面、模拟器和 Log only 实际采集检查通过。详见 docs/Test_2.0.0_test18.md。仅测试源码，未打包、提交、推送或安装依赖。
+- English: reciprocal-region priority, supported compact fast motion, and optional center/candidate-point L0 references with continuous transitions. Final gains remain downstream. Semantic contact, difficult footage and hardware remain unverified.
+
+2.0.0-test.17 - 2026-09-08
+- 设备未接入／断连／写入超时时停止实时输出，主线程弹窗显示具体原因与 Log only 提示；串口未连接、短写及 BLE 未连接不再静默接受。失败指令不发送到模拟器，不自动重试，旧连接错误不关闭新连接。
+- v2 完全重复的视频帧保持参考和运动层归属，采用位移归零，不重复积算旧帧；全／半行程活跃判断使用不同画面间的实际时间。
+- 针对“局部运动群不稳定”，新增相邻补偿光流一致性验证；整片主体不能稳定拟合时，在其中寻找并持续跟踪有充分支持的局部区域。独立背景、归属和外推误差检查保留，预览标注实际稳定局部，中英文同步。
+- 默认／保存设置和最终输出乘算保留；仅当前测试源码，无打包、提交、推送或依赖安装。验证与尚未解决的强变形情况见 docs/Test_2.0.0_test17.md。
+- 验证：主程序 235 项完成验证（全套 234 项通过，1 项旧异常断言更新后单项复验通过）；Lab 28 项、模拟器最终指令、中英文启动／可见预览与 Log only 真实采集检查通过。实片及硬件限制详见 test.17 说明。
+- English: explicit device write/connection dialogs, no automatic retry or simulator forwarding of rejected writes; duplicate-frame reference retention and coherent local-patch tracking for non-rigid v2 subjects. Real footage and hardware remain to be verified.
+
+2.0.0-test.16 - 2026-09-07
+- 修正 v2 小幅斜向往复丢失弱分量：按各分量的持续往返确认方向，再沿三维合成候选检查实际往复幅度；原有方向平滑和附属轴关系保留。
+- 首帧位于小幅往复中间时，从后续真实端点建立行程；增加净行进／总路径一致性过滤，防止零碎高频抖动累计为长往复。
+- 全／半行程按画面时间戳计算沿主轴的速度，避免斜向及高帧率误停；附属方向单向位移不能维持旧 L0 周期。v2 与全／半行程共用修正。
+- 无新设置，保存／恢复默认及最终输出链路保留；中英文与启动说明同步。验证和限制见 docs/Test_2.0.0_test16.md。仅测试源码，未打包、提交、推送或安装依赖。
+- 验证：主程序相关 87 项完成通过（含 5 项新增、方向角度断言单独复验），Lab 28 项、中英文启动／可见预览及模拟器检查通过。本轮未重跑主程序完整套件；细节与残余风险见 test.16 说明。
+- English: small oblique strokes retain signed components; observed extrema remove startup-phase dependence; path consistency rejects jitter. Cycle activity uses source-time main-axis speed. Camera ambiguity and physical hardware remain unverified.
+
+2.0.0-test.15 - 2026-09-06
+- 混合 v2 以左右／上下／画面尺度的共同变化拟合连续三维主方向，保留斜向运动的正负相关，不再交换三个单独方向。双向往复门槛、运镜扣除、方向确认和平滑转向保留；缺乏明确方向时保持。
+- L0 沿主轴，L1/L2 投影到一同转动的垂直附属轴；旋转近似变化也投影到同组轴，含可选 RTM 2D 辅助。只处理后续变化，不把旧位置偏移重新映射。原 v1 核心和直接 Pose 输出保持。
+- 全／半行程共用三维主轴投影后的幅度与节奏，继续提供 1/4／半／全行程，L1/L2 仍居中。
+- 分析画面在实际区域显示 L0/R0、L1/R1、L2/R2 彩色轴，并新增立体方向小图；中英文说明区显示带正负号的主轴方向。尺度只是画面代理，不表示真实深度或已完成机械臂映射。
+- 中英文、默认与已保存模式、启动说明同步；验证及复测限制见 docs/Test_2.0.0_test15.md。仅测试源码，未打包、提交、推送或安装依赖。
+- English: continuous 3D image-proxy frame, attached transverse axes and relative rotation changes, shared cycle evidence, and an actual-basis overlay/inset. Physical depth and robot compatibility remain unverified.
+- 验证：主程序完整复验 218 项、Lab 28 项通过；默认线程首帧回归、最终中英文启动、可见界面及模拟器检查通过。完整测试进程限定 OpenCV 单线程，程序实际运行配置不变；详见 test.15 说明。
+
+2.0.0-test.14 - 2026-09-06
+- Pose 开启“快速丢点时用混合 v1”后，原 v1 持续处理同批采样帧，不再等丢点才启动；原有近期 Pose 与快速运动门槛保留，关闭后不运行 v1。
+- 接管 L0 从当前实际指令位置续接，撤销行程倍率／反向／限位映射／启动缓入后作为输出起点，只跟随后续 v1 增量，不追向 v1 自己的绝对位置；实时速度限制、最终减速和模拟器链路保留。导出从拟合后的脚本位置续接。Pose 恢复后仍平滑交回，限位反转不会积累隐藏偏移。
+- 小幅往复渐放大速度提高为原来的 4 倍：确认后约 1 秒由 1 倍升到 2 倍，仍默认关闭，仅 L0/R0/R1 各自检测；实际幅度变大等退出条件保留。
+- 中英文说明、设置保存／恢复默认与启动入口同步；仅测试源码，验证详见 docs/Test_2.0.0_test14.md。持续 v1 增加处理开销，实片和真实设备仍需复测。
+- English: continuously warm v1, relative handoff from applied L0 / fitted export position, and four-times-faster confirmed small-cycle gain growth. No new model, dependencies, package, commit or push.
+- 验证：主程序完整 211 项、Lab 28 项通过；模拟器最终指令、主程序中英文与 Lab 启动、中英文可见界面检查通过。实际片段和真实设备仍需复测。
+
+2.0.0-test.13 - 2026-09-06
+- Pose 新增默认开启“快速丢点时用混合 v1”：近期有效 Pose 丢失且 v1 有明显快速运动证据时，只接续 L0，恢复后平滑交回。按需运行原有 v1，数值核心不变，不重复乘 Pose ×10；缺失本身不会伪造有效观测，画面显示真实回退来源与参考。
+- Pose 新增默认开启“L0 静止／小幅时自动生成”：静止或 L0 小幅、旋转明显更大时，优先 R1 再 R2，各自中点映射 L0 的 1/3、两端映射 L0 的 2/3；R1/R2 无变化但其他识别轴仍有有效运动时，才生成 1/4～1/2、峰到峰固定 1 秒余弦波。所有识别轴静止或缺失时不启动兜底波，已有波形保持当前位置；实际 L0 恢复足够幅度后平滑交回识别。自动目标不重复乘 L0 ×10 或重复拟合。余弦波从当前位置及相位续接，范围外先平滑进入，不跳到预设波峰。
+- Pose 新增默认关闭“小幅往复渐放大”：仅 L0/R0/R1 单独确认持续小幅往复后（L1/L2/R2 不参与），约四秒渐增至最多 2 倍；实际幅度变大、节奏失效或丢失观测时退出。自动 L0 不自触发放大，分析结果与五档预设分离。
+- L0 卡端点的输出参考复位仅在有效胯线明显向上时触发，约 0.35 秒平滑回中；静止、向下、细小抖动或缺失重现不触发此项识别复位，原保护保留。
+- Pose R0 基础幅度升至 3 倍（含 Pose 旋转辅助），R1/R2 仍为 1.5 倍；直接 Pose L0 仍为 10 倍。Pose 设备 L1/L2 联动改为四点线性：底 0.5、1/3 处 1、2/3 处 3.5、顶 0.5；按实际受限 L0 计算。Pose R1/R2 新增 1／1／0.5 联动，对应 L0 底部／2/3／顶部，最后一段线性收拢；保留 R1/R2 ×1.5 基础倍率，v2 联动不变。
+- 主界面、启动确认、分析预览的中英文开关、保存／恢复默认及实时／导出同步；预览单独标注自动来源、放大增益和端点复位次数。没有替换模型或安装依赖；仅测试源码，未打包、提交或推送。
+- 验证：主程序完整 202 项通过；最终无活动门槛、1/3～2/3 映射及排版调整后，72 项相关复验通过（含 2 项新增）；最后加入 R1/R2 设备联动后相关 107 项再次通过；独立 Lab 28 项、模拟器最终指令、主程序中英文／Lab 启动及双语可见界面检查通过。详见 docs/Test_2.0.0_test13.md。实片阈值与真实设备仍需复测，机械臂兼容性未验证。
+- English: default-on Pose L0 generation, default-off per-axis small-cycle expansion, upward-hips-only endpoint reference recovery, Pose R0 ×3, and four-knot hardware translation coupling. Observations remain independent of output gains; source-video timing and final simulator routing are preserved.
+
+2.0.0-test.12 - 2026-09-06
+- 修正 v2 读屏快速拖动窗口时的小背景丢失：外围独立采样、细尺度光流、有限范围唯一图块补匹配及重复文字初值验证；有充分拟合支持的大位移不再仅因超过画面 6% 就重置。全/半行程共用修正，v1 数值分析不变，最长边默认仍为 640。
+- 小背景筛选允许多个独立前景运动群。预览显示候选点数、运动群、拒绝原因及实际补匹配数，中英文同步；候选点不计为已采用背景。
+- 直接 Pose L0 基础输出 5→10 倍，单／六轴及实时／录制／导出同步；Pose 提供的 R1/R2 从 2→1.5 倍（原来的 75%），包含混合／全半中的 Pose 旋转辅助。Pose L1/L2 联动仍是 0.5／3.5／0.5、峰值在最终受限 L0 的 2/3 处。
+- 实时 TCode 到达时间参考最近实际更新间隔，再应用上下限减速，不改目标坐标。“间隔 ms”明确为“到达时间下限 ms”，保存字段和默认 24 ms 保留；它不是发送频率。手动／急停回中不受节奏跟踪影响，模拟器仍接收最终指令，离线脚本不带入本机处理耗时。实机微抖原因尚未确认。
+- 验证：主程序 169 项、独立 Lab 28 项通过；诊断排版和保存／默认断言调整后相关 54 项再通过。模拟器最终指令、主程序中英文和独立 Lab 启动、双语可见诊断检查通过；启动提示现在读取源码版本号。
+- 640×480 合成快速文字窗口 97 帧中 92 帧有效；纯运镜不生成行程，纹理切镜头保持重置。该场景分析器耗时中位 50.22 ms / p95 70.94 ms，额外匹配增加开销，不代表完整帧率或真实素材准确率。详见 docs/Test_2.0.0_test12.md。
+- 仅当前测试源码，未打包、提交、推送或安装依赖；原问题录屏及真实设备未复测。无独立背景、严重模糊／遮挡、重复图案仍可能保持或误判；提高 L0 倍率可能更早达到限制并放大细微噪声，机械臂兼容性未验证。
+- English: faster v2 foreground/window tracking with separate perimeter samples and verified patch recovery; shared Full/Half Travel and detailed candidate diagnostics. Pose L0 ×10, pose R1/R2 ×1.5; coupling peak unchanged at 2/3. Live arrival timing follows observed cadence, preserving coordinates and saved 24 ms minimum. 169 main / 28 Lab tests passed plus 54 targeted reruns and startup/simulator/UI checks. Physical jitter and hardware remain unverified.
+
+2.0.0-test.11 - 2026-09-06
+- 针对主体占大部分、背景很少的近景，v2 新增运动分层与小背景连续确认，避免单凭角点数量把大主体当成运镜。细网格采样保留小背景特征，处理最长边仍默认 640。
+- 短历史帮助辨别微小运动群，输出只累计当前帧位移；已确认小背景优先跟踪，在原背景附近补点，遮挡时保持。主体区域按变换更新，防止逐帧缩小及前景污染背景；宽背景和背景带继续走原路径。
+- 新局部区域需得到框内其他跟踪点支持，抑制纯运镜下的光流误差；切镜头清除背景锁定。分析画面新增中英文“分层背景”与确认提示，展示实际背景点。
+- 全/半行程复用上述 v2 改进，近景 1/4、半、全行程同步验证；v1 数值算法不变。参考 Norfair 和移动摄像机前景检测项目的方法，来源及取舍见 docs/Test_2.0.0_test11.md；未增加模型或依赖。
+- Pose 六轴 L0→L1/L2 联动两端为 0.5 倍，峰值 3.5 倍移至最终受限 L0 行程的 2/3 处，其间连续线性变化。v2 仍是中位峰值 1／2.5／1；固定输出规则无需新增设置，中英文和启动说明同步。
+- 验证：主程序 160 项、独立 Lab 28 项和模拟器最终指令测试通过；主程序中英文及独立 Lab 启动检查通过。保留现有录制器省略不足 2 个整数百分点变化的规则，导出预设测试计入其最多 1 点的端点量化误差。
+- 仅测试源码更新，不打包、提交或推送；未使用用户原片或真实设备验证。完全缺少独立背景、复杂视差及严重模糊仍可能保持或误判，机械臂兼容性未验证。
+- English: layered motion discovery for large-foreground close-ups, short-baseline classification with current-pair output, persistent minority background and non-shrinking foreground tracking. Shared quarter/half/full cycles; Pose coupling peaks at 3.5 at 2/3 limited L0, with 0.5 endpoints. No new dependencies, models or hardware validation.
+
+2.0.0-test.10 - 2026-09-06
+- 混合分析 v1 改名“推荐-平面大幅动作”，原数值算法不改；旧中英文名称自动迁移并保留已有输出设置。
+- v2 针对“背景参考分布不足”增加边缘背景带和已确认背景点持续跟踪；短缺最多保持参考 0.45 秒，不重复清空往复证据。成功跟踪的静止区域保留，持续缺失、突变和断帧仍重置。
+- v2 借鉴 v1 的区域连续性与三帧中位数，只过滤扣除运镜后的局部运动，不回退到全画面运镜信号；全/半行程共用此修正。
+- 全/半行程增加更灵敏的底→1/4→底实际 L0 余弦输出，按幅度自动选不动／1/4／半／全，并保留防抖门槛、节奏适应及可选 RTM 旋转辅助。
+- RTM Pose 2D 六轴根据最终受限 L0 的低／中／高应用 L1/L2 倍率 0.5／3.5／0.5；固定识别位置也会随 L0 移向两端进一步靠中。仅在 TCode 输出映射处应用，v2 平移联动仍为 1／2.5／1。
+- 中英文、操作说明、旧设置迁移和恢复默认同步；Start.md 提供启动说明，Start.cmd 为实际运行入口。
+- 验证：主程序 154 项、独立 Lab 28 项测试通过；模拟器最终指令测试、主程序中英文及独立 Lab 启动检查通过。
+- 仅测试目录源码更新，不打包、提交或推送；原始问题片段仍待复测。中段放大可能更早触及已有输出限制；真实机械臂映射、逆运动学、碰撞与反馈未验证。
+- English: renamed v1 without numerical changes; v2 background-band tracking, brief-loss continuity and compensated three-frame median; shared-v2 quarter/half/full cosine output. Direct Pose TCode coupling is 0.5/3.5/0.5; v2 retains 1/2.5/1. 154 main / 28 lab tests plus simulator and startup checks passed. Original footage and hardware remain unverified.
+
+2.0.0-test.9 - 2026-09-06
+- 修复 v2 背景点要求过严、主体靠边被排除而持续观测缺失的问题；保留独立背景证据，新增缺失原因与各阶段点数。
+- 新增第一项“全/半行程模式（基于混合分析）”，直接复用混合分析 v2。按往复幅度自动选择半／全行程余弦曲线，缓慢适应画面节奏；可选 RTM 2D 旋转辅助，L1/L2 居中。
+- 分析方式下新增“接近上下限时减速”，默认开，距离默认 10%，滑块 1–50%；只延长最终指令或脚本的到达时间，不修改目标位置。导出可能比视频更长。
+- 主界面、分析预览、启动弹窗、中英文、保存及恢复默认同步。默认选中分析方式仍为 v2，RTM Pose 2D 排第二。
+- 验证：主程序 146 项、独立 Lab 28 项测试通过；模拟器最终指令测试通过；Start.cmd 中文／英文和独立 Lab 启动检查通过。
+- 源码测试版，不打包、不提交、不推送；未用用户问题片段或真实设备复测，机械臂兼容性未验证。
+- English: improved sparse/blurred v2 references; shared-v2 cosine half/full cycles with gradual cadence adaptation and optional pose rotations. Final approach braking changes arrival time only (default on, 10% zone), preserving targets. 146 main / 28 lab tests and startup checks passed; no packaging or hardware validation.
+
+2.0.0-test.8 - 2026-09-06
+- v2 先用分布充分的边缘背景点估计运镜，再采用相对背景运动的局部区域；不再将整幅画面运动直接作为主轴输入。参考不足时保持，不退回运镜信号；单/六轴与 RTM 旋转辅助共用 L0。
+- 有效双向往复确认后，按近期跨度逐步校准 v2 L0 行程，避免图像位移小就输出极短脚本。校准只作用于后续增量，短暂停顿不积累虚假运动；五档及用户倍率仍只影响最终输出。
+- 分析画面中显示 v1/v2 实际 ROI、有效光流点、v2 背景参考点和补偿后运动；同步中英文说明、主方向、参考跨度、校准倍率与倍率前 L0。右侧参考画面保持完整。v1 数值核心不改，移除易混淆的输出横线，重设参考对两版都生效。
+- RTM Pose 2D 的 L0 基础输出幅度改为中位两侧 5 倍，单/六轴均生效，包含实时、录制与离线导出；骨架观测不变，v2 不重复使用此舞蹈倍率。后续倍率、联动及输出限制照常生效，模拟器接收最终指令。
+- 主程序 129 项、独立预览 28 项测试及模拟器消息/动画检查通过；中英文启动与参考显示检查通过。真实片段、参考选择质量及机械臂关节映射仍待验证。
+- Source test only: camera-relative v2, confirmed-stroke calibration, actual measurement overlays, and dance L0 base output ×5. No package, commit, push or formal-runtime changes.
+
+2.0.0-test.7 - 2026-09-05
+- v2 主方向初始偏向上下；左右/尺度需足够幅度与持续时间的往复证据和持续优势，避免单向横移/缩放凭速度抢占 L0。切换只分配新运动增量，不带入历史运镜偏移。原混合分析 1 核心不改。
+- 舞蹈 RTM 2D 默认 45 FPS、曲线拟合开、GPU 关、光流/卡尔曼/异常过滤/微抖平滑全开、混合 L0 关且权重 30%、压缩延迟 0。舞蹈与混合分析分组保存，读取、恢复默认、中英文及开始弹窗同步。
+- RTM Pose 2D 排在分析列表第一；首次启动及恢复默认仍选择混合分析 v2。默认页面改为输出监视，调整图表顶部间距避免标题与刻度重叠。
+- 舞蹈仅在启用混合 L0 后显示来源，来源只保留 v2。v2 旋转辅助项仅在混合分析 1/v2 显示，在 v1 禁用，舞蹈隐藏。
+- 显示预览打开内置 nb-3d-simulator 参考模拟器，接收实际输出端的最终 TCode，包含总行程/逐轴倍率、反向、联动、限位、限速等。后打开先接收最后指令，动画不覆盖主程序直推指令。分析预览仍显示同帧观测。
+- 主程序 116 项、独立预览 28 项测试通过；模拟器消息/动画代码及本地 WebSocket 检查通过，中英文启动/界面检查通过。浏览器策略拒绝本地文件页面自动检查，3D 渲染未完成视觉验证。
+- 真实片段仍需复测；往复运镜或背景主导仍可能误判，真实单向侧移/尺度动作可能延后接管。尺度不是真实深度，机械臂关节映射、逆运动学、碰撞与反馈未验证。
+- Source test only: camera-drift-resistant v2 selection, separate dance defaults, RTM-first ordering, default Output Monitor, conditional v2-only blending, and final-command simulator streaming. No package, commit, push or formal-environment dependency changes.
+
+2.0.0-test.6 - 2026-09-05
+- 不带 RTM 的 v2 对 L1/L2/R0/R1/R2 过滤小幅/短暂变化，确认明显运动与反转后平滑跟随；L0 保持原主方向逻辑。旧三档基础默认参数移入配置，五档只改最终行程。
+- 首次启动与恢复默认使用混合分析 v2（推荐-非舞蹈），默认不带 RTM 2D 旋转辅助；保留已有保存的分析方式。
+- 将 Pose Preview Lab 0.2.1 的原始/处理后画面、稳定处理和观测图表移植到主程序；同一采样帧供预览与输出共用。原指令监视移到“输出监视”页，独立工具保留用于对照。
+- 混合分析 1 改标内测并保留 L0 核心；v2 改标非舞蹈推荐，L0 平滑跟随主要运动方向，L1/L2 分析剩余方向。六轴可选 RTM 2D 旋转辅助，或不带模型的画面旋转/形变近似；RTM 2D 的可选 1/v2 混合仍只影响 L0。
+- 五档预设只改最终录制、导出脚本和实时输出行程：0.55/0.75/1/1.15/1.30，不切换模式或改变识别参数。实时分析与离线导出互斥，停止取消未完成导出。
+- RTM 2D 平移使用相对参考的图像位置，旋转保留原有 2D 启发式；删除 RTM Pose 3D 模式与模型加载，历史 3D 配置迁移到 2D + Log only，旧模型路径不复用。
+- RTM/v2 六轴 L1/L2 输出倍率改为 L0 低/中/高 1/2.5/1；逐条根据受限后的 L0 指令重新计算，固定观测也会随 L0 从中段下降向中心收拢。观测/骨架/脚本数据不应用此倍率；原有限位、反向、限速与手动回中继续生效。
+- 新设置支持中英文、保存/读取/恢复默认。处理最长边默认 640，骨架四项处理默认关闭，现有保存的光流/卡尔曼选择保留。视频按源时间戳处理，RTM/v2 播放跟不上时跳过旧帧。
+- 新增根目录 Start.md 使用说明；Start.cmd 仍是一键运行入口，并支持 --smoke 临时 Log-only 启动检查。
+- 本轮仅本地源码测试，不打包、不提交、不推送，不更改正式环境依赖。真实片段效果与机械臂映射仍待验证。
+- Integrated same-frame preview/analysis, adaptive Hybrid v2 with optional pose rotations, output-only presets, RTM 2D-only inference, symmetric RTM output coupling, saved visual options and source-launch smoke checks. No verified robot-arm compatibility.
+
+2.0.0-test.5 - 2026-09-05
+- 接入独立骨架预览窗口，使用 Pose Preview Lab 0.2.1-test；不将其结果接入设备输出。
+- 保留 SR6/OSR6 原有 TCode 串口/BLE，移除其他商业设备适配、扫描和绑定。旧外部设备配置迁移为 Log only。
+- README、教程与界面措辞改为视觉分析和机械臂模拟测试；实际机械臂映射尚未验证。
+- 原有轴算法、倍率和安全限制未修改。本版仅源码，不打包、不推送。
+
+以下为历史版本记录，不代表当前测试版仍提供相应功能。
+
+2.0.0-test.4 - 2026-09-05
+- 屏幕采集改为独立 MSS 截图线程，只保留最新一帧，分析慢时丢弃旧帧而不是积压；保持原有区域/DPI 坐标处理，不引入新的采集依赖。
+- 分析方式下方新增采集帧率滑块，1-120 FPS、默认 45，主界面可实时调整，开始弹窗确认后同步；本地保存并可恢复默认。
+- 显示实际采集/分析循环 FPS 与输入帧龄；分析循环 FPS 不等于 RTM 模型推理 FPS，输入帧龄不含后续分析/设备延迟。
+- 预览发送上限由约 12.5 FPS 提高至最多 60 FPS；运行中 UI 更频繁取最新预览，同批旧预览不重复绘制。
+- RTM 六轴新增幅度映射：L1/L2 相对中位按 1+4×L0 放大（L0 最低 1 倍、居中 3 倍、最高 5 倍）；R1/R2 基础幅度翻倍。L0/R0 不因幅度映射改变，L0 Only 和基础分析不使用此映射。
+- 所有分析方式新增默认开启的“输出曲线拟合”，使用轻量 One Euro 自适应滤波；慢动作抑抖、快动作减少滞后，无未来帧缓冲。可实时关闭，设置保存，恢复默认时开启。
+- 平滑后的实时分析值供设备输出与录制共用，离线导出按视频时间戳滤波；保留后续行程倍率/反转和设备安全输出，手动回中与急停不经过新滤波。
+- RTM 检测、基础分析和 L0 核心算法不改。高帧率增加资源消耗，幅度增强可能更容易触及上限；滤波有少量滞后，不能保证完全消除识别误差或设备抖动。
+- 本次仅源码 + Start.cmd 本地测试，不重新打包 exe/ZIP，不推送或替换已发布的 test.3。
 
 2.0.0-test.3 - 2026-09-05
 - 所有下拉列表按完整文字和实际字体自动加宽，不改变收起时侧栏布局；超出屏幕宽度时可水平滚动。
@@ -16,14 +209,14 @@ SR6/OSR6 Realtime Screen TCode High Hardware Compatibility 版本日志
 - 下载通过 SHA-256 校验后离线安装，CUDA/DirectML 分开保存。安装或切换运行库按提示重启；失败不覆盖原环境。
 - 通过隔离目录实测 DirectML 下载、安装和 GPU 推理，未修改现有运行库；AMD 真机与所有 RTM 模型的速度仍需用户测试。
 - 同步中英文说明，鸣谢志愿测试与建议提供者“电话机”，英文保留中文名字与引号。
-- 按授权生成 BETA 免安装 exe/Windows ZIP 和纯源码 ZIP，发布到 2.0.0-High-Hardware-Compatibility-BETA 分支，不合并 main 或替换正式版。
+- 按授权生成 BETA 免安装 exe/Windows ZIP 和纯源码 ZIP，发布到当时的 BETA 测试分支，不合并 main 或替换正式版。
 - 免安装版新增隐藏子进程的 GPU 检测与 pip 安装入口，支持没有 Python 的电脑在软件内安装运行库；修复冻结环境的 pip 资源读取，打包优先读取当前 clone 的源码。
 - 下载遇到截断或校验失败时最多重试三次，始终验证 SHA-256，不发布损坏文件；界面注明 CUDA 运行库较大、DirectML 较小，不承诺准确率差异。
 - Windows 与源码包均排除模型、可选 CUDA/cuDNN/NVIDIA/DirectML 运行库、本地设置、缓存和开发中间文件；保留 CPU 推理必需依赖。
 - 基础分析、L0/六轴算法及安全输出逻辑不因本次打包和界面说明修改而改变。
 
 2.0.0-test.2 - 2026-09-05
-- 软件名称统一为 SR6/OSR6 Realtime Screen TCode High Hardware Compatibility；同步窗口、预览、启动提示、README、中英文教程和未来打包文件名。
+- 软件名称统一为 SR6/OSR6 Realtime Screen TCode；同步窗口、预览、启动提示、README、中英文教程和未来打包文件名。
 - Log only 隐藏串口、波特率、自动检测、查询轴及 BLE 信息；切换输出方式时断开旧连接，避免日志模式继续驱动硬件。
 - 设备类型第二项新增“自定义（Intiface）”，L0/L1/L2/R0/R1/R2 可分别绑定选定设备的功能；默认不绑定，拒绝重复功能和无效绑定。
 - 同类功能合并发送，不同指令类型轮流使用最新帧，继续遵守速度/强度上限、设备间隔、停止锁和过期输出保护。

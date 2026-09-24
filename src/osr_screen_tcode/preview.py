@@ -21,14 +21,15 @@ class PreviewBridge:
         self._error: BaseException | None = None
         self.port = 0
         self.url = ""
+        self._last_tcode = ""
         self._device_context = self._make_device_context("SR6/OSR6", False, "en")
 
     @staticmethod
     def _make_device_context(device: str, mismatch: bool, language: str) -> dict:
-        note = ("预览形状与实际设备不同；展示映射前的受限轴指令，不是硬件位置反馈。" if mismatch else
-                "SR6/OSR6 参考模型；展示受限轴指令，不是硬件位置反馈。") if language == "zh" else (
-                "Preview shape differs from the actual device. Limited axes before device mapping, not hardware feedback." if mismatch else
-                "SR6/OSR6 reference model. Limited axis commands, not hardware position feedback.")
+        prefix = ("预览形状与实际设备不同。" if mismatch else "SR6/OSR6 参考模型。") if language == "zh" else (
+            "Preview shape differs from the actual device. " if mismatch else "SR6/OSR6 reference model. ")
+        note = prefix + ("显示经过行程倍率、联动、反向、限位和限速的最终输出指令，不是硬件位置反馈。" if language == "zh" else
+                         "Shows final commands after travel gains, coupling, inversion, limits and speed caps; not hardware position feedback.")
         return {"device": device, "note": note, "version": __version__, "app": APP_NAME}
 
     def set_device_context(self, device: str, mismatch: bool, language: str) -> None:
@@ -91,8 +92,6 @@ class PreviewBridge:
         return preview_path
 
     def broadcast_tcode(self, command: str) -> None:
-        if not self.is_running or self._loop is None:
-            return
         text = command.strip()
         if not text:
             return
@@ -101,7 +100,14 @@ class PreviewBridge:
             ensure_ascii=False,
             separators=(",", ":"),
         )
-        self._loop.call_soon_threadsafe(lambda: asyncio.create_task(self._broadcast(payload)))
+        self._last_tcode = payload
+        loop = self._loop
+        if not self.is_running or loop is None:
+            return
+        try:
+            loop.call_soon_threadsafe(lambda: asyncio.create_task(self._broadcast(payload)))
+        except RuntimeError:
+            pass  # Closing a preview must not interrupt device output.
 
     def _run(self) -> None:
         loop = asyncio.new_event_loop()
@@ -132,6 +138,8 @@ class PreviewBridge:
             self._clients.add(websocket)
             try:
                 await websocket.send(self._context_payload())
+                if self._last_tcode:
+                    await websocket.send(self._last_tcode)
                 async for message in websocket:
                     await self._handle_message(websocket, message)
             finally:

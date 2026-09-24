@@ -4,6 +4,8 @@ import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
+import math
+from .analysis_preferences import load_profiles
 
 
 APP_DIR = Path.home() / ".osr_screen_tcode_2_0_test"
@@ -16,7 +18,22 @@ DEFAULT_SIX_AXIS_TRAVEL_SCALES = {"L1": 1.0, "L2": 1.0, "R0": 1.0, "R1": 1.0, "R
 DEFAULT_AXIS_OUTPUT_INVERTS = {"L1": False, "L2": False, "R0": False, "R1": False, "R2": False}
 RTM_POSE_2D_MODE = "RTM Pose 2D（推荐-舞蹈）"
 RTM_POSE_3D_MODE = "RTM Pose 3D（高延迟-舞蹈）"
-RTM_POSE_MODE = RTM_POSE_3D_MODE
+RTM_POSE_MODE = RTM_POSE_2D_MODE
+HYBRID_MODE = "混合分析（推荐-平面大幅动作）"
+HYBRID_V2_MODE = "混合分析 v2（推荐-非舞蹈）"
+STROKE_CYCLE_MODE = "全/半行程模式（基于混合分析）"
+
+
+def normalize_visual_settings(extra: dict) -> None:
+    if extra.get('v2_l0_reference') not in ('fusion', 'motion', 'center', 'interaction'):
+        extra['v2_l0_reference'] = 'fusion'
+    if extra.get("visual_processing_edge", 640) not in (320, 480, 640, 960, 1280):
+        extra["visual_processing_edge"] = 640
+    extra.setdefault("visual_processing_edge", 640)
+    for key in ("hybrid_v2_pose_enabled", "rtm_pose_reject_enabled", "rtm_pose_micro_smooth_enabled",
+                "rtm_pose_flow_enabled", "rtm_pose_kalman_enabled"):
+        extra[key] = bool(extra.get(key, False))
+    extra["rtm_hybrid_source"] = HYBRID_V2_MODE
 
 
 @dataclass
@@ -29,25 +46,25 @@ class AppConfig:
     min_value: int = 0
     max_value: int = 9999
     axis_limits: dict[str, list[int]] = field(default_factory=lambda: {axis: values.copy() for axis, values in DEFAULT_AXIS_LIMITS.items()})
-    smoothing: float = 0.08
+    smoothing: float = 0.28
     enable_smoothing: bool = True
-    deadzone: float = 0.006
+    deadzone: float = 0.008
     enable_deadzone: bool = True
-    tracker_mode: str = "混合分析（推荐-非舞蹈）"
+    tracker_mode: str = HYBRID_V2_MODE
     response_curve: str = "Linear"
-    motion_gain: float = 1.8
-    visual_stroke_scale: float = 0.72
+    motion_gain: float = 1.35
+    visual_stroke_scale: float = 0.66
     global_travel_scale: float = 1.0
-    min_activity: float = 0.002
+    min_activity: float = 0.0035
     enable_activity_gate: bool = True
-    max_step: int = 9999
+    max_step: int = 1300
     enable_speed_limit: bool = True
     idle_mode: str = "Hold"
     invert: bool = False
     enable_startup_ramp: bool = True
     startup_ramp_ms: int = 700
     axis: str = "L0"
-    output_interval_ms: int = 20
+    output_interval_ms: int = 24
     serial_port: str = ""
     baudrate: int = 115200
     ble_name: str = ""
@@ -55,12 +72,6 @@ class AppConfig:
     ble_service_uuid: str = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
     ble_write_uuid: str = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
     last_sink: str = "Serial COM"
-    device_family: str = "tcode"
-    intiface_url: str = "ws://127.0.0.1:12345"
-    external_axis: str = "L0"
-    external_limit: float = 20.0
-    custom_bindings: dict[str, str] = field(default_factory=dict)
-    custom_binding_signature: str = ""
     audio_mode: str = "Audio Level"
     audio_gain: float = 2.5
     audio_threshold: float = 0.02
@@ -76,22 +87,35 @@ class AppConfig:
             data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return cls()
+        try:
+            fps = float(data.get("fps", cls.fps))
+            data["fps"] = max(1, min(120, round(fps))) if math.isfinite(fps) else cls.fps
+        except (TypeError, ValueError, OverflowError):
+            data["fps"] = cls.fps
         if "axis_limits" not in data:
             low = data.get("min_value", cls.min_value)
             high = data.get("max_value", cls.max_value)
             data["axis_limits"] = {axis: [low, high] for axis in AXES}
         extra = data.setdefault("extra", {})
+        legacy_analysis_values = dict(extra)
         legacy_hybrid_name = "D" + "KAI Flow Light"
         legacy_mode_labels = {
+            "混合分析（推荐-非舞蹈）": HYBRID_MODE,
+            "Hybrid Analysis (Internal Test)": HYBRID_MODE,
+            "混合分析（内测）": HYBRID_MODE,
+            "Hybrid Analysis (Recommended - Large Planar Motion)": HYBRID_MODE,
+            "混合分析 v2（画面运动 v2，仅 L0）": HYBRID_V2_MODE,
+            "Hybrid Analysis v2 (Image Motion v2, L0 only)": HYBRID_V2_MODE,
+            "Hybrid Analysis v2 (Recommended - Non-Dance)": HYBRID_V2_MODE,
             "Motion Center": "Motion Center（内测用）",
             "Optical Flow": "Optical Flow（内测用）",
             "Hybrid Motion": "Hybrid Motion（内测用）",
             "Stroke Phase": "Stroke Phase（内测用）",
-            legacy_hybrid_name: "混合分析（推荐-非舞蹈）",
-            f"{legacy_hybrid_name}（推荐）": "混合分析（推荐-非舞蹈）",
-            "混合分析（推荐）": "混合分析（推荐-非舞蹈）",
-            "Hybrid Analysis (Recommended)": "混合分析（推荐-非舞蹈）",
-            "Hybrid Analysis (Recommended - Non-Dance)": "混合分析（推荐-非舞蹈）",
+            legacy_hybrid_name: HYBRID_MODE,
+            f"{legacy_hybrid_name}（推荐）": HYBRID_MODE,
+            "混合分析（推荐）": HYBRID_MODE,
+            "Hybrid Analysis (Recommended)": HYBRID_MODE,
+            "Hybrid Analysis (Recommended - Non-Dance)": HYBRID_MODE,
             "RTM Pose": RTM_POSE_3D_MODE,
             "RTM Pose（推荐-舞蹈）": RTM_POSE_3D_MODE,
             "RTM Pose 2D": RTM_POSE_2D_MODE,
@@ -105,9 +129,9 @@ class AppConfig:
         }
         if data.get("tracker_mode") in legacy_mode_labels:
             data["tracker_mode"] = legacy_mode_labels[data["tracker_mode"]]
-        if data.get("tracker_mode") == "混合分析（推荐-非舞蹈）" and bool(extra.get("rtm_pose_3d_enabled", False)):
+        if data.get("tracker_mode") == HYBRID_MODE and bool(extra.get("rtm_pose_3d_enabled", False)):
             data["tracker_mode"] = RTM_POSE_MODE
-        if data.get("tracker_mode") == "混合分析（推荐-非舞蹈）" and not extra.get("hybrid_analysis_range_migration_v1"):
+        if data.get("tracker_mode") == HYBRID_MODE and not extra.get("hybrid_analysis_range_migration_v1"):
             data.setdefault("visual_stroke_scale", 0.72)
             data["response_curve"] = "Linear"
             extra["hybrid_analysis_range_migration_v1"] = True
@@ -116,7 +140,7 @@ class AppConfig:
         extra.setdefault("enable_l0_jitter_guard", True)
         extra.setdefault("l0_guard_strength", 0.70)
         extra.setdefault("enable_extreme_reset", True)
-        extra.setdefault("extreme_hold_ms", 900)
+        extra.setdefault("extreme_hold_ms", 850)
         extra.setdefault("enable_endpoint_guard", True)
         extra.setdefault("endpoint_margin_pct", 10)
         extra.setdefault("pose_dance_analysis", False)
@@ -137,14 +161,11 @@ class AppConfig:
         extra.setdefault("rtm_hybrid_l0_weight", 30)
         extra.setdefault("rtm_pose_gpu_enabled", False)
         extra.setdefault("rtm_pose_gpu_backend", "cuda")
-        extra.setdefault("rtm_pose_flow_enabled", True)
-        extra.setdefault("rtm_pose_kalman_enabled", True)
-        if not extra.get("rtm_pose_flow_kalman_default_on_v1"):
-            extra["rtm_pose_flow_enabled"] = True
-            extra["rtm_pose_kalman_enabled"] = True
-            extra["rtm_pose_flow_kalman_default_on_v1"] = True
+        extra.setdefault("rtm_pose_flow_enabled", False)
+        extra.setdefault("rtm_pose_kalman_enabled", False)
         extra.setdefault("l0_travel_scale", data.get("global_travel_scale", 1.0))
         extra.setdefault("compression_latency", 0)
+        extra.setdefault("output_curve_fitting", True)
         extra.setdefault("show_more_settings", False)
         extra.setdefault("show_measurement_limits", True)
         extra.setdefault("show_six_axis_tuning", False)
@@ -232,24 +253,30 @@ class AppConfig:
         extra["six_axis_travel_invert"] = bool(extra.get("six_axis_travel_invert", False))
         extra["l0_travel_scale"] = max(0.0, min(3.0, float(extra.get("l0_travel_scale", data.get("global_travel_scale", 1.0)))))
         extra["compression_latency"] = max(-5, min(5, int(extra.get("compression_latency", 0))))
+        extra["output_curve_fitting"] = bool(extra.get("output_curve_fitting", True))
+        extra["endpoint_slowdown_enabled"] = bool(extra.get("endpoint_slowdown_enabled", True))
+        try:
+            extra["endpoint_slowdown_pct"] = max(1, min(50, round(float(extra.get("endpoint_slowdown_pct", 10)))))
+        except (TypeError, ValueError, OverflowError):
+            extra["endpoint_slowdown_pct"] = 10
         data["global_travel_scale"] = max(0.0, min(3.0, float(data.get("global_travel_scale", 1.0))))
         extra["show_more_settings"] = bool(extra.get("show_more_settings", False))
         extra["show_measurement_limits"] = bool(extra.get("show_measurement_limits", True))
         extra["show_six_axis_tuning"] = bool(extra.get("show_six_axis_tuning", False))
         extra["show_rtm_pose_3d_settings"] = bool(extra.get("show_rtm_pose_3d_settings", False))
         extra["show_six_axis_travel_scales"] = bool(extra.get("show_six_axis_travel_scales", False))
-        if data.get("external_axis", "L0") not in AXES:
-            data["external_axis"] = "L0"
-        bindings = data.get("custom_bindings", {})
-        data["custom_bindings"] = {axis: key for axis, key in bindings.items()
-                                   if axis in AXES and isinstance(key, str) and 0 < len(key) < 100} if isinstance(bindings, dict) else {}
-        if not isinstance(data.get("custom_binding_signature", ""), str):
-            data["custom_binding_signature"] = ""
-        try:
-            limit = float(data.get("external_limit", 20))
-            data["external_limit"] = max(0, min(100, limit)) if limit == limit else 20
-        except (TypeError, ValueError):
-            data["external_limit"] = 20
+        # Removed commercial-device settings are dropped by the field allowlist.
+        if data.get("device_family", "tcode") != "tcode" or data.get("last_sink", "Log only") not in ("Log only", "Serial COM", "USB Serial", "BLE UART"):
+            data["last_sink"] = "Log only"
+        if data.get("tracker_mode") == RTM_POSE_3D_MODE or extra.get("rtm_pose_3d_enabled"):
+            data["tracker_mode"] = RTM_POSE_2D_MODE
+            data["last_sink"] = "Log only"
+        if data.get("tracker_mode") in ("混合分析 v2", "混合分析v2", "Hybrid Analysis v2"):
+            data["tracker_mode"] = HYBRID_V2_MODE
+        for key in ("rtm_pose_3d_enabled", "rtm_pose_3d_model_path", "rtm_pose_3d_weight"):
+            extra.pop(key, None)
+        normalize_visual_settings(extra)
+        extra["analysis_profiles"] = load_profiles(extra, data.get("tracker_mode", cls.tracker_mode), data["fps"], legacy_analysis_values)
         allowed = {field.name for field in cls.__dataclass_fields__.values()}
         return cls(**{k: v for k, v in data.items() if k in allowed})
 

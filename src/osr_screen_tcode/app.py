@@ -4,6 +4,7 @@ import asyncio
 import argparse
 from collections.abc import Callable
 from collections import deque
+from dataclasses import replace
 import ctypes
 import os
 import queue
@@ -17,18 +18,11 @@ import zipfile
 from pathlib import Path
 
 
+from .screen_geometry import configure_dpi_awareness, physical_cursor_position, place_physical_window, move_physical_window
+
+
 def _configure_windows_dpi_awareness() -> None:
-    if not sys.platform.startswith("win"):
-        return
-    try:
-        ctypes.windll.shcore.SetProcessDpiAwareness(1)
-        return
-    except Exception:
-        pass
-    try:
-        ctypes.windll.user32.SetProcessDPIAware()
-    except Exception:
-        pass
+    configure_dpi_awareness()
 
 
 _configure_windows_dpi_awareness()
@@ -47,7 +41,10 @@ from PIL import Image, ImageTk
 from .analyzer import SIX_AXES, RealtimeAnalyzer
 from .audio import AudioAnalyzer, AudioCapture, list_audio_devices
 from . import APP_NAME, __version__
-from .capture import ScreenCapture, ScreenRegion, virtual_screen_bounds
+from .capture import LatestScreenCapture, ScreenCapture, ScreenRegion, capture_fps, validate_region
+from .region_selector import ScreenRegionSelector, TEXT as REGION_TEXT
+from .pose_output import rtm_rotation_amplitudes, rtm_l0_amplitude
+from .output_curve import OutputCurveFilter
 from .config import (
     AppConfig,
     DEFAULT_AXIS_OUTPUT_INVERTS,
@@ -57,14 +54,19 @@ from .config import (
     RTM_POSE_2D_MODE,
     RTM_POSE_3D_MODE,
     RTM_POSE_MODE,
+    HYBRID_MODE, HYBRID_V2_MODE, STROKE_CYCLE_MODE, normalize_visual_settings,
 )
+from .analysis_preferences import AnalysisPreferences, defaults as analysis_defaults, load_profiles
+from .integrated_preview import IntegratedPreview
 from .preview import PreviewBridge
+from .visual_pipeline import LabAnalyzer, VisualFrame, VisualSettings, make_analyzer
+from .visual_lab.stabilizer import Options
 from .device_controls import DeviceControls
 from .gpu_controls import GpuControls
 from .ui_widgets import WideCombobox, monitor_workarea
-from .device_backends import IntifaceSink, NATIVE_FAMILIES
 from .recorder import MultiAxisFunscriptRecorder
 from .sinks import (
+    OutputWriteError,
     BleSink,
     LogSink,
     SerialSink,
@@ -76,16 +78,15 @@ from .sinks import (
 from .tcode import MultiAxisSafeOutput
 
 
-RTM_POSE_3D_MODEL_URL = "https://huggingface.co/Soykaf/RTMW3D-x/resolve/main/onnx/rtmw3d-x_8xb64_cocktail14-384x288-b0a0eab7_20240626.onnx"
-RTM_POSE_3D_MODEL_NAME = "rtmw3d-x_8xb64_cocktail14-384x288-b0a0eab7_20240626.onnx"
 RTM_POSE_2D_MODEL_URL = "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-s_simcc-body7_pt-body7_420e-256x192-acd4a1ef_20230504.zip"
 RTM_POSE_2D_MODEL_NAME = "rtmpose-s_simcc-body7_pt-body7_420e-256x192-acd4a1ef_20230504.onnx"
 
 
 TRACKER_MODE_CHOICES = (
-    "混合分析（推荐-非舞蹈）",
+    STROKE_CYCLE_MODE,
     RTM_POSE_2D_MODE,
-    RTM_POSE_3D_MODE,
+    HYBRID_V2_MODE,
+    HYBRID_MODE,
     "Stroke Phase（内测用）",
     "Motion Center（内测用）",
     "Optical Flow（内测用）",
@@ -94,9 +95,10 @@ TRACKER_MODE_CHOICES = (
 )
 
 TRACKER_MODE_EN = {
-    "混合分析（推荐-非舞蹈）": "Hybrid Analysis (Recommended - Non-Dance)",
+    STROKE_CYCLE_MODE: "Full/Half Travel (Hybrid Analysis)",
+    HYBRID_MODE: "Hybrid Analysis (Recommended - Large Planar Motion)",
     RTM_POSE_2D_MODE: "RTM Pose 2D (Recommended - Dance)",
-    RTM_POSE_3D_MODE: "RTM Pose 3D (Higher Latency - Dance)",
+    HYBRID_V2_MODE: "Hybrid Analysis v2 (Recommended - Non-Dance)",
     "Stroke Phase（内测用）": "Stroke Phase (Beta)",
     "Motion Center（内测用）": "Motion Center (Beta)",
     "Optical Flow（内测用）": "Optical Flow (Beta)",
@@ -105,17 +107,15 @@ TRACKER_MODE_EN = {
 }
 
 UI_TEXT_EN = {
-    "成年人使用确认": "Adults Only",
-    "本软件面向成年人使用，未成年禁止入内。": "This software is intended for adults only. Minors are prohibited.",
+    "采集帧率 FPS": "Capture FPS",
+    "输出曲线拟合": "Output Curve Smoothing",
     "六轴模式只建议在光线好、主体清晰、框选区域干净时使用。": "Use Six Axis only with good lighting, a clear subject, and a clean selected region.",
     "第一次正式使用前，请先用测量模式保存适合自己的安全上限/下限。": "Before real use, save comfortable safe upper/lower limits in measurement mode.",
-    "我已满 18 岁，继续": "I am 18+ and continue",
-    "未满 18 岁，退出": "Exit",
     "中文": "Chinese",
     "英文": "English",
     "界面语言": "Interface language",
     "五档预设": "Play Preset",
-    "1 慢玩  ·  5 刺激": "1 gentle  ·  5 intense",
+    "仅调整最终输出幅度": "Final output travel only",
     "急停回中": "Emergency Center",
     "全行程": "Full Travel",
     "连接并回中": "Connect + Center",
@@ -132,18 +132,19 @@ UI_TEXT_EN = {
     "视频": "Video",
     "选择": "Browse",
     "分析视频并保存脚本": "Analyze Video + Save Script",
-    "声音监听（PMV）": "Audio Only (PMV)",
+    "声音监听": "Audio Only",
     "声音分析": "Audio Analysis",
     "声音设备": "Audio Device",
     "刷新": "Refresh",
     "声音增益": "Audio Gain",
     "声音门槛": "Audio Threshold",
     "声音平滑": "Audio Smoothing",
-    "选择 Audio Only 后只监听声音，不读取屏幕画面。系统输出回环适合播放 PMV。": "Audio Only listens to sound without reading the screen. System Output is useful for PMV playback.",
+    "选择 Audio Only 后只监听声音，不读取屏幕画面。": "Audio Only listens to sound without reading the screen.",
     "高级参数": "Advanced",
     "输出模式": "Output Mode",
     "分析模式": "Analysis Mode",
     "间隔 ms": "Interval ms",
+    "到达时间下限 ms": "Minimum arrival time (ms)",
     "启用每帧限速": "Enable Frame Speed Limit",
     "限速值": "Speed Limit",
     "启用平滑曲线": "Enable Smoothing",
@@ -293,8 +294,8 @@ UI_TEXT_EN = {
     "使用此区域": "Use Region",
     "重新选择": "Reselect",
     "区域太小，请重新拖拽": "Region is too small. Drag again.",
-    "拔出": "Out",
-    "插入": "In",
+    "上限方向": "Upper",
+    "下限方向": "Lower",
     "脚本曲线": "Script Curve",
     "最近12秒 / 实际输出": "Last 12s / Real Output",
     "开始输出后显示曲线": "Curve appears after output starts",
@@ -365,18 +366,19 @@ UI_TEXT_EN = {
     "已选择区域": "Selected region",
     "找到 BLE": "Found BLE",
     "未找到 BLE 设备": "No BLE device found",
-    "插入中（去下限）": "Inward (toward lower)",
-    "拔出中（去上限）": "Outward (toward upper)",
-    "插入端（下限）": "In endpoint (lower)",
-    "拔出端（上限）": "Out endpoint (upper)",
+    "向下限移动": "Moving toward lower",
+    "向上限移动": "Moving toward upper",
+    "下限端点": "Lower endpoint",
+    "上限端点": "Upper endpoint",
 }
 
+UI_TEXT_EN.update(REGION_TEXT)
 UI_TEXT_REVERSE_EN = {value: key for key, value in UI_TEXT_EN.items()}
 
 
 TOOLTIPS = {
-    "五档预设": "一键切换整体速度、平滑和幅度；1 更柔，5 更刺激。",
-    "1 慢玩  ·  5 刺激": "数字越小越慢越稳，数字越大越快越强。",
+    "五档预设": "仅设置最终脚本与实时输出的行程倍率：1–5 档为 0.55 / 0.75 / 1 / 1.15 / 1.30；不改变分析方法、识别参数或骨架处理。",
+    "仅调整最终输出幅度": "对录制、导出脚本和实时输出生效；原始分析结果不变，现有输出限位与限速继续有效。",
     "急停回中": "立即停止实时输出，并把当前启用的轴回到中间位置。",
     "全行程": "把 L0 切到更大更快的全行程测试参数。",
     "连接并回中": "连接当前选择的设备，并发送回中命令。",
@@ -408,7 +410,7 @@ TOOLTIPS = {
     "SR6/OSR6 六轴轻测": "逐个轻微测试 L0/L1/L2/R0/R1/R2。",
     "开始实时输出": "开始读取输入来源并控制设备。",
     "恢复所有默认设置": "把所有参数恢复到新安装时的默认值；点击后会先二次确认。",
-    "显示预览": "打开 3D 预览；显示的是已经过上下限、速度和平滑限制后的真实输出。",
+    "显示预览": "打开 3D 模拟器，显示最终输出指令的运动。画面与骨架在分析预览页；模拟器不是硬件反馈。",
     "取消预览": "关闭预览同步；已打开的浏览器页可直接关掉。",
     "停止": "停止实时输出，保持连接。",
     "安全预设": "更慢、更小幅，适合初次测试。",
@@ -423,8 +425,8 @@ TOOLTIPS = {
     "L1 行程倍率": "L1 前后轴的单独行程倍率，会再乘以六轴总行程倍率。",
     "L2 行程倍率": "L2 左右轴的单独行程倍率，会再乘以六轴总行程倍率。",
     "R0 行程倍率": "R0 扭转轴的单独行程倍率，会再乘以六轴总行程倍率。",
-    "R1 行程倍率": "R1 横滚轴的单独行程倍率，会再乘以六轴总行程倍率。",
-    "R2 行程倍率": "R2 俯仰轴的单独行程倍率，会再乘以六轴总行程倍率。",
+    "R1 行程倍率": "R1 横滚轴的单独行程倍率，会再乘以六轴总行程倍率。直接 Pose 额外随最终 L0 收拢：底部至 2/3 为 1 倍，顶部为 0.5 倍。",
+    "R2 行程倍率": "R2 俯仰轴的单独行程倍率，会再乘以六轴总行程倍率。直接 Pose 额外随最终 L0 收拢：底部至 2/3 为 1 倍，顶部为 0.5 倍。",
     "轴": "当前要查看或调整的 TCode 通道。",
     "测量模式": "用滑块手动遥控单个轴，方便保存安全上下限。",
     "滑动即发送": "打开后拖动测量滑块会立刻发送到设备。",
@@ -438,7 +440,7 @@ TOOLTIPS = {
     "收起测量模式和轴上下限": "收起测量模式和每个轴的安全上下限。",
     "展开六轴辅助调节（仅混合分析）": "展开混合分析用的六轴辅助微调。",
     "收起六轴辅助调节（仅混合分析）": "收起混合分析用的六轴辅助微调。",
-    "展开 RTM Pose 模型设置": "展开 RTM Pose 的模型路径、模型下载和来源说明。只有选择 RTM Pose 2D/3D 舞蹈模式时才显示。",
+    "展开 RTM Pose 模型设置": "展开 RTM Pose 的模型路径、模型下载和来源说明。只有选择 RTM Pose 2D 舞蹈模式时才显示。",
     "收起 RTM Pose 模型设置": "收起 RTM Pose 模型设置，保持主界面更清爽。",
     "总强度": "整体放大或缩小非 L0 五个辅助轴。",
     "六轴降抖": "越往右，辅助轴越不敏感、越平滑、越不容易抖。",
@@ -458,7 +460,7 @@ TOOLTIPS = {
     "视频": "待分析的视频文件路径。",
     "选择": "选择本地视频文件。",
     "分析视频并保存脚本": "离线分析视频并导出 funscript。",
-    "声音监听（PMV）": "只根据声音强度或节拍输出 L0。",
+    "声音监听": "只根据声音强度或节拍输出 L0。",
     "声音分析": "选择音频转动作的方式。",
     "声音设备": "选择系统输出回环或麦克风输入。",
     "声音增益": "放大声音信号，越大越容易触发动作。",
@@ -477,7 +479,7 @@ TOOLTIPS = {
     "高级参数": "控制分析、滤波、速度和响应方式。",
     "输出模式": "L0 Only 只输出上下；Six Axis 输出六轴。",
     "分析模式": "选择屏幕运动识别算法。",
-    "Pose 倾向 L0": "适合扭腰、舞蹈、PMV 画面；减少 L0 把左右摆动误判成上下到底。",
+    "Pose 倾向 L0": "根据姿态关键点分析运动，减少横向变化被误判为纵向变化。",
     "Pose 倾向六轴": "让横摆、扭腰、重复舞蹈更多体现在 L1/L2/R0/R1/R2 上。",
     "Pose L0 权重": "越大越偏向完整人物舞蹈/扭腰横摆理解，L0 越不容易把左右摆动误判成上下。",
     "Pose 六轴权重": "越大越像显示完整人物的舞蹈，横摆、扭腰和身体角度会更多分配给六轴辅助。",
@@ -490,8 +492,8 @@ TOOLTIPS = {
     "Pose v2 六轴权重": "越大越偏向 Pose v2 的胯部核心区、平行四边形和防卡边判断。",
     "基础分析 v2 L0 权重": "显示 L0 基础分析方法还占多少。开启 Pose v2 倾向 L0 时等于 100 - Pose v2 L0 权重；关闭时为 100%。",
     "基础分析 v2 六轴权重": "显示六轴基础分析方法还占多少。开启 Pose v2 倾向六轴时等于 100 - Pose v2 六轴权重；关闭时为 100%。",
-    "RTM Pose 骨架标注": "测试版舞蹈模式：使用 RTM Pose 感知到的人体骨架做标注和输出。只在选择 RTM Pose 2D/3D 舞蹈模式时启用。",
-    "RTM Pose 模型": "填写本地 RTMPose 2D 或 RTMPose 3D ONNX 模型路径。没有模型时程序仍会运行，只显示等待模型路径。",
+    "RTM Pose 骨架标注": "测试版舞蹈模式：使用 RTM Pose 感知到的人体骨架做标注和输出。只在选择 RTM Pose 2D 舞蹈模式时启用。",
+    "RTM Pose 模型": "选择本地 256x192 RTMPose 2D ONNX 模型；没有有效模型时不能开始 RTM 分析。",
     "基础分析 RTM 权重": "RTM Pose 是独立舞蹈模式，不接入混合分析权重。",
     "混合分析 L0 权重": "勾选后才会额外运行混合分析，只把它的 L0 按这个权重混入 RTM；不勾选时 RTM 保持 100% 模型并节省算力。",
     "当前本模型分析权重": "显示当前 RTM 模型在 L0 中占多少；未勾选混合分析时为 100%。",
@@ -502,6 +504,7 @@ TOOLTIPS = {
     "框选屏幕区域": "启动前重新选择实时读取范围，减少无关画面干扰。",
     "FPS": "每秒分析帧数，越高越跟手也越吃性能。",
     "间隔 ms": "TCode 命令的 I 时间，通常和输出刷新速度相关。",
+    "到达时间下限 ms": "TCode 的最短到达时间。运行时还会参考实际更新间隔，接近上下限时可进一步延长；不是发送频率设置。",
     "启用每帧限速": "限制每帧最大变化，减少突然猛动。",
     "限速值": "每帧允许变化的最大 TCode 数值。",
     "启用平滑曲线": "对输出做平滑，减少生硬抖动。",
@@ -526,8 +529,8 @@ TOOLTIPS = {
 }
 
 TOOLTIPS_EN = {
-    "五档预设": "Switch overall speed, smoothing, and travel. 1 is gentle; 5 is stronger.",
-    "1 慢玩  ·  5 刺激": "Lower numbers are slower and steadier. Higher numbers are faster and stronger.",
+    "五档预设": "Set final script and live output travel to 0.55 / 0.75 / 1 / 1.15 / 1.30. Analysis mode, recognition settings and pose processing stay unchanged.",
+    "仅调整最终输出幅度": "Applies to recording, exported scripts and live output. Raw analysis is unchanged; output limits and speed caps still apply.",
     "急停回中": "Stop realtime output immediately and move active axes back to center.",
     "全行程": "Use larger and faster L0 travel for full-range testing.",
     "连接并回中": "Connect the selected device and send a center command.",
@@ -559,7 +562,7 @@ TOOLTIPS_EN = {
     "SR6/OSR6 六轴轻测": "Lightly test L0/L1/L2/R0/R1/R2 one by one.",
     "开始实时输出": "Start reading the selected input and controlling the device.",
     "恢复所有默认设置": "Restore factory defaults after a confirmation prompt.",
-    "显示预览": "Open the 3D preview. It shows the real output after limits, speed, and smoothing.",
+    "显示预览": "Open the 3D simulator for final output commands. Frames and skeletons are in Analysis Preview; the simulator is not hardware feedback.",
     "取消预览": "Stop preview sync. You can close the browser preview window.",
     "停止": "Stop realtime output while keeping the device connection.",
     "安全预设": "Slower and smaller motion, useful for first tests.",
@@ -574,8 +577,8 @@ TOOLTIPS_EN = {
     "L1 行程倍率": "Per-axis travel scale for L1 surge, multiplied by the six-axis travel scale.",
     "L2 行程倍率": "Per-axis travel scale for L2 sway, multiplied by the six-axis travel scale.",
     "R0 行程倍率": "Per-axis travel scale for R0 twist, multiplied by the six-axis travel scale.",
-    "R1 行程倍率": "Per-axis travel scale for R1 roll, multiplied by the six-axis travel scale.",
-    "R2 行程倍率": "Per-axis travel scale for R2 pitch, multiplied by the six-axis travel scale.",
+    "R1 行程倍率": "Per-axis R1 roll scale, multiplied by six-axis travel. Direct Pose also contracts it with final L0: 1x from bottom through 2/3, then 0.5x at the top.",
+    "R2 行程倍率": "Per-axis R2 pitch scale, multiplied by six-axis travel. Direct Pose also contracts it with final L0: 1x from bottom through 2/3, then 0.5x at the top.",
     "轴": "The TCode channel being viewed or adjusted.",
     "测量模式": "Manually control one axis with a slider and save safe limits.",
     "滑动即发送": "Send commands immediately while dragging the measurement slider.",
@@ -589,7 +592,7 @@ TOOLTIPS_EN = {
     "收起测量模式和轴上下限": "Hide measurement mode and per-axis safety limits.",
     "展开六轴辅助调节（仅混合分析）": "Show six-axis helper tuning for Hybrid Analysis.",
     "收起六轴辅助调节（仅混合分析）": "Hide six-axis helper tuning for Hybrid Analysis.",
-    "展开 RTM Pose 模型设置": "Show RTM Pose model path, download, and source details. Only visible in RTM Pose 2D/3D dance modes.",
+    "展开 RTM Pose 模型设置": "Show RTM Pose model path, download, and source details. Only visible in RTM Pose 2D dance modes.",
     "收起 RTM Pose 模型设置": "Hide RTM Pose model settings to keep the main controls cleaner.",
     "总强度": "Overall strength for the five non-L0 auxiliary axes.",
     "六轴降抖": "Higher values make auxiliary axes less sensitive, smoother, and steadier.",
@@ -609,7 +612,7 @@ TOOLTIPS_EN = {
     "视频": "Path to the video file to analyze.",
     "选择": "Choose a local video file.",
     "分析视频并保存脚本": "Analyze a video offline and export funscript files.",
-    "声音监听（PMV）": "Output L0 from audio level or rhythm only.",
+    "声音监听": "Output L0 from audio level or rhythm only.",
     "声音分析": "Choose how audio is converted to motion.",
     "声音设备": "Choose system loopback or microphone input.",
     "声音增益": "Boost the audio signal. Higher values trigger motion more easily.",
@@ -641,8 +644,8 @@ TOOLTIPS_EN = {
     "Pose v2 六轴权重": "Higher values favor Pose v2 hip-core, parallelogram, and anti-stuck side-axis tracking.",
     "基础分析 v2 L0 权重": "Shows how much the original L0 analysis still contributes. With Pose v2 L0 enabled, it is 100 minus Pose v2 L0 weight; when disabled, it is 100%.",
     "基础分析 v2 六轴权重": "Shows how much the original six-axis analysis still contributes. With Pose v2 Six-Axis enabled, it is 100 minus Pose v2 Six-Axis weight; when disabled, it is 100%.",
-    "RTM Pose 骨架标注": "Test dance mode: uses the skeleton perceived by RTM Pose for overlay and output. Only active in RTM Pose 2D/3D dance modes.",
-    "RTM Pose 模型": "Set the local RTMPose 2D or RTMPose 3D ONNX model path. Without a model, the app still runs and shows a waiting message.",
+    "RTM Pose 骨架标注": "Test dance mode: uses the skeleton perceived by RTM Pose for overlay and output. Only active in RTM Pose 2D dance modes.",
+    "RTM Pose 模型": "Select a local 256x192 RTMPose 2D ONNX model. RTM analysis requires a valid model.",
     "基础分析 RTM 权重": "RTM Pose is a separate dance mode and does not use Hybrid Analysis weighting.",
     "混合分析 L0 权重": "When checked, Hybrid Analysis runs only for L0 and is mixed into RTM by this weight. When unchecked, RTM stays 100% model-driven and saves CPU.",
     "当前本模型分析权重": "Shows how much RTM model analysis currently contributes to L0. It is 100% when Hybrid L0 is unchecked.",
@@ -653,6 +656,7 @@ TOOLTIPS_EN = {
     "框选屏幕区域": "Select the realtime capture region before starting.",
     "FPS": "Frames analyzed per second. Higher is more responsive and uses more CPU.",
     "间隔 ms": "The TCode I time, usually related to output refresh speed.",
+    "到达时间下限 ms": "Minimum TCode arrival time. Actual update cadence and endpoint slowdown can extend it; this does not set the send frequency.",
     "启用每帧限速": "Limit maximum change per frame to reduce sudden moves.",
     "限速值": "Maximum TCode change allowed per frame.",
     "启用平滑曲线": "Smooth the output to reduce harsh jitter.",
@@ -694,11 +698,11 @@ class Tooltip:
     def _show(self) -> None:
         if self.window is not None:
             return
-        x = self.widget.winfo_pointerx() + 14
-        y = self.widget.winfo_pointery() + 14
+        x, y = (physical_cursor_position() if sys.platform.startswith("win") else
+                (self.widget.winfo_pointerx(), self.widget.winfo_pointery()))
+        x, y = x + 14, y + 14
         self.window = tk.Toplevel(self.widget)
         self.window.wm_overrideredirect(True)
-        self.window.wm_geometry(f"+{x}+{y}")
         label = tk.Label(
             self.window,
             text=self.text,
@@ -712,6 +716,11 @@ class Tooltip:
             wraplength=260,
         )
         label.pack()
+        self.window.update_idletasks()
+        width, height = self.window.winfo_reqwidth(), self.window.winfo_reqheight()
+        left, top, right, bottom = monitor_workarea(self.widget)
+        place_physical_window(self.window, dict(left=max(left, min(x, right-width)),
+            top=max(top, min(y, bottom-height)), width=width, height=height))
 
     def _hide(self, _event: tk.Event | None = None) -> None:
         self._cancel()
@@ -751,7 +760,14 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         self.control_queue: queue.SimpleQueue[dict[str, object]] = queue.SimpleQueue()
         self.stop_event = threading.Event()
         self.worker: threading.Thread | None = None
+        self._region_selector = None
+        self._input_widgets = []
+        self._region_busy = None
+        self._active_screen_region = None
+        self._video_worker: threading.Thread | None = None
+        self._video_cancel = threading.Event()
         self.sink = LogSink()
+        self.preview_bridge = PreviewBridge()
         self._output_context = threading.local()
         self.connected = False
         self._connecting = False
@@ -764,7 +780,7 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         self._config_autosave_suspended = False
         self.preview_image: ImageTk.PhotoImage | None = None
         self.preview_canvas_image: int | None = None
-        self.preview_bridge = PreviewBridge()
+        self._visual_generation = 0
         self.recorder = MultiAxisFunscriptRecorder()
         self._startup_window_geometry: str | None = None
 
@@ -776,9 +792,7 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
             self.config_model.extra["play_preset_initialized_v1"] = True
         self.refresh_ports()
         self.refresh_audio_devices()
-        if self._family_id() not in NATIVE_FAMILIES:
-            pass
-        elif self.config_model.serial_port:
+        if self.config_model.serial_port:
             self.serial_port.set(self.config_model.serial_port)
             self.refresh_ports()
         elif self.config_model.last_sink in ("Serial COM", "USB Serial"):
@@ -822,7 +836,7 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
     def _confirm_adult_use_or_exit(self) -> None:
         accepted = tk.BooleanVar(value=False)
         dialog = tk.Toplevel(self)
-        dialog.title("Adults Only")
+        dialog.title("Simulation Test / 模拟测试")
         dialog.resizable(False, False)
         dialog.attributes("-topmost", True)
 
@@ -830,25 +844,24 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         body.pack(fill="both", expand=True)
         tk.Label(
             body,
-            text="ADULTS ONLY",
+            text="SIMULATION TEST",
             font=("TkDefaultFont", 18, "bold"),
             foreground="#8a1f11",
         ).pack(anchor="w")
         tk.Label(
             body,
-            text="成年人使用确认 / 未成年禁止入内",
+            text="模拟测试确认 / Simulation test notice",
             font=("TkDefaultFont", 11),
             foreground="#8a1f11",
         ).pack(anchor="w", pady=(2, 10))
         tk.Label(
             body,
             text=(
-                "This software is intended for adults only. Minors are prohibited.\n"
-                "Six-axis mode should only be used with good lighting, a clear subject, "
-                "and a clean selected screen region.\n"
-                "Before real use, save comfortable safe upper/lower limits in measurement mode.\n\n"
-                "本软件仅面向成年人使用。六轴模式只建议在光线好、主体清晰、框选干净时使用。"
-                "第一次正式使用前，请先用测量模式保存适合自己的安全上限/下限。"
+                "For visual-analysis and robot-arm simulation experiments.\n"
+                "Physical robot-arm mapping is unverified. Start with Log only and no hardware. "
+                "The preview is not sensor feedback.\n\n"
+                "用于视觉分析与机械臂模拟实验。实际机械臂映射尚未验证；"
+                "请先使用 Log only，不连接硬件。预览不代表传感器反馈。"
             ),
             justify="left",
             wraplength=560,
@@ -868,7 +881,7 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
 
         tk.Button(
             button_row,
-            text="I am 18+ / 我已成年",
+            text="Continue / 继续",
             command=accept,
             width=28,
         ).pack(side="left")
@@ -882,9 +895,10 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         dialog.bind("<Escape>", lambda _event: decline())
         dialog.protocol("WM_DELETE_WINDOW", decline)
         dialog.update_idletasks()
-        x = self.winfo_screenwidth() // 2 - dialog.winfo_width() // 2
-        y = self.winfo_screenheight() // 2 - dialog.winfo_height() // 2
-        dialog.geometry(f"+{x}+{y}")
+        left, top, right, bottom = monitor_workarea(self)
+        x = left + max(0, (right-left-dialog.winfo_width()) // 2)
+        y = top + max(0, (bottom-top-dialog.winfo_height()) // 2)
+        move_physical_window(dialog, x, y)
         dialog.lift()
         dialog.focus_force()
         dialog.grab_set()
@@ -931,9 +945,10 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         dialog.bind("<Escape>", lambda _event: pick(default_language))
         dialog.protocol("WM_DELETE_WINDOW", lambda: pick(default_language))
         dialog.update_idletasks()
-        x = self.winfo_screenwidth() // 2 - dialog.winfo_width() // 2
-        y = self.winfo_screenheight() // 2 - dialog.winfo_height() // 2
-        dialog.geometry(f"+{x}+{y}")
+        left, top, right, bottom = monitor_workarea(self)
+        x = left + max(0, (right-left-dialog.winfo_width()) // 2)
+        y = top + max(0, (bottom-top-dialog.winfo_height()) // 2)
+        move_physical_window(dialog, x, y)
         dialog.lift()
         dialog.focus_force()
         dialog.grab_set()
@@ -964,7 +979,7 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         self.tracker_mode.set(self._tracker_display(value))
 
     def _active_rtm_pose_model_var(self, value: str | None = None) -> tk.StringVar:
-        return self.rtm_pose_2d_model_path if self._rtm_pose_2d_mode_active(value) else self.rtm_pose_3d_model_path
+        return self.rtm_pose_2d_model_path
 
     def _refresh_active_rtm_pose_model_path(self) -> None:
         if not hasattr(self, "rtm_pose_model_path"):
@@ -981,24 +996,25 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         self._active_rtm_pose_model_var().set(self.rtm_pose_model_path.get())
 
     def _rtm_pose_mode_active(self, value: str | None = None) -> bool:
-        raw_value = self.tracker_mode.get() if value is None else value
-        return self._tracker_internal(raw_value) in (RTM_POSE_2D_MODE, RTM_POSE_3D_MODE)
+        return self._rtm_pose_2d_mode_active(value)
 
     def _rtm_pose_2d_mode_active(self, value: str | None = None) -> bool:
         raw_value = self.tracker_mode.get() if value is None else value
         return self._tracker_internal(raw_value) == RTM_POSE_2D_MODE
 
+    def _pose_model_required(self, value=None, output_mode=None, v2_pose=None) -> bool:
+        mode = self._tracker_internal(self.tracker_mode.get() if value is None else value)
+        six = (self.output_mode.get() if output_mode is None else output_mode) == "Six Axis"
+        enabled = self.hybrid_v2_pose_enabled.get() if v2_pose is None else v2_pose
+        return mode == RTM_POSE_2D_MODE or (mode in (HYBRID_V2_MODE, STROKE_CYCLE_MODE) and six and enabled)
+
     def _rtm_pose_3d_mode_active(self, value: str | None = None) -> bool:
-        raw_value = self.tracker_mode.get() if value is None else value
-        return self._tracker_internal(raw_value) == RTM_POSE_3D_MODE
+        return False  # Shared legacy UI helper; 3D is not an analysis mode.
 
     def _rtm_pose_model_dir(self) -> Path:
         return Path(__file__).resolve().parents[2] / "models"
 
     def _rtm_pose_model_spec(self, mode: str) -> tuple[str, str, int, int, str]:
-        internal = self._tracker_internal(mode)
-        if internal == RTM_POSE_3D_MODE:
-            return (RTM_POSE_3D_MODEL_NAME, RTM_POSE_3D_MODEL_URL, 100_000_000, 3, "RTM Pose 3D")
         return (RTM_POSE_2D_MODEL_NAME, RTM_POSE_2D_MODEL_URL, 5_000_000, 2, "RTM Pose 2D")
 
     def _validate_rtm_pose_model_path(self, path_value: str, mode: str) -> tuple[bool, str]:
@@ -1066,19 +1082,13 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         return None
 
     def _apply_rtm_pose_model_path(self, path: str, mode: str, target_var: tk.StringVar | None = None) -> None:
-        internal = self._tracker_internal(mode)
-        if internal == RTM_POSE_2D_MODE:
-            self.rtm_pose_2d_model_path.set(path)
-        else:
-            self.rtm_pose_3d_model_path.set(path)
+        self.rtm_pose_2d_model_path.set(path)
         if target_var is not None:
             target_var.set(path)
-        if internal in (RTM_POSE_2D_MODE, RTM_POSE_3D_MODE):
-            self._set_tracker_mode(internal)
         self._refresh_active_rtm_pose_model_path()
 
     def _ensure_rtm_pose_model_ready(self) -> bool:
-        if not self._rtm_pose_mode_active():
+        if not self._pose_model_required():
             return True
         mode = self._tracker_internal(self.tracker_mode.get())
         model_var = self._active_rtm_pose_model_var(mode)
@@ -1115,29 +1125,59 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
 
     def _on_tracker_mode_changed(self) -> None:
         is_rtm = self._rtm_pose_mode_active()
+        if (self.worker and self.worker.is_alive()) or self._video_analysis_active():
+            self.stop()
+        self._analysis_preferences.switch(self._tracker_internal(self.tracker_mode.get()), self._analysis_variables())
+        if hasattr(self, "integrated_preview"):
+            self.reset_visual_reference()
+            self.integrated_preview.refresh_mode()
         self.rtm_pose_3d_enabled.set(self._rtm_pose_3d_mode_active())
         self.rtm_pose_3d_weight.set(100 if is_rtm else 0)
         self._refresh_active_rtm_pose_model_path()
         self._refresh_pose_base_weight_texts()
         self._refresh_rtm_pose_3d_settings()
+        self._refresh_hybrid_source()
+
+    def _analysis_variables(self):
+        return {name: getattr(self, name) for name in analysis_defaults("dance")}
+
+    @staticmethod
+    def _analysis_visibility(mode, blend_enabled, source_label, assist=None, blend_widgets=()):
+        dance = mode == RTM_POSE_2D_MODE
+        for widget in blend_widgets:
+            widget.grid() if dance else widget.grid_remove()
+        source_label.grid() if dance and blend_enabled else source_label.grid_remove()
+        if assist is not None:
+            assist.grid() if mode in (HYBRID_MODE, HYBRID_V2_MODE, STROKE_CYCLE_MODE) else assist.grid_remove()
+            assist.configure(state="normal" if mode in (HYBRID_V2_MODE, STROKE_CYCLE_MODE) else "disabled")
+
+    def _refresh_hybrid_source(self, *_args):
+        if hasattr(self, "rtm_hybrid_source_label"):
+            self._analysis_visibility(self._tracker_internal(self.tracker_mode.get()), self.rtm_hybrid_l0_enabled.get(),
+                self.rtm_hybrid_source_label, blend_widgets=self._rtm_blend_widgets)
 
     @staticmethod
     def _normalize_tracker_mode(value: str) -> str:
         aliases = {
-            "混合分析（推荐）": "混合分析（推荐-非舞蹈）",
-            "Hybrid Analysis (Recommended)": "混合分析（推荐-非舞蹈）",
-            "Hybrid Analysis (Recommended - Non-Dance)": "混合分析（推荐-非舞蹈）",
-            "RTM Pose": RTM_POSE_3D_MODE,
-            "RTM Pose（推荐-舞蹈）": RTM_POSE_3D_MODE,
+            "混合分析（内测）": HYBRID_MODE,
+            "Hybrid Analysis (Internal Test)": HYBRID_MODE,
+            "Hybrid Analysis (Recommended - Large Planar Motion)": HYBRID_MODE,
+            "混合分析（推荐）": HYBRID_MODE,
+            "Hybrid Analysis (Recommended)": HYBRID_MODE,
+            "Hybrid Analysis (Recommended - Non-Dance)": HYBRID_MODE,
+            "RTM Pose": RTM_POSE_2D_MODE,
+            "RTM Pose（推荐-舞蹈）": RTM_POSE_2D_MODE,
             "RTM Pose 2D": RTM_POSE_2D_MODE,
             "RTM Pose 2D（推荐-舞蹈）": RTM_POSE_2D_MODE,
             "RTM Pose 2D (Recommended - Dance)": RTM_POSE_2D_MODE,
-            "RTM Pose 3D": RTM_POSE_3D_MODE,
-            "RTM Pose 3D（推荐-舞蹈）": RTM_POSE_3D_MODE,
-            "RTM Pose 3D（高延迟-舞蹈）": RTM_POSE_3D_MODE,
-            "RTM Pose (Recommended - Dance)": RTM_POSE_3D_MODE,
-            "RTM Pose 3D (Higher Latency - Dance)": RTM_POSE_3D_MODE,
+            "RTM Pose 3D": RTM_POSE_2D_MODE,
+            "RTM Pose 3D（推荐-舞蹈）": RTM_POSE_2D_MODE,
+            "RTM Pose 3D（高延迟-舞蹈）": RTM_POSE_2D_MODE,
+            "RTM Pose (Recommended - Dance)": RTM_POSE_2D_MODE,
+            "RTM Pose 3D (Higher Latency - Dance)": RTM_POSE_2D_MODE,
         }
+        aliases.update({"混合分析（推荐-非舞蹈）": HYBRID_MODE, "混合分析 v2（画面运动 v2，仅 L0）": HYBRID_V2_MODE, "Hybrid Analysis v2 (Image Motion v2, L0 only)": HYBRID_V2_MODE, "混合分析v2": HYBRID_V2_MODE, "混合分析 v2": HYBRID_V2_MODE,
+                        "Hybrid Analysis v2": HYBRID_V2_MODE})
         return aliases.get(value, value)
 
     def _startup_actions(self) -> None:
@@ -1154,7 +1194,20 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         self.y = tk.IntVar(value=cfg.y)
         self.width = tk.IntVar(value=cfg.width)
         self.height = tk.IntVar(value=cfg.height)
+        self._screen_region_snapshot = ScreenRegion(cfg.x, cfg.y, cfg.width, cfg.height)
+        self._live_source_mode = cfg.extra.get("source_mode", "Screen")
         self.fps = tk.IntVar(value=cfg.fps)
+        self._capture_target_fps = capture_fps(cfg.fps)
+        self.fps.trace_add("write", self._capture_fps_changed)
+        self.capture_rate_text = tk.StringVar(value="")
+        self.output_curve_fitting = tk.BooleanVar(value=bool(cfg.extra.get("output_curve_fitting", True)))
+        self.endpoint_slowdown_enabled = tk.BooleanVar(value=bool(cfg.extra.get("endpoint_slowdown_enabled", True)))
+        self.endpoint_slowdown_pct = tk.DoubleVar(value=float(cfg.extra.get("endpoint_slowdown_pct", 10)))
+        self._endpoint_options_changed()
+        self.endpoint_slowdown_enabled.trace_add("write", self._endpoint_options_changed)
+        self.endpoint_slowdown_pct.trace_add("write", self._endpoint_options_changed)
+        self._output_curve_enabled = self.output_curve_fitting.get()
+        self.output_curve_fitting.trace_add("write", self._output_curve_changed)
         self.source_mode = tk.StringVar(value=cfg.extra.get("source_mode", "Screen"))
         self.video_path = tk.StringVar(value=cfg.extra.get("video_path", ""))
         self.output_mode = tk.StringVar(value=cfg.extra.get("output_mode", "L0 Only"))
@@ -1184,9 +1237,9 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         self.deadzone = tk.DoubleVar(value=cfg.deadzone)
         self.enable_deadzone = tk.BooleanVar(value=cfg.enable_deadzone)
         self.enable_l0_jitter_guard = tk.BooleanVar(value=bool(cfg.extra.get("enable_l0_jitter_guard", True)))
-        self.l0_guard_strength = tk.DoubleVar(value=float(cfg.extra.get("l0_guard_strength", 0.65)))
+        self.l0_guard_strength = tk.DoubleVar(value=float(cfg.extra.get("l0_guard_strength", 0.70)))
         self.enable_extreme_reset = tk.BooleanVar(value=bool(cfg.extra.get("enable_extreme_reset", True)))
-        self.extreme_hold_ms = tk.IntVar(value=int(cfg.extra.get("extreme_hold_ms", 900)))
+        self.extreme_hold_ms = tk.IntVar(value=int(cfg.extra.get("extreme_hold_ms", 850)))
         self.enable_endpoint_guard = tk.BooleanVar(value=bool(cfg.extra.get("enable_endpoint_guard", True)))
         self.endpoint_margin_pct = tk.IntVar(value=int(cfg.extra.get("endpoint_margin_pct", 10)))
         legacy_pose = bool(cfg.extra.get("pose_dance_analysis", False))
@@ -1213,13 +1266,16 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         self._pose_mode_syncing = False
         initial_tracker_mode = self._normalize_tracker_mode(cfg.tracker_mode)
         if bool(cfg.extra.get("rtm_pose_3d_enabled", False)):
-            initial_tracker_mode = RTM_POSE_3D_MODE
-        initial_rtm_pose_mode = initial_tracker_mode in (RTM_POSE_2D_MODE, RTM_POSE_3D_MODE)
+            initial_tracker_mode = RTM_POSE_2D_MODE
+        initial_rtm_pose_mode = initial_tracker_mode in (RTM_POSE_2D_MODE,)
         self.rtm_pose_3d_enabled = tk.BooleanVar(value=initial_tracker_mode == RTM_POSE_3D_MODE)
         self.rtm_pose_2d_model_path = tk.StringVar(value=str(cfg.extra.get("rtm_pose_2d_model_path", "")))
-        self.rtm_pose_3d_model_path = tk.StringVar(value=str(cfg.extra.get("rtm_pose_3d_model_path", "")))
+        self.rtm_pose_3d_model_path = tk.StringVar(value="")
         self.rtm_pose_3d_weight = tk.IntVar(value=100 if initial_rtm_pose_mode else 0)
         self.rtm_hybrid_l0_enabled = tk.BooleanVar(value=bool(cfg.extra.get("rtm_hybrid_l0_enabled", False)))
+        self.pose_auto_l0_enabled = tk.BooleanVar(value=bool(cfg.extra.get("pose_auto_l0_enabled", True)))
+        self.pose_pattern_enabled = tk.BooleanVar(value=bool(cfg.extra.get("pose_pattern_enabled", False)))
+        self.pose_fast_v1_enabled = tk.BooleanVar(value=bool(cfg.extra.get("pose_fast_v1_enabled", True)))
         self.rtm_hybrid_l0_weight = tk.IntVar(value=max(1, min(100, int(cfg.extra.get("rtm_hybrid_l0_weight", 30)))))
         self.rtm_model_l0_weight_text = tk.StringVar()
         self.rtm_pose_3d_base_weight_text = tk.StringVar()
@@ -1229,8 +1285,16 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         self.rtm_pose_gpu_backend = tk.StringVar(value=cfg.extra.get("rtm_pose_gpu_backend", "cuda"))
         self.rtm_pose_gpu_status_text = tk.StringVar()
         self._build_gpu_state()
-        self.rtm_pose_flow_enabled = tk.BooleanVar(value=bool(cfg.extra.get("rtm_pose_flow_enabled", True)))
-        self.rtm_pose_kalman_enabled = tk.BooleanVar(value=bool(cfg.extra.get("rtm_pose_kalman_enabled", True)))
+        self._analysis_preferences = AnalysisPreferences(load_profiles(cfg.extra, initial_tracker_mode, cfg.fps), initial_tracker_mode)
+        normalize_visual_settings(cfg.extra)
+        self.rtm_pose_flow_enabled = tk.BooleanVar(value=cfg.extra["rtm_pose_flow_enabled"])
+        self.rtm_pose_kalman_enabled = tk.BooleanVar(value=cfg.extra["rtm_pose_kalman_enabled"])
+        self.hybrid_v2_pose_enabled = tk.BooleanVar(value=cfg.extra["hybrid_v2_pose_enabled"])
+        self.v2_l0_reference = tk.StringVar(value=cfg.extra['v2_l0_reference'])
+        self.rtm_pose_reject_enabled = tk.BooleanVar(value=cfg.extra["rtm_pose_reject_enabled"])
+        self.rtm_pose_micro_smooth_enabled = tk.BooleanVar(value=cfg.extra["rtm_pose_micro_smooth_enabled"])
+        self.visual_processing_edge = tk.IntVar(value=cfg.extra["visual_processing_edge"])
+        self.rtm_hybrid_source = tk.StringVar(value=cfg.extra["rtm_hybrid_source"])
         self._rtm_pose_3d_downloading = False
         self._rtm_pose_3d_download_target: tk.StringVar | None = None
         self._rtm_pose_3d_download_mode: str | None = None
@@ -1300,7 +1364,6 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         self.axis = tk.StringVar(value=cfg.axis)
         self.interval_ms = tk.IntVar(value=cfg.output_interval_ms)
         self.sink_type = tk.StringVar(value=cfg.last_sink)
-        self._build_device_vars()
         self.serial_port = tk.StringVar(value=cfg.serial_port)
         self.baudrate = tk.IntVar(value=cfg.baudrate)
         self.ble_name = tk.StringVar(value=cfg.ble_name)
@@ -1332,6 +1395,7 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         self._script_history: deque[tuple[float, dict[str, int]]] = deque(maxlen=900)
         self._last_measure_sent = 0.0
         self._live_output_mapping_dirty = True
+        self._analysis_preferences.apply(self._analysis_variables())
         self.min_value.trace_add("write", lambda *_args: self._refresh_limit_text())
         self.max_value.trace_add("write", lambda *_args: self._refresh_limit_text())
         self.l0_travel_scale.trace_add("write", lambda *_args: self._sync_travel_slider(self.l0_travel_scale, self.l0_travel_slider, self.l0_travel_text))
@@ -1350,9 +1414,12 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         self.show_six_axis_tuning.trace_add("write", lambda *_args: self._refresh_six_axis_tuning())
         self.show_rtm_pose_3d_settings.trace_add("write", lambda *_args: self._refresh_rtm_pose_3d_settings())
         self.show_six_axis_travel_scales.trace_add("write", lambda *_args: self._refresh_six_axis_travel_scales())
+        self.rtm_hybrid_l0_enabled.trace_add("write", self._refresh_hybrid_source)
         self.rtm_pose_gpu_enabled.trace_add("write", lambda *_args: self._schedule_rtm_pose_gpu_status_refresh())
         self.rtm_pose_gpu_backend.trace_add("write", lambda *_args: self._on_gpu_backend_changed())
         self.tracker_mode.trace_add("write", lambda *_args: self._on_tracker_mode_changed())
+        self.hybrid_v2_pose_enabled.trace_add("write", lambda *_args: self._on_tracker_mode_changed())
+        self.output_mode.trace_add("write", lambda *_args: self._on_tracker_mode_changed())
         self.rtm_pose_model_path.trace_add("write", lambda *_args: self._store_active_rtm_pose_model_path())
         self.sink_type.trace_add("write", self._on_native_output_changed)
         self.pose_l0_analysis.trace_add("write", lambda *_args: self._sync_pose_mode_selection("v1"))
@@ -1382,6 +1449,7 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
             self.axis_min_vars[axis].trace_add("write", lambda *_args, axis_name=axis: self._refresh_axis_limit_text(axis_name))
             self.axis_max_vars[axis].trace_add("write", lambda *_args, axis_name=axis: self._refresh_axis_limit_text(axis_name))
         live_mapping_vars: list[tk.Variable] = [
+            self.endpoint_slowdown_enabled, self.endpoint_slowdown_pct,
             self.output_mode,
             self.min_value,
             self.max_value,
@@ -1399,6 +1467,80 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         for variable in live_mapping_vars:
             variable.trace_add("write", lambda *_args: self._mark_live_output_mapping_dirty())
         self._refresh_active_rtm_pose_model_path()
+        for variable in (self.rtm_pose_reject_enabled, self.rtm_pose_micro_smooth_enabled,
+                         self.rtm_pose_flow_enabled, self.rtm_pose_kalman_enabled, self.visual_processing_edge):
+            variable.trace_add("write", self._visual_options_changed)
+        self._visual_options_changed()
+        self.pose_auto_l0_enabled.trace_add("write", self._pose_auto_l0_changed)
+        self.pose_pattern_enabled.trace_add("write", self._pose_auto_l0_changed)
+        self.pose_fast_v1_enabled.trace_add("write", self._pose_auto_l0_changed)
+        self.v2_l0_reference.trace_add('write', self._pose_auto_l0_changed)
+        self.compression_latency.trace_add("write", self._visual_options_changed)
+        for variable in (self.x, self.y, self.width, self.height, self.source_mode, self.video_path):
+            variable.trace_add("write", self._input_geometry_changed)
+
+    def _read_screen_region(self) -> ScreenRegion:
+        # Read the complete tuple without IntVar's float-to-int truncation.
+        try:
+            region = ScreenRegion(*(self.getvar(str(variable)) for variable in
+                                  (self.x, self.y, self.width, self.height))).normalized()
+            if region.width < 16 or region.height < 16:
+                raise ValueError
+            return region
+        except (tk.TclError, ValueError, TypeError) as exc:
+            raise ValueError(self._dt("坐标必须是整数，区域宽高至少为 16 像素。",
+                "Coordinates must be integers; width and height must be at least 16 pixels.")) from exc
+
+    def _input_geometry_changed(self, *_args) -> None:
+        # A capture owns an immutable rectangle. Do not show new settings while
+        # continuing to emit output from the old source, including script edits.
+        if (self.worker and self.worker.is_alive()) or self._video_analysis_active():
+            self.stop()
+        try:
+            self._screen_region_snapshot = self._read_screen_region()
+        except ValueError:
+            pass  # A temporary blank/minus sign must not replace a complete ROI.
+        self._active_screen_region = None
+        self.reset_visual_reference()
+
+    def _refresh_region_controls(self) -> None:
+        busy = bool((self.worker and self.worker.is_alive()) or self._video_analysis_active())
+        if busy == self._region_busy:
+            return
+        self._region_busy = busy
+        for widget, idle_state in self._input_widgets:
+            widget.configure(state="disabled" if busy else idle_state)
+
+    def _validate_start_region(self) -> bool:
+        try:
+            region = validate_region(self._read_screen_region())
+        except (ValueError, OSError, RuntimeError) as exc:
+            self.status.set(str(exc))
+            messagebox.showerror(self._dt("请重新选择屏幕区域", "Select the screen region again"),
+                                 str(exc), parent=self)
+            return False
+        self._screen_region_snapshot = region
+        return True
+
+    def _pose_auto_l0_changed(self, *_args):
+        self._visual_settings = replace(self._visual_settings, pose_auto_l0=self.pose_auto_l0_enabled.get(),
+                                        pose_pattern=self.pose_pattern_enabled.get(),
+                                        pose_fast_v1=self.pose_fast_v1_enabled.get(),
+                                        v2_l0_reference=self.v2_l0_reference.get())
+
+    def _visual_options_changed(self, *_args):
+        self._visual_generation += 1
+        self._visual_settings = VisualSettings(int(self.visual_processing_edge.get()),
+            Options(self.rtm_pose_reject_enabled.get(), self.rtm_pose_flow_enabled.get(),
+                    self.rtm_pose_kalman_enabled.get(), self.rtm_pose_micro_smooth_enabled.get()),
+            self._visual_generation, pose_auto_l0=self.pose_auto_l0_enabled.get(),
+            pose_pattern=self.pose_pattern_enabled.get(), pose_fast_v1=self.pose_fast_v1_enabled.get(),
+            v2_l0_reference=self.v2_l0_reference.get())
+        if hasattr(self, "integrated_preview"):
+            self.integrated_preview.clear()
+
+    def reset_visual_reference(self):
+        self._visual_options_changed()
 
     def _install_config_autosave(self) -> None:
         for variable in self._config_variables():
@@ -1406,11 +1548,19 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
 
     def _config_variables(self) -> list[tk.Variable]:
         variables: list[tk.Variable] = [
+            self.v2_l0_reference,
+            self.pose_auto_l0_enabled,
+            self.pose_pattern_enabled,
+            self.pose_fast_v1_enabled,
+            self.endpoint_slowdown_enabled, self.endpoint_slowdown_pct,
+            self.hybrid_v2_pose_enabled, self.visual_processing_edge, self.rtm_pose_reject_enabled,
+            self.rtm_pose_micro_smooth_enabled, self.rtm_hybrid_source,
             self.x,
             self.y,
             self.width,
             self.height,
             self.fps,
+            self.output_curve_fitting,
             self.source_mode,
             self.video_path,
             self.output_mode,
@@ -1487,7 +1637,6 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
             self.measure_live,
         ]
         variables.extend(self.axis_min_vars.values())
-        variables.extend(self._device_config_variables())
         variables.extend(self.axis_max_vars.values())
         variables.extend(self.six_axis_travel_scale_vars.values())
         variables.extend(self.axis_output_invert_vars.values())
@@ -1597,6 +1746,8 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         product_label.grid(row=0, column=0, sticky="ew")
         header.bind("<Configure>", lambda event: product_label.configure(wraplength=max(240, event.width - 24)))
         ttk.Label(header, text=self._dt("合作与侵权联系：aivnailedeng@gmail.com", "Cooperation / copyright: aivnailedeng@gmail.com")).grid(row=1, column=0, sticky="w")
+        ttk.Label(header, text=self._dt("机械臂模拟测试；实际硬件映射尚未验证。",
+                                       "Robot-arm simulation test; physical hardware mapping is unverified.")).grid(row=2, column=0, sticky="w")
 
         sidebar_shell = ttk.Frame(self)
         sidebar_shell.grid(row=1, column=0, sticky="ns")
@@ -1627,10 +1778,20 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
 
         preview = ttk.Frame(self, padding=(0, 12, 12, 12))
         preview.grid(row=1, column=1, sticky="nsew")
-        preview.rowconfigure(1, weight=1, minsize=420)
-        preview.columnconfigure(0, weight=1, minsize=650)
+        preview.rowconfigure(0, weight=1)
+        preview.columnconfigure(0, weight=1, minsize=560)
+        self.preview_tabs = ttk.Notebook(preview)
+        self.preview_tabs.grid(row=0, column=0, sticky="nsew")
+        self.analysis_tab = ttk.Frame(self.preview_tabs)
+        self.analysis_tab.columnconfigure(0, weight=1)
+        self.analysis_tab.rowconfigure(0, weight=1)
+        self.output_tab = ttk.Frame(self.preview_tabs)
+        self.output_tab.columnconfigure(0, weight=1)
+        self.preview_tabs.add(self.analysis_tab, text=self._dt("分析预览", "Analysis Preview"))
+        self.preview_tabs.add(self.output_tab, text=self._dt("输出监视", "Output Monitor"))
+        self.preview_tabs.select(self.output_tab)
 
-        monitor = ttk.Frame(preview, padding=10)
+        monitor = ttk.Frame(self.output_tab, padding=10)
         monitor.grid(row=0, column=0, sticky="ew")
         monitor.columnconfigure(0, weight=0)
         monitor.columnconfigure(1, weight=1)
@@ -1644,7 +1805,7 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
             button = ttk.Button(preset_bar, text=str(level), width=4, command=lambda selected=level: self.apply_play_preset(selected))
             button.grid(row=0, column=level, sticky="w", padx=(0, 4))
             self.preset_buttons[level] = button
-        ttk.Label(preset_bar, text="1 慢玩  ·  5 刺激", foreground="#555").grid(row=0, column=6, sticky="w", padx=(4, 0))
+        ttk.Label(preset_bar, text="仅调整最终输出幅度", foreground="#555").grid(row=0, column=6, sticky="w", padx=(4, 0))
 
         self.stroke_canvas = tk.Canvas(monitor, width=72, height=176, highlightthickness=0, background="#f4f4f4")
         self.stroke_canvas.grid(row=1, column=0, rowspan=4, sticky="nsw", padx=(0, 12))
@@ -1662,15 +1823,9 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         self.curve_canvas.grid(row=6, column=0, columnspan=3, sticky="ew", pady=(8, 0))
         self.curve_canvas.bind("<Configure>", lambda _event: self._draw_script_curve())
 
-        self.preview_canvas = tk.Canvas(
-            preview,
-            width=650,
-            height=420,
-            highlightthickness=0,
-            background="#0f1115",
-        )
-        self.preview_canvas.grid(row=1, column=0, sticky="nsew")
-        self.preview_canvas.bind("<Configure>", lambda _event: self._redraw_preview_image())
+        self.integrated_preview = IntegratedPreview(self.analysis_tab, self)
+        self.integrated_preview.grid(row=0, column=0, sticky="nsew")
+        self.preview_canvas = self.integrated_preview.canvas
         stats = ttk.Frame(preview)
         stats.grid(row=2, column=0, sticky="ew", pady=(8, 0))
         stats.columnconfigure((0, 1, 2), weight=1)
@@ -1739,6 +1894,139 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         else:
             ttk.Label(parent, textvariable=var, width=6, anchor="e").grid(row=row, column=2, sticky="e")
         return row + 1
+
+    def _capture_fps_changed(self, *_args: object) -> None:
+        try:
+            self._capture_target_fps = capture_fps(self.fps.get())
+        except tk.TclError:
+            pass
+
+    def _capture_rate_controls(self, parent: ttk.Frame, row: int, variable: tk.IntVar) -> int:
+        label = ttk.Label(parent, text="采集帧率 FPS")
+        label.grid(row=row, column=0, sticky="w", pady=2)
+        slider = ttk.Scale(parent, from_=1, to=120, variable=variable,
+                           command=lambda value: variable.set(capture_fps(value)))
+        slider.grid(row=row, column=1, sticky="ew", pady=2)
+        ttk.Label(parent, textvariable=variable, width=4, anchor="e").grid(row=row, column=2, sticky="e")
+        hint = self._dt(
+            "屏幕模式的目标截图次数，默认 45，最高 120，实时输出时可调。更高帧率增加负载，不会增加视频原始帧数。分析 FPS 是处理循环速度，不等于模型推理 FPS；输入帧龄仅统计进入分析前的等待，不是总延迟。",
+            "Target screen captures/second: default 45, maximum 120, adjustable live. Higher rates use more resources, not extra original video frames. Analysis FPS measures the processing loop, not model inference. Input age excludes analysis and output latency.")
+        Tooltip(label, hint)
+        Tooltip(slider, hint)
+        ttk.Label(parent, textvariable=self.capture_rate_text, foreground="#555", wraplength=300).grid(
+            row=row + 1, column=0, columnspan=3, sticky="ew", pady=(0, 2))
+        return row + 2
+
+    def _output_curve_changed(self, *_args: object) -> None:
+        self._output_curve_enabled = bool(self.output_curve_fitting.get())
+
+    def _endpoint_options_changed(self, *_args):
+        self._endpoint_options = (bool(self.endpoint_slowdown_enabled.get()),
+                                  max(1., min(50., self.endpoint_slowdown_pct.get()))/100.)
+
+    def _endpoint_controls(self, parent, row, enabled, percent, compact=False):
+        box = ttk.Frame(parent)
+        box.grid(row=row, column=0, columnspan=3, sticky="ew", pady=(2, 5))
+        box.columnconfigure(2 if compact else 1, weight=1)
+        check = ttk.Checkbutton(box, text=self._dt("接近上下限时减速", "Slow near upper/lower limits"), variable=enabled)
+        check.grid(row=0, column=0, columnspan=1 if compact else 3, sticky="w")
+        ttk.Label(box, text=self._dt("减速距离", "Braking distance")).grid(row=0 if compact else 1, column=1 if compact else 0, sticky="w", padx=(8 if compact else 0, 0))
+        slider = ttk.Scale(box, from_=1, to=50, variable=percent)
+        slider.grid(row=0 if compact else 1, column=2 if compact else 1, sticky="ew", padx=4)
+        value = ttk.Label(box, width=5, anchor="e")
+        value.grid(row=0 if compact else 1, column=3 if compact else 2)
+        def refresh(*_args):
+            if box.winfo_exists():
+                value.configure(text=f"{percent.get():.0f}%")
+                slider.state(["!disabled" if enabled.get() else "disabled"])
+        callbacks = [(variable, variable.trace_add("write", refresh)) for variable in (enabled, percent)]
+        def dispose(event):
+            if event.widget == box:
+                for variable, callback in callbacks:
+                    variable.trace_remove("write", callback)
+        box.bind("<Destroy>", dispose, add="+")
+        refresh()
+        Tooltip(check, self._dt(
+            "默认开启，距离 10%：最终输出只延长接近每个轴上下限的到达时间，目标位置不变；导出脚本可能变长。离开限位正常响应，急停和手动回中不受影响。",
+            "On by default, distance 10%: final output only extends arrival time near each axis limit; target positions are unchanged. Exported scripts may run longer. Motion away from limits, emergency stop and manual centering are unchanged."))
+        return row+1
+
+    def _output_curve_control(self, parent: ttk.Frame, row: int, variable: tk.BooleanVar) -> int:
+        check = ttk.Checkbutton(parent, text="输出曲线拟合", variable=variable)
+        check.grid(row=row, column=0, columnspan=3, sticky="w", pady=(2, 5))
+        Tooltip(check, self._dt(
+            "默认开启：用 One Euro 自适应平滑处理分析输出，慢动作抑抖、快动作减小滞后。Pose 自动 L0 保留已生成的曲线与切换过渡，不再重复平滑。会增加少量跟随延迟，不能保证完全无抖动；急停/手动回中不经过此滤波。",
+            "Enabled by default: One Euro adaptive smoothing reduces slow-motion jitter and fast-motion lag. Generated Pose L0 retains its curve and source transition without a second smoothing pass. Adds some lag and cannot remove all jitter; emergency stop/manual centering bypass this filter."))
+        return row + 1
+
+    def _pose_auto_l0_control(self, parent, row, variable):
+        check = ttk.Checkbutton(parent, text=self._dt("L0 静止／小幅时自动生成", "Generate L0 when still / small"), variable=variable)
+        check.grid(row=row, column=0, columnspan=3, sticky="w", pady=(3, 2))
+        Tooltip(check, self._dt(
+            "默认开启，仅 Pose：L0 静止约 0.65 秒，或 L0 幅度小而旋转明显更大时，依次用 R1、R2 生成 L0，中点对应 1/3、两端对应 2/3；R1/R2 无变化但其他识别轴仍在运动时，才生成 1/4～1/2、峰到峰 1 秒的余弦波。所有识别轴静止或缺失时保持位置，不启动兜底波。L0 恢复足够幅度后平滑交回识别；只在分析运行中生效。",
+            "On by default, Pose only: after about 0.65 s of still L0, or small L0 with clearly larger rotation, use R1 then R2 (midpoint to one-third L0; either end to two-thirds). When R1/R2 are still but another observed axis is moving, generate a quarter-to-half cosine with a 1 s peak-to-peak period. If all observed axes are still/missing, hold without starting a wave. Sufficient L0 motion smoothly takes over again. Runs only during analysis."))
+        return check
+
+    def _point_l0_control(self, parent, row, variable, tracker=None):
+        from .point_l0 import POINT_MODES
+        tracker = self.tracker_mode if tracker is None else tracker
+        box = ttk.Frame(parent)
+        box.columnconfigure(1, weight=1)
+        box.grid(row=row, column=0, columnspan=4, sticky='ew', pady=(3, 3))
+        ttk.Label(box, text=self._dt('v2 L0 参考', 'v2 L0 reference')).grid(row=0, column=0, sticky='w')
+        labels = (self._dt('融合参考（默认）', 'Fused reference (default)'),
+                  self._dt('三维运动轴', '3D motion axis'),
+                  self._dt('往复中心点', 'Stroke center'),
+                  self._dt('交互点候选（实验）', 'Interaction candidate (experimental)'))
+        shown = tk.StringVar()
+        combo = WideCombobox(box, textvariable=shown, values=labels, state='readonly', width=25)
+        combo.grid(row=0, column=1, sticky='ew', padx=6)
+        combo.bind('<<ComboboxSelected>>', lambda _event: variable.set(POINT_MODES[labels.index(shown.get())]))
+        def refresh(*_args):
+            value = variable.get()
+            shown.set(labels[POINT_MODES.index(value) if value in POINT_MODES else 0])
+            if self._tracker_internal(tracker.get()) in (HYBRID_V2_MODE, STROKE_CYCLE_MODE):
+                box.grid()
+            else:
+                box.grid_remove()
+        callbacks = [(v, v.trace_add('write', refresh)) for v in (variable, tracker)]
+        def dispose(event):
+            if event.widget is box:
+                for v, token in callbacks:
+                    v.trace_remove('write', token)
+        box.bind('<Destroy>', dispose, add='+')
+        Tooltip(combo, self._dt(
+            '默认融合主轴、往复中心与可靠交互候选。方向确认后远离目标 L0 大、靠近 L0 小；T? 标注目标估计，未确认真实接触。识别不清时仅延续已确认规律，最多 2 秒，最后 0.5 秒减速停住。暂停、切镜头与重设参考停止延续。保留三个单独参考供比较，五档与最终限制仍生效。',
+            'Default: align and fuse the motion axis, stroke center and reliable interaction evidence. Once polarity is confirmed, away means larger L0 and toward means smaller L0. T? is an estimated target, not confirmed contact. Unclear tracking continues only a confirmed rhythm for up to 2 s, braking over the final 0.5 s. Pauses, cuts and recalibration stop continuation. Three individual references remain available. Final presets and limits still apply.'))
+        refresh()
+        return box
+
+    def _pose_pattern_control(self, parent, row, variable):
+        check = ttk.Checkbutton(parent, text=self._dt("小幅往复渐放大", "Gradually expand small repeated strokes"), variable=variable)
+        check.grid(row=row, column=0, columnspan=3, sticky="w", pady=(3, 2))
+        Tooltip(check, self._dt(
+            "默认关闭，仅 Pose 的 L0、R0、R1：各轴单独确认约 3 个节奏稳定的小幅往复后，用约 1 秒渐增至最多 2 倍，围绕该动作中点放大。实际幅度变大、节奏中断或观测丢失时各自平滑退出。L1、L2、R2 及自动生成的 L0 不参与检测或放大；后续行程倍率、限位和减速仍生效。",
+            "Off by default, Pose L0/R0/R1 only: each axis independently confirms about 3 steady small cycles, then expands around that motion's midpoint up to 2x over about 1 s. Each releases when real motion grows, rhythm breaks or observations are lost. L1/L2/R2 and generated L0 are excluded. Travel gains, limits and slowdown still apply."))
+        return check
+
+    def _pose_fast_v1_control(self, parent, row, variable):
+        check = ttk.Checkbutton(parent, text=self._dt("快速丢点时用混合 v1", "Use Hybrid v1 on fast Pose loss"), variable=variable)
+        check.grid(row=row, column=0, columnspan=3, sticky="w", pady=(3, 2))
+        Tooltip(check, self._dt(
+            "默认开启，仅 Pose：开启后 v1 持续分析同批画面；近期有效骨架丢失且 v1 测得明显快速运动时，从当前输出位置接续 L0 的后续变化，不跳到 v1 的累计位置；Pose 恢复后平滑交回。持续运行 v1 会增加处理开销。只接管 L0，不乘 Pose 的 10 倍，其他轴保留原丢失处理。未建立 Pose、静止丢点或切镜头不会仅凭缺失启用；v1 无有效运动时退回原有自动／保持策略。",
+            "On by default, Pose only: v1 continuously analyzes the same sampled frames. After recent valid Pose loss with fast v1 motion, L0 continues from the current output using subsequent changes, without jumping to v1's accumulated position. Pose recovery returns smoothly. Continuous v1 adds processing cost. L0 only, without Pose's 10x gain; other axes retain loss handling. Missing Pose alone, startup or a cut does not activate it. Without valid v1 motion, normal auto/hold behavior applies."))
+        return check
+
+    @staticmethod
+    def _generated_l0_axes(analyzer):
+        return ("L0",) if (getattr(analyzer, "tracker_mode", "") in (RTM_POSE_2D_MODE, HYBRID_V2_MODE, STROKE_CYCLE_MODE)
+                            and getattr(analyzer, "generated_l0", None) is not None) else ()
+
+    def _fit_output_curve(self, positions: dict[str, float], passthrough=()) -> dict[str, float]:
+        curve = getattr(self._output_context, "curve", None)
+        if curve is None:
+            curve = self._output_context.curve = OutputCurveFilter()
+        return curve.process(positions, enabled=self._output_curve_enabled, passthrough=passthrough)
 
     def _travel_slider(
         self,
@@ -1902,7 +2190,7 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
     def _refresh_rtm_pose_3d_settings(self) -> None:
         if not hasattr(self, "rtm_pose_3d_settings_button") or not hasattr(self, "rtm_pose_3d_settings_frame"):
             return
-        if not self._rtm_pose_mode_active():
+        if not self._pose_model_required():
             self.rtm_pose_3d_settings_button.grid_remove()
             self.rtm_pose_3d_settings_frame.grid_remove()
             return
@@ -1944,7 +2232,7 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
     def _on_native_output_changed(self, *_args) -> None:
         if not hasattr(self, "native_connection_frame"):
             return
-        if self._family_id() in NATIVE_FAMILIES and (self.connected or self._connecting):
+        if self.connected or self._connecting:
             self.stop()
             self.disconnect_sink()
         self._refresh_ble_settings()
@@ -2003,27 +2291,39 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
 
     def _region_controls(self, parent: ttk.Frame, row: int) -> int:
         row = self._section(parent, "屏幕区域", row)
-        row = self._entry(parent, "X", self.x, row)
-        row = self._entry(parent, "Y", self.y, row)
-        row = self._entry(parent, "宽", self.width, row)
-        row = self._entry(parent, "高", self.height, row)
-        ttk.Button(parent, text="框选区域", command=self.pick_region).grid(row=row, column=0, columnspan=3, sticky="ew", pady=(4, 0))
-        return row + 1
+        for label, variable in (("X", self.x), ("Y", self.y), ("宽", self.width), ("高", self.height)):
+            ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", pady=2)
+            entry = ttk.Entry(parent, textvariable=variable, width=12)
+            entry.grid(row=row, column=1, columnspan=2, sticky="ew", pady=2)
+            self._input_widgets.append((entry, "normal"))
+            row += 1
+        button = ttk.Button(parent, text="框选区域", command=self.pick_region)
+        button.grid(row=row, column=0, columnspan=3, sticky="ew", pady=(4, 0))
+        self._input_widgets.append((button, "normal"))
+        ttk.Label(parent, text=self._dt("物理像素；左侧／上方副屏坐标可为负数。",
+            "Physical pixels; displays left/above may have negative coordinates."),
+            wraplength=300, foreground="#555").grid(row=row+1, column=0, columnspan=3, sticky="ew", pady=4)
+        return row + 2
 
     def _source_controls(self, parent: ttk.Frame, row: int) -> int:
         row = self._section(parent, "输入来源", row)
         ttk.Label(parent, text="来源").grid(row=row, column=0, sticky="w", pady=2)
-        WideCombobox(
+        source = WideCombobox(
             parent,
             textvariable=self.source_mode,
             values=("Screen", "Video File", "Audio Only"),
             state="readonly",
             width=12,
-        ).grid(row=row, column=1, columnspan=2, sticky="ew", pady=2)
+        )
+        source.grid(row=row, column=1, columnspan=2, sticky="ew", pady=2)
+        self._input_widgets.append((source, "readonly"))
         row += 1
         ttk.Label(parent, text="视频").grid(row=row, column=0, sticky="w", pady=2)
-        ttk.Entry(parent, textvariable=self.video_path, width=18).grid(row=row, column=1, sticky="ew", pady=2)
-        ttk.Button(parent, text="选择", command=self.pick_video).grid(row=row, column=2, sticky="ew", padx=(4, 0))
+        entry = ttk.Entry(parent, textvariable=self.video_path, width=18)
+        entry.grid(row=row, column=1, sticky="ew", pady=2)
+        button = ttk.Button(parent, text="选择", command=self.pick_video)
+        button.grid(row=row, column=2, sticky="ew", padx=(4, 0))
+        self._input_widgets.extend(((entry, "normal"), (button, "normal")))
         row += 1
         ttk.Button(parent, text="分析视频并保存脚本", command=self.analyze_video_file).grid(
             row=row, column=0, columnspan=3, sticky="ew", pady=(4, 0)
@@ -2031,7 +2331,7 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         return row + 1
 
     def _audio_controls(self, parent: ttk.Frame, row: int) -> int:
-        row = self._section(parent, "声音监听（PMV）", row)
+        row = self._section(parent, "声音监听", row)
         ttk.Label(parent, text="声音分析").grid(row=row, column=0, sticky="w", pady=2)
         WideCombobox(
             parent,
@@ -2051,7 +2351,7 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         row = self._slider(parent, "声音平滑", self.audio_smoothing, row, 0.0, 0.95)
         ttk.Label(
             parent,
-            text="选择 Audio Only 后只监听声音，不读取屏幕画面。系统输出回环适合播放 PMV。",
+            text="选择 Audio Only 后只监听声音，不读取屏幕画面。",
             wraplength=300,
             foreground="#555",
         ).grid(row=row, column=0, columnspan=3, sticky="ew", pady=(4, 0))
@@ -2077,8 +2377,10 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
             width=12,
         ).grid(row=row, column=1, columnspan=2, sticky="ew", pady=2)
         row += 1
-        row = self._entry(parent, "FPS", self.fps, row)
-        row = self._entry(parent, "间隔 ms", self.interval_ms, row)
+        row = self._endpoint_controls(parent, row, self.endpoint_slowdown_enabled, self.endpoint_slowdown_pct)
+        row = self._capture_rate_controls(parent, row, self.fps)
+        row = self._output_curve_control(parent, row, self.output_curve_fitting)
+        row = self._entry(parent, "到达时间下限 ms", self.interval_ms, row)
         ttk.Checkbutton(parent, text="启用每帧限速", variable=self.enable_speed_limit).grid(row=row, column=0, columnspan=3, sticky="w", pady=2)
         row += 1
         row = self._entry(parent, "限速值", self.max_step, row)
@@ -2200,7 +2502,7 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         ttk.Entry(self.ble_settings_frame, textvariable=self.ble_write_uuid, width=18).grid(row=ble_row, column=1, columnspan=2, sticky="ew", pady=2)
         self.ble_settings_frame.grid(row=2, column=0, columnspan=3, sticky="ew")
         parent = connection_parent
-        row = self._external_device_controls(parent, connection_row)
+        row = connection_row
         self.connect_button = ttk.Button(parent, textvariable=self.connect_button_text, command=self.connect_and_center, style="Primary.TButton")
         self.connect_button.grid(
             row=row, column=0, columnspan=2, sticky="ew", pady=(4, 0)
@@ -2273,6 +2575,10 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         row += 1
         return row + 1
 
+
+
+
+
     def _axis_limit_controls(self, parent: ttk.Frame, row: int) -> int:
         row = self._section(parent, "六轴独立上下限", row)
         self.measurement_limits_button = ttk.Button(parent, command=self._toggle_measurement_limits)
@@ -2332,8 +2638,10 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         rtm_hybrid_check = ttk.Checkbutton(box, text="混合分析 L0 权重", variable=self.rtm_hybrid_l0_enabled)
         rtm_hybrid_check.grid(row=0, column=0, sticky="w", pady=2)
         Tooltip(rtm_hybrid_check, self._tooltip_text("混合分析 L0 权重"))
-        ttk.Scale(box, from_=1, to=100, variable=self.rtm_hybrid_l0_weight).grid(row=0, column=1, sticky="ew", pady=2)
-        ttk.Label(box, textvariable=self.rtm_hybrid_l0_weight, width=4, anchor="e").grid(row=0, column=2, sticky="e")
+        blend_scale = ttk.Scale(box, from_=1, to=100, variable=self.rtm_hybrid_l0_weight)
+        blend_scale.grid(row=0, column=1, sticky="ew", pady=2)
+        blend_value = ttk.Label(box, textvariable=self.rtm_hybrid_l0_weight, width=4, anchor="e")
+        blend_value.grid(row=0, column=2, sticky="e")
         rtm_model_weight_label = ttk.Label(box, textvariable=self.rtm_model_l0_weight_text, foreground="#555")
         rtm_model_weight_label.grid(row=1, column=0, columnspan=3, sticky="w", pady=(0, 5))
         Tooltip(rtm_model_weight_label, self._tooltip_text("当前本模型分析权重"))
@@ -2364,6 +2672,15 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         rtm_kalman_check = ttk.Checkbutton(box, text="RTM 卡尔曼融合", variable=self.rtm_pose_kalman_enabled)
         rtm_kalman_check.grid(row=9, column=0, columnspan=3, sticky="w", pady=(2, 0))
         Tooltip(rtm_kalman_check, self._tooltip_text("RTM 卡尔曼融合"))
+        ttk.Checkbutton(box, text=self._dt("异常过滤", "Reject outliers"), variable=self.rtm_pose_reject_enabled).grid(row=10, column=0, columnspan=3, sticky="w")
+        ttk.Checkbutton(box, text=self._dt("仅微抖平滑", "Micro smoothing"), variable=self.rtm_pose_micro_smooth_enabled).grid(row=11, column=0, columnspan=3, sticky="w")
+        self.rtm_hybrid_source_label = ttk.Label(box, text=self._dt("L0 混合来源：混合分析 v2", "L0 blend source: Hybrid v2"))
+        self.rtm_hybrid_source_label.grid(row=12, column=0, columnspan=3, sticky="w")
+        self.pose_auto_l0_check = self._pose_auto_l0_control(box, 13, self.pose_auto_l0_enabled)
+        self.pose_pattern_check = self._pose_pattern_control(box, 14, self.pose_pattern_enabled)
+        self.pose_fast_v1_check = self._pose_fast_v1_control(box, 15, self.pose_fast_v1_enabled)
+        self._rtm_blend_widgets = (rtm_hybrid_check, blend_scale, blend_value, rtm_model_weight_label, self.pose_auto_l0_check, self.pose_pattern_check, self.pose_fast_v1_check)
+        self._refresh_hybrid_source()
         box.grid(row=row, column=0, columnspan=3, sticky="ew", pady=(0, 8))
         self._refresh_rtm_pose_3d_settings()
         return row + 1
@@ -2586,7 +2903,7 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         if path:
             variable.set(path)
             target_mode = self._tracker_internal(mode or self.tracker_mode.get())
-            if target_mode in (RTM_POSE_2D_MODE, RTM_POSE_3D_MODE):
+            if target_mode in (RTM_POSE_2D_MODE, HYBRID_V2_MODE):
                 ok, message = self._validate_rtm_pose_model_path(path, target_mode)
                 self.rtm_model_download_status_text.set(message)
                 if not ok:
@@ -2598,7 +2915,7 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
             self.rtm_model_download_status_text.set(self._t("模型下载中..."))
             return
         target_mode = self._tracker_internal(mode or self.tracker_mode.get())
-        if target_mode not in (RTM_POSE_2D_MODE, RTM_POSE_3D_MODE):
+        if target_mode not in (RTM_POSE_2D_MODE, HYBRID_V2_MODE):
             target_mode = RTM_POSE_2D_MODE
         detected = self._find_existing_rtm_pose_model(target_mode)
         if detected is not None:
@@ -2618,7 +2935,6 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
             try:
                 model_dir = self._rtm_pose_model_dir()
                 model_dir.mkdir(parents=True, exist_ok=True)
-                is_2d = target_mode == RTM_POSE_2D_MODE
                 model_name, source_url, _min_size, _expected_outputs, _label = self._rtm_pose_model_spec(target_mode)
                 target = model_dir / model_name
                 partial = target.with_suffix(target.suffix + ".download")
@@ -2648,25 +2964,22 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
                         self._queue_latest({"status_text": text, "rtm_download_status": text})
 
                 urllib.request.urlretrieve(source_url, partial, report)
-                if is_2d:
-                    zip_path = target.with_suffix(".zip")
-                    partial.replace(zip_path)
-                    with zipfile.ZipFile(zip_path) as archive:
-                        onnx_members = [name for name in archive.namelist() if name.lower().endswith(".onnx")]
-                        if not onnx_members:
-                            raise ValueError("ONNX model not found in downloaded zip")
-                        with archive.open(onnx_members[0]) as source, target.open("wb") as destination:
-                            while True:
-                                chunk = source.read(1024 * 1024)
-                                if not chunk:
-                                    break
-                                destination.write(chunk)
-                    try:
-                        zip_path.unlink()
-                    except OSError:
-                        pass
-                else:
-                    partial.replace(target)
+                zip_path = target.with_suffix(".zip")
+                partial.replace(zip_path)
+                with zipfile.ZipFile(zip_path) as archive:
+                    onnx_members = [name for name in archive.namelist() if name.lower().endswith(".onnx")]
+                    if not onnx_members:
+                        raise ValueError("ONNX model not found in downloaded zip")
+                    with archive.open(onnx_members[0]) as source, target.open("wb") as destination:
+                        while True:
+                            chunk = source.read(1024 * 1024)
+                            if not chunk:
+                                break
+                            destination.write(chunk)
+                try:
+                    zip_path.unlink()
+                except OSError:
+                    pass
                 ok, message = self._validate_rtm_pose_model_path(str(target), target_mode)
                 if not ok:
                     raise ValueError(message)
@@ -2687,6 +3000,9 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         threading.Thread(target=worker, daemon=True).start()
 
     def analyze_video_file(self) -> None:
+        if (self.worker and self.worker.is_alive()) or self._video_analysis_active():
+            self.status.set(self._dt("请先停止当前分析，再导出视频脚本。", "Stop the current analysis before exporting a video script."))
+            return
         path = self.video_path.get()
         if not path:
             self.pick_video()
@@ -2702,22 +3018,31 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         if not save_path:
             return
         self.status.set(self._t("视频分析中..."))
+        self._video_cancel.clear()
+        self._active_screen_region = None
+        self.reset_visual_reference()
 
         def worker() -> None:
             try:
                 written = self._analyze_video_worker(Path(path), Path(save_path))
-                self.frame_queue.put({"status_text": f"{self._t('视频分析完成')}: {len(written)} {self._t('个脚本')}"})
+                if not self._video_cancel.is_set():
+                    self._queue_latest({"export_done": True, "status_text": f"{self._t('视频分析完成')}: {len(written)} {self._t('个脚本')}"})
             except Exception as exc:
-                self.frame_queue.put({"error": f"{self._t('视频分析失败')}: {exc}"})
+                if not self._video_cancel.is_set():
+                    self._queue_latest({"error": f"{self._t('视频分析失败')}: {exc}"})
 
-        threading.Thread(target=worker, daemon=True).start()
+        self._video_worker = threading.Thread(target=worker, daemon=True)
+        self._video_worker.start()
+        self._refresh_region_controls()
+
+    def _video_analysis_active(self) -> bool:
+        return bool(self._video_worker and self._video_worker.is_alive())
 
     def _analyze_video_worker(self, video_path: Path, save_path: Path) -> list[Path]:
-        cap = cv2.VideoCapture(str(video_path))
-        if not cap.isOpened():
-            raise ValueError(f"{self._t('无法打开视频')}: {video_path}")
         self._six_axis_stable_positions = {axis: 0.5 for axis in SIX_AXES}
-        analyzer = RealtimeAnalyzer(
+        analyzer = make_analyzer(
+            visual_settings=self._visual_settings, hybrid_source=self.rtm_hybrid_source.get(),
+            hybrid_v2_pose_enabled=self.hybrid_v2_pose_enabled.get(),
             tracker_mode=self._tracker_internal(self.tracker_mode.get()),
             output_mode=self.output_mode.get(),
             smoothing=self.smoothing.get(),
@@ -2752,7 +3077,12 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
             rtm_pose_kalman_enabled=self.rtm_pose_kalman_enabled.get(),
             compression_latency=self.compression_latency.get(),
         )
+        cap = cv2.VideoCapture(str(video_path))
+        if not cap.isOpened():
+            cap.release()
+            raise ValueError(f"{self._t('无法打开视频')}: {video_path}")
         recorder = MultiAxisFunscriptRecorder()
+        curve = OutputCurveFilter()
         recorder.start()
         total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
         native_fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
@@ -2761,27 +3091,43 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         index = 0
         last_update = 0.0
         try:
-            while True:
+            while not self._video_cancel.is_set():
                 ok, frame = cap.read()
                 if not ok:
                     break
                 if index % frame_step != 0:
                     index += 1
                     continue
-                analysis_frame = self._prepare_analysis_frame(frame)
-                result = analyzer.process(analysis_frame)
-                positions = self._apply_six_axis_tuning(result.positions)
+                at = round(index / native_fps * 1000)
+                visual = isinstance(analyzer, LabAnalyzer)
+                generation = self._visual_settings.generation
+                if visual:
+                    analyzer.configure(self._visual_settings)
+                else:
+                    if getattr(analyzer, "_reference_generation", generation) != generation:
+                        analyzer.reset()
+                    analyzer._reference_generation = generation
+                analysis_frame = frame if visual else self._prepare_analysis_frame(frame)
+                result = analyzer.process(analysis_frame, timestamp=index / native_fps) if visual else analyzer.process(analysis_frame)
+                if self._video_cancel.is_set():
+                    break
+                positions = self._visual_output_positions(analyzer, result.positions)
+                positions = curve.process(positions, enabled=self._output_curve_enabled, timestamp=at / 1000.0,
+                                          passthrough=self._generated_l0_axes(analyzer))
+                if visual and analyzer.pose and analyzer.settings.pose_fast_v1:
+                    analyzer.pose_fast.remember_output(positions.get('L0'))
+                if visual and not analyzer.pose:
+                    analyzer.remember_l0_output(positions.get('L0'))
                 output_positions = self._positions_with_travel_controls(positions)
-                at = int(cap.get(cv2.CAP_PROP_POS_MSEC))
-                if at <= 0:
-                    at = round(index / native_fps * 1000)
-                recorder.add_at(output_positions, at)
+                recorder.add_at(output_positions, at, *self._endpoint_options)
                 now = time.perf_counter()
                 if now - last_update > 0.25:
                     progress = f"{index}/{total}" if total else str(index)
                     self._queue_latest(
                         {
-                            "preview": self._capture_preview_for_display(frame, analysis_frame, result.preview_bgr),
+                            "visual_frame": analyzer.visual_frame if visual else VisualFrame(
+                                (analysis_frame, result.preview_bgr), None, False, generation,
+                                reference=getattr(analyzer, "motion_reference", None)),
                             "status_text": f"{self._t('视频分析中...')} {progress}",
                             "record_count": recorder.action_count,
                         }
@@ -2791,6 +3137,8 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         finally:
             cap.release()
         recorder.stop()
+        if self._video_cancel.is_set():
+            return []
         return recorder.save(save_path)
 
     def _close_sink_safely(self, sink: object) -> None:
@@ -2800,8 +3148,6 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
             pass
 
     def _connection_snapshot(self) -> dict[str, object]:
-        if self._family_id() not in NATIVE_FAMILIES:
-            return self._external_snapshot()
         kind = self.sink_type.get()
         if kind == "Log only":
             return {"kind": kind}
@@ -2815,23 +3161,17 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
 
     def _open_sink_from_snapshot(self, snapshot: dict[str, object]) -> object:
         kind = str(snapshot["kind"])
-        if kind == "Intiface":
-            if "bindings" in snapshot:
-                return IntifaceSink(str(snapshot["url"]), snapshot["device"], limit=float(snapshot["limit"]),
-                                    bindings=snapshot["bindings"])
-            return IntifaceSink(str(snapshot["url"]), snapshot["device"], str(snapshot["feature"]),
-                                str(snapshot["axis"]), float(snapshot["limit"]))
         if kind in ("USB Serial", "Serial COM"):
             return SerialSink(str(snapshot["serial_port"]), int(snapshot["baudrate"]))
         if kind == "BLE UART":
             return BleSink(str(snapshot["ble_address"]), str(snapshot["ble_write_uuid"]))
-        return LogSink()
+        if kind == "Log only":
+            return LogSink()
+        raise ValueError(f"Unsupported output transport: {kind}")
 
     def _set_connecting(self, active: bool) -> None:
         self._connecting = active
         self.connect_button_text.set(self._t("连接中...") if active else self._t("连接并回中"))
-        if not active and self._family_id() not in NATIVE_FAMILIES:
-            self.connect_button_text.set(self._dt("连接设备", "Connect Device"))
         self._set_device_controls_busy(active or bool(self.worker and self.worker.is_alive()))
         for name in ("connect_button", "monitor_connect_button"):
             button = getattr(self, name, None)
@@ -2856,17 +3196,14 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         self._set_connecting(False)
         kind = str(item.get("kind", self.sink_type.get()))
         self.status.set(f"{self._t('已连接')}: {kind}")
-        if kind == "Intiface":
-            self.device_status.set(f"{self._t('设备')}: {self.sink.device.display_name or self.sink.device.name}")
-            self.external_status.set(self._dt("已连接，等待开始输出。", "Connected; waiting for output to start."))
-        elif kind in ("USB Serial", "Serial COM"):
+        if kind in ("USB Serial", "Serial COM"):
             self.device_status.set(f"{self._t('设备')}: {self._t('已连接')} {item.get('serial_port', '')}")
         elif kind == "BLE UART":
             self.device_status.set(f"{self._t('设备')}: {self._t('已连接')} BLE {item.get('ble_address', '')}")
         else:
             self.device_status.set(f"{self._t('设备')}: {self._t('日志模式')}")
         self._save_config()
-        if bool(item.get("center_after", False)) and kind != "Intiface":
+        if bool(item.get("center_after", False)):
             try:
                 self.send_center(interval_ms=600)
                 self.status.set(self._t("已连接并回中"))
@@ -2887,7 +3224,28 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         message = str(item.get("message", self._t("连接失败")))
         self.device_status.set(f"{self._t('设备')}: {self._t('连接失败')}")
         self.status.set(f"{self._t('连接失败')}: {message}")
-        messagebox.showerror(self._t("连接失败"), message)
+        messagebox.showerror(self._t("连接失败"), self._dt(
+            "未能接入设备。请检查设备连接及串口／蓝牙选择；无设备时请选择 Log only。\n\n具体原因：",
+            "Could not connect to the device. Check the connection and selected serial/BLE device; use Log only without hardware.\n\nDetails: ")+message, parent=self)
+
+    def _finish_output_failure(self, item: dict[str, object]) -> None:
+        failed_sink = item.get("sink")
+        if failed_sink is not self.sink:
+            return  # An old worker must not disconnect a replacement connection.
+        self.stop()
+        self._close_sink_safely(failed_sink)
+        self.sink = LogSink()
+        self.connected = False
+        self._set_connecting(False)
+        title = self._dt("设备输出失败", "Device output failed")
+        detail = str(item.get("message", ""))
+        self.device_status.set(self._dt("设备：连接不可用", "Device: connection unavailable"))
+        self.status.set(f"{title}: {detail}")
+        messagebox.showerror(title, self._dt(
+            "设备输出失败，实时输出已停止。设备可能未接入、连接中断或写入超时。\n\n"
+            "请检查后重新连接；无设备时请选择 Log only。\n\n具体原因：",
+            "Device output failed; realtime output has stopped. The device may be missing, disconnected or timed out.\n\n"
+            "Check and reconnect it; use Log only without hardware.\n\nDetails: ")+detail, parent=self)
 
     def _connection_watchdog(self, attempt_id: int) -> None:
         if not self._connecting or attempt_id != self._connect_attempt_id:
@@ -2899,6 +3257,9 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         self._set_connecting(False)
         self.device_status.set(f"{self._t('设备')}: {self._t('连接失败')}")
         self.status.set(self._t("连接超时"))
+        messagebox.showerror(self._t("连接超时"), self._dt(
+            "未能接入设备。请检查连接后重试；无设备时请选择 Log only。",
+            "Could not connect to the device. Check the connection and retry; use Log only without hardware."), parent=self)
 
     def _start_connection_worker(self, center_after: bool = False) -> None:
         if self._gpu_installing:
@@ -2916,7 +3277,6 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         except (ValueError, tk.TclError) as exc:
             self._start_after_connect = False
             self.status.set(str(exc))
-            self.external_status.set(str(exc))
             return
         kind = str(snapshot["kind"])
         self._connect_attempt_id += 1
@@ -2924,7 +3284,7 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         self._close_sink_safely(self.sink)
         self.sink = LogSink()
         self.connected = False
-        if kind not in ("USB Serial", "Serial COM", "BLE UART", "Intiface"):
+        if kind not in ("USB Serial", "Serial COM", "BLE UART"):
             self.sink.open()
             self.connected = True
             self.status.set(f"{self._t('已连接')}: {kind}")
@@ -3013,12 +3373,18 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         threading.Thread(target=worker, daemon=True).start()
 
     def start(self) -> None:
+        if self._video_analysis_active():
+            self.status.set(self._dt("请先停止视频导出，再开始实时分析。", "Stop video export before starting live analysis."))
+            return
         if self.worker and self.worker.is_alive():
             return
         self.update_idletasks()
         self._startup_window_geometry = self.geometry()
         self.source_mode.set("Screen")
         if not self._confirm_realtime_start():
+            self._startup_window_geometry = None
+            return
+        if not self._validate_start_region():
             self._startup_window_geometry = None
             return
         if not self._ensure_rtm_pose_model_ready():
@@ -3036,6 +3402,9 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         self._begin_realtime_output()
 
     def _begin_realtime_output(self) -> None:
+        if self._video_analysis_active():
+            self.status.set(self._dt("请先停止视频导出，再开始实时分析。", "Stop video export before starting live analysis."))
+            return
         if self._gpu_installing or (self._gpu_restart_required and self.rtm_pose_gpu_enabled.get()):
             self.status.set(self._dt("GPU 运行库安装后请重启软件；也可关闭 GPU 使用 CPU。", "Restart after GPU installation, or disable GPU to use CPU."))
             return
@@ -3043,18 +3412,20 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
             return
         if not self.connected:
             return
-        if isinstance(self.sink, IntifaceSink):
-            if any(axis != "L0" for axis in self.sink.axes) and self.output_mode.get() != "Six Axis":
-                self.status.set(self._dt("跟随其他轴时，请在开始弹窗中选择六轴输出。", "Select Six Axis in the start dialog when following an axis other than L0."))
-                return
-            self.sink.resume_output()
+        self._live_source_mode = self.source_mode.get()
+        if self._live_source_mode == "Screen" and not self._validate_start_region():
+            return
+        self._active_screen_region = self._screen_region_snapshot if self._live_source_mode == "Screen" else None
         self._normalize_limits()
         self._script_history.clear()
         self._six_axis_stable_positions = {axis: 0.5 for axis in SIX_AXES}
         self._draw_script_curve()
         self.stop_event.clear()
+        self.reset_visual_reference()
+        self.capture_rate_text.set("")
         self.worker = threading.Thread(target=self._run_capture, daemon=True)
         self.worker.start()
+        self._refresh_region_controls()
         self._set_device_controls_busy(True)
         self._refresh_start_button_text()
         self.status.set(self._t("实时输出中"))
@@ -3079,7 +3450,7 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         mode = tk.StringVar(value=self.output_mode.get() if self.output_mode.get() in ("L0 Only", "Six Axis") else "L0 Only")
         current_tracker = self._tracker_internal(self.tracker_mode.get())
         if current_tracker not in TRACKER_MODE_CHOICES:
-            current_tracker = "混合分析（推荐-非舞蹈）"
+            current_tracker = HYBRID_V2_MODE
         tracker = tk.StringVar(value=self._tracker_display(current_tracker))
         pose_l0 = tk.BooleanVar(value=self.pose_l0_analysis.get())
         pose_six = tk.BooleanVar(value=self.pose_six_axis_analysis.get())
@@ -3096,12 +3467,36 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         rtm_popup_model_path = tk.StringVar()
         rtm_pose_3d_weight = tk.IntVar(value=self.rtm_pose_3d_weight.get())
         rtm_hybrid_l0_enabled = tk.BooleanVar(value=self.rtm_hybrid_l0_enabled.get())
+        pose_auto_l0_enabled = tk.BooleanVar(value=self.pose_auto_l0_enabled.get())
+        pose_pattern_enabled = tk.BooleanVar(value=self.pose_pattern_enabled.get())
+        pose_fast_v1_enabled = tk.BooleanVar(value=self.pose_fast_v1_enabled.get())
         rtm_hybrid_l0_weight = tk.IntVar(value=self.rtm_hybrid_l0_weight.get())
         rtm_pose_gpu_enabled = tk.BooleanVar(value=self.rtm_pose_gpu_enabled.get())
         rtm_pose_gpu_status_text = tk.StringVar()
         rtm_pose_flow_enabled = tk.BooleanVar(value=self.rtm_pose_flow_enabled.get())
         rtm_pose_kalman_enabled = tk.BooleanVar(value=self.rtm_pose_kalman_enabled.get())
+        rtm_pose_reject_enabled = tk.BooleanVar(value=self.rtm_pose_reject_enabled.get())
+        rtm_pose_micro_smooth_enabled = tk.BooleanVar(value=self.rtm_pose_micro_smooth_enabled.get())
+        rtm_hybrid_source = tk.StringVar(value=HYBRID_V2_MODE)
+        hybrid_v2_pose = tk.BooleanVar(value=self.hybrid_v2_pose_enabled.get())
+        v2_l0_reference = tk.StringVar(value=self.v2_l0_reference.get())
         compression_latency = tk.IntVar(value=self.compression_latency.get())
+        capture_rate = tk.IntVar(value=self._capture_target_fps)
+        curve_fitting = tk.BooleanVar(value=self.output_curve_fitting.get())
+        endpoint_enabled = tk.BooleanVar(value=self.endpoint_slowdown_enabled.get())
+        endpoint_percent = tk.DoubleVar(value=self.endpoint_slowdown_pct.get())
+        self._analysis_preferences.remember(self._analysis_variables())
+        popup_preferences = AnalysisPreferences(self._analysis_preferences.profiles, current_tracker)
+        popup_variables = {
+            "pose_auto_l0_enabled": pose_auto_l0_enabled,
+            "pose_pattern_enabled": pose_pattern_enabled,
+            "pose_fast_v1_enabled": pose_fast_v1_enabled,
+            "fps": capture_rate, "output_curve_fitting": curve_fitting, "compression_latency": compression_latency,
+            "rtm_pose_gpu_enabled": rtm_pose_gpu_enabled, "rtm_hybrid_l0_enabled": rtm_hybrid_l0_enabled,
+            "rtm_hybrid_l0_weight": rtm_hybrid_l0_weight, "rtm_pose_flow_enabled": rtm_pose_flow_enabled,
+            "rtm_pose_kalman_enabled": rtm_pose_kalman_enabled, "rtm_pose_reject_enabled": rtm_pose_reject_enabled,
+            "rtm_pose_micro_smooth_enabled": rtm_pose_micro_smooth_enabled,
+        }
         pose_l0_base_text = tk.StringVar()
         pose_six_base_text = tk.StringVar()
         pose_v2_l0_base_text = tk.StringVar()
@@ -3113,7 +3508,7 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         rtm_popup_path_syncing = False
 
         def active_popup_rtm_model_var() -> tk.StringVar:
-            return rtm_pose_2d_model if self._rtm_pose_2d_mode_active(tracker.get()) else rtm_pose_3d_model
+            return rtm_pose_2d_model
 
         def refresh_popup_rtm_model_path(*_args: object) -> None:
             nonlocal rtm_popup_path_syncing
@@ -3222,7 +3617,11 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         region_text = tk.StringVar()
 
         def refresh_region_text() -> None:
-            region_text.set(f"{self._t('屏幕区域')}: X {self.x.get()}  Y {self.y.get()}  {self.width.get()} x {self.height.get()}")
+            try:
+                region = self._read_screen_region()
+                region_text.set(f"{self._t('屏幕区域')}: X {region.x}  Y {region.y}  {region.width} × {region.height} px")
+            except ValueError:
+                region_text.set(self._dt("区域输入尚未完成，请重新框选。", "Region entry is incomplete; select a region again."))
 
         def choose_region() -> None:
             try:
@@ -3264,13 +3663,21 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
             state="readonly",
             width=28,
         ).grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 6))
+        fps_frame = ttk.Frame(analysis)
+        fps_frame.columnconfigure(1, weight=1)
+        fps_frame.grid(row=1, column=0, columnspan=3, sticky="ew")
+        next_row = self._endpoint_controls(fps_frame, 0, endpoint_enabled, endpoint_percent)
+        next_row = self._capture_rate_controls(fps_frame, next_row, capture_rate)
+        self._output_curve_control(fps_frame, next_row, curve_fitting)
         rtm_popup_frame = ttk.Frame(analysis)
         rtm_popup_frame.columnconfigure(1, weight=1)
         rtm_popup_hybrid_check = ttk.Checkbutton(rtm_popup_frame, text="混合分析 L0 权重", variable=rtm_hybrid_l0_enabled)
         rtm_popup_hybrid_check.grid(row=0, column=0, sticky="w", pady=2)
         Tooltip(rtm_popup_hybrid_check, self._tooltip_text("混合分析 L0 权重"))
-        ttk.Scale(rtm_popup_frame, from_=1, to=100, variable=rtm_hybrid_l0_weight).grid(row=0, column=1, sticky="ew", pady=2)
-        ttk.Label(rtm_popup_frame, textvariable=rtm_hybrid_l0_weight, width=4, anchor="e").grid(row=0, column=2, sticky="e")
+        popup_blend_scale = ttk.Scale(rtm_popup_frame, from_=1, to=100, variable=rtm_hybrid_l0_weight)
+        popup_blend_scale.grid(row=0, column=1, sticky="ew", pady=2)
+        popup_blend_value = ttk.Label(rtm_popup_frame, textvariable=rtm_hybrid_l0_weight, width=4, anchor="e")
+        popup_blend_value.grid(row=0, column=2, sticky="e")
         rtm_popup_model_label = ttk.Label(rtm_popup_frame, textvariable=rtm_popup_model_l0_text, foreground="#555")
         rtm_popup_model_label.grid(row=1, column=0, columnspan=3, sticky="w", pady=(0, 5))
         Tooltip(rtm_popup_model_label, self._tooltip_text("当前本模型分析权重"))
@@ -3312,23 +3719,40 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         rtm_popup_kalman_check.grid(row=9, column=0, columnspan=3, sticky="w", pady=(2, 0))
         Tooltip(rtm_popup_kalman_check, self._tooltip_text("RTM 卡尔曼融合"))
 
+        ttk.Checkbutton(rtm_popup_frame, text=self._dt("异常过滤", "Reject outliers"), variable=rtm_pose_reject_enabled).grid(row=10, column=0, columnspan=3, sticky="w")
+        ttk.Checkbutton(rtm_popup_frame, text=self._dt("仅微抖平滑", "Micro smoothing"), variable=rtm_pose_micro_smooth_enabled).grid(row=11, column=0, columnspan=3, sticky="w")
+        popup_source_label = ttk.Label(rtm_popup_frame, text=self._dt("L0 混合来源：混合分析 v2", "L0 blend source: Hybrid v2"))
+        popup_source_label.grid(row=12, column=0, columnspan=3, sticky="w")
+        popup_auto_l0 = self._pose_auto_l0_control(rtm_popup_frame, 13, pose_auto_l0_enabled)
+        popup_pattern = self._pose_pattern_control(rtm_popup_frame, 14, pose_pattern_enabled)
+        popup_fast_v1 = self._pose_fast_v1_control(rtm_popup_frame, 15, pose_fast_v1_enabled)
+        popup_assist = ttk.Checkbutton(analysis, text=self._dt("v2：启用 RTM 2D 旋转辅助", "v2: RTM 2D rotation assist"), variable=hybrid_v2_pose)
+        popup_assist.grid(row=5, column=0, columnspan=3, sticky="w")
+        self._point_l0_control(analysis, 6, v2_l0_reference, tracker)
+
         def refresh_rtm_popup_settings(*_args: object) -> None:
+            popup_preferences.switch(self._tracker_internal(tracker.get()), popup_variables)
+            self._analysis_visibility(self._tracker_internal(tracker.get()), rtm_hybrid_l0_enabled.get(),
+                popup_source_label, popup_assist, (rtm_popup_hybrid_check, popup_blend_scale, popup_blend_value, rtm_popup_model_label, popup_auto_l0, popup_pattern, popup_fast_v1))
             rtm_pose_3d.set(self._rtm_pose_mode_active(tracker.get()))
             refresh_pose_base_texts()
-            if self._rtm_pose_mode_active(tracker.get()):
+            if self._pose_model_required(tracker.get(), mode.get(), hybrid_v2_pose.get()):
                 refresh_popup_rtm_model_path()
-                rtm_popup_frame.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(0, 6))
+                rtm_popup_frame.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(0, 6))
             else:
                 rtm_popup_frame.grid_remove()
 
+        rtm_hybrid_l0_enabled.trace_add("write", refresh_rtm_popup_settings)
+        mode.trace_add("write", refresh_rtm_popup_settings)
+        hybrid_v2_pose.trace_add("write", refresh_rtm_popup_settings)
         tracker.trace_add("write", refresh_rtm_popup_settings)
         refresh_rtm_popup_settings()
 
-        ttk.Label(analysis, text="压缩延迟").grid(row=2, column=0, sticky="w", pady=(8, 2))
-        ttk.Scale(analysis, from_=-5, to=5, variable=compression_latency).grid(row=2, column=1, sticky="ew", pady=(8, 2))
-        ttk.Label(analysis, textvariable=compression_latency, width=4, anchor="e").grid(row=2, column=2, sticky="e", pady=(8, 2))
+        ttk.Label(analysis, text="压缩延迟").grid(row=3, column=0, sticky="w", pady=(8, 2))
+        ttk.Scale(analysis, from_=-5, to=5, variable=compression_latency).grid(row=3, column=1, sticky="ew", pady=(8, 2))
+        ttk.Label(analysis, textvariable=compression_latency, width=4, anchor="e").grid(row=3, column=2, sticky="e", pady=(8, 2))
         ttk.Label(analysis, text="-5 最准确 / 0 默认 / 5 延迟最低", wraplength=360, foreground="#555").grid(
-            row=3, column=0, columnspan=3, sticky="ew", pady=(0, 2)
+            row=4, column=0, columnspan=3, sticky="ew", pady=(0, 2)
         )
 
         limits_text = tk.StringVar()
@@ -3380,11 +3804,25 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
             self._refresh_active_rtm_pose_model_path()
             self.rtm_pose_3d_weight.set(100 if rtm_mode_selected else 0)
             self.rtm_hybrid_l0_enabled.set(rtm_hybrid_l0_enabled.get())
+            self.pose_auto_l0_enabled.set(pose_auto_l0_enabled.get())
+            self.pose_pattern_enabled.set(pose_pattern_enabled.get())
+            self.pose_fast_v1_enabled.set(pose_fast_v1_enabled.get())
             self.rtm_hybrid_l0_weight.set(max(1, min(100, int(rtm_hybrid_l0_weight.get()))))
             self.rtm_pose_gpu_enabled.set(rtm_pose_gpu_enabled.get())
             self.rtm_pose_flow_enabled.set(rtm_pose_flow_enabled.get())
             self.rtm_pose_kalman_enabled.set(rtm_pose_kalman_enabled.get())
+            self.rtm_pose_reject_enabled.set(rtm_pose_reject_enabled.get())
+            self.rtm_pose_micro_smooth_enabled.set(rtm_pose_micro_smooth_enabled.get())
+            self.rtm_hybrid_source.set(rtm_hybrid_source.get())
+            self.hybrid_v2_pose_enabled.set(hybrid_v2_pose.get())
+            self.v2_l0_reference.set(v2_l0_reference.get())
             self.compression_latency.set(max(-5, min(5, int(compression_latency.get()))))
+            self.fps.set(capture_fps(capture_rate.get()))
+            self.output_curve_fitting.set(curve_fitting.get())
+            self.endpoint_slowdown_enabled.set(endpoint_enabled.get())
+            self.endpoint_slowdown_pct.set(endpoint_percent.get())
+            popup_preferences.remember(popup_variables)
+            self._analysis_preferences = popup_preferences
             result["ok"] = True
             dialog.destroy()
 
@@ -3402,34 +3840,34 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         height = min(body.winfo_reqheight() + buttons.winfo_reqheight(), bottom - top - 80)
         x = max(left, min(self.winfo_rootx() + (self.winfo_width() - width) // 2, right - width))
         y = max(top, min(self.winfo_rooty() + (self.winfo_height() - height) // 2, bottom - height - 40))
-        dialog.geometry(f"{width}x{height}+{x}+{y}")
+        dialog.geometry(f"{width}x{height}")
+        dialog.update_idletasks()
+        move_physical_window(dialog, x, y)
         self.wait_window(dialog)
         return bool(result["ok"])
 
     def stop(self) -> None:
+        self._video_cancel.set()
+        self.capture_rate_text.set("")
         self._start_after_connect = False
         self.stop_event.set()
-        if isinstance(self.sink, IntifaceSink):
-            self.sink.stop_output()
         # Let Tk service outstanding variable reads while the worker observes stop_event.
-        # The output latch above is immediate; a new worker cannot start until this one exits.
+        # A new worker cannot start until this one exits.
         if not self.worker or not self.worker.is_alive():
             self.worker = None
         self._set_device_controls_busy(self._connecting or bool(self.worker))
+        self._refresh_region_controls()
         self._startup_window_geometry = None
         self._refresh_start_button_text()
         self.status.set(self._t("已停止") if self.connected else self._t("未连接"))
 
     def estop(self) -> None:
         self.stop()
-        if isinstance(self.sink, IntifaceSink):
-            self.status.set(self._dt("已请求设备停止", "Device stop requested"))
-            return
         self.send_center(interval_ms=600)
         self.status.set(self._t("已急停并回中"))
 
     def reset_all_settings(self) -> None:
-        if self.worker and self.worker.is_alive():
+        if (self.worker and self.worker.is_alive()) or self._video_analysis_active():
             messagebox.showwarning(self._t("正在运行"), self._t("请先停止实时输出，再恢复默认设置。"))
             return
         confirmed = messagebox.askyesno(
@@ -3451,7 +3889,6 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         try:
             self.stop()
             self.disconnect_sink()
-            self.preview_bridge.stop()
             if hasattr(self, "preview_button"):
                 self.preview_button.configure(text=self._t("显示预览"))
 
@@ -3462,6 +3899,9 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
             self.width.set(defaults.width)
             self.height.set(defaults.height)
             self.fps.set(defaults.fps)
+            self.output_curve_fitting.set(True)
+            self.endpoint_slowdown_enabled.set(True)
+            self.endpoint_slowdown_pct.set(10)
             self.source_mode.set("Screen")
             self.video_path.set("")
             self.output_mode.set("L0 Only")
@@ -3480,7 +3920,7 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
             self.enable_l0_jitter_guard.set(True)
             self.l0_guard_strength.set(0.70)
             self.enable_extreme_reset.set(True)
-            self.extreme_hold_ms.set(900)
+            self.extreme_hold_ms.set(850)
             self.enable_endpoint_guard.set(True)
             self.endpoint_margin_pct.set(10)
             self.pose_l0_analysis.set(False)
@@ -3497,11 +3937,20 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
             self.rtm_pose_3d_model_path.set("")
             self.rtm_pose_3d_weight.set(100)
             self.rtm_hybrid_l0_enabled.set(False)
+            self.pose_auto_l0_enabled.set(True)
+            self.pose_pattern_enabled.set(False)
+            self.pose_fast_v1_enabled.set(True)
             self.rtm_hybrid_l0_weight.set(30)
             self.rtm_pose_gpu_enabled.set(False)
             self.rtm_pose_gpu_backend.set("cuda")
-            self.rtm_pose_flow_enabled.set(True)
-            self.rtm_pose_kalman_enabled.set(True)
+            self.rtm_pose_flow_enabled.set(False)
+            self.rtm_pose_kalman_enabled.set(False)
+            self.hybrid_v2_pose_enabled.set(False)
+            self.v2_l0_reference.set('fusion')
+            self.rtm_pose_reject_enabled.set(False)
+            self.rtm_pose_micro_smooth_enabled.set(False)
+            self.visual_processing_edge.set(640)
+            self.rtm_hybrid_source.set(HYBRID_V2_MODE)
             self._set_tracker_mode(defaults.tracker_mode)
             self.response_curve.set(defaults.response_curve)
             self.motion_gain.set(defaults.motion_gain)
@@ -3537,7 +3986,6 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
             self.axis.set(defaults.axis)
             self.interval_ms.set(defaults.output_interval_ms)
             self.sink_type.set(defaults.last_sink)
-            self._reset_device_config()
             self.serial_port.set(defaults.serial_port)
             self.baudrate.set(defaults.baudrate)
             self.ble_name.set(defaults.ble_name)
@@ -3563,29 +4011,22 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
             self._draw_script_curve()
             self._refresh_play_preset_buttons()
             self.config_model.extra["play_preset_initialized_v1"] = True
+            self._analysis_preferences = AnalysisPreferences({key: analysis_defaults(key) for key in ("hybrid", "dance")}, defaults.tracker_mode)
+            self._analysis_preferences.apply(self._analysis_variables())
+            self.preview_tabs.select(self.output_tab)
         finally:
             self._config_autosave_suspended = False
         self._save_config()
         self.status.set(self._t("已恢复所有默认设置，并保存到本机"))
 
     def toggle_preview(self) -> None:
-        if self.preview_bridge.is_running:
-            self.preview_bridge.stop()
-            self.preview_button.configure(text=self._t("显示预览"))
-            self.status.set(self._t("预览已关闭"))
-            return
         try:
+            self.preview_bridge.set_device_context("SR6/OSR6", False, self.ui_language)
             self.preview_bridge.start()
             self.preview_bridge.open_window()
+            self.status.set(self._dt("3D 模拟器已打开，显示最终输出指令", "3D simulator opened; showing final output commands"))
         except Exception as exc:
-            self.preview_bridge.stop()
-            self.preview_button.configure(text=self._t("显示预览"))
-            messagebox.showerror(self._t("预览启动失败"), str(exc))
-            return
-        self.preview_button.configure(text=self._t("取消预览"))
-        if self.output_value.get():
-            self.preview_bridge.broadcast_tcode(self.output_value.get())
-        self.status.set(self._t("预览已打开：显示限制后的真实输出"))
+            self.status.set(self._dt("无法打开 3D 模拟器：", "Cannot open 3D simulator: ") + str(exc))
 
     def _emit_command(self, command: object) -> str:
         if isinstance(command, str):
@@ -3594,13 +4035,17 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         else:
             payload = command.encode()
             text = payload.decode("ascii").strip()
-        if getattr(self._output_context, "sink", self.sink) is not self.sink:
+        sink = self.sink
+        if getattr(self._output_context, "sink", sink) is not sink:
             return text
         if threading.current_thread() is self.worker and self.stop_event.is_set():
             return text
-        if isinstance(self.sink, IntifaceSink) and threading.current_thread() is threading.main_thread():
-            self.sink.resume_output()
-        self.sink.write(payload)
+        try:
+            sink.write(payload)
+        except Exception as exc:
+            self._queue_latest({"output_failed": True, "sink": sink,
+                                "message": f"{type(exc).__name__}: {exc}"})
+            raise OutputWriteError(f"{type(exc).__name__}: {exc}") from exc
         self.preview_bridge.broadcast_tcode(text)
         return text
 
@@ -3677,9 +4122,6 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         self.status.set(f"{self._t('已保存')} {axis} {label}: {value:04d}")
 
     def send_small_test(self) -> None:
-        if self._family_id() not in NATIVE_FAMILIES:
-            self.status.set(self._dt("此测试仅适用于 TCode 设备。", "This test is for TCode devices only."))
-            return
         if self.worker and self.worker.is_alive():
             messagebox.showwarning(self._t("正在运行"), self._t("请先停止实时输出，再做中等测试。"))
             return
@@ -3716,9 +4158,6 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         self.status.set(self._t("中等测试完成"))
 
     def send_full_l0_test(self) -> None:
-        if self._family_id() not in NATIVE_FAMILIES:
-            self.status.set(self._dt("此测试仅适用于 TCode 设备。", "This test is for TCode devices only."))
-            return
         if self.worker and self.worker.is_alive():
             messagebox.showwarning(self._t("正在运行"), self._t("请先停止实时输出，再做上下全幅测试。"))
             return
@@ -3778,9 +4217,6 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         threading.Thread(target=worker, daemon=True).start()
 
     def send_six_axis_test(self) -> None:
-        if self._family_id() not in NATIVE_FAMILIES:
-            self.status.set(self._dt("此测试仅适用于 TCode 设备。", "This test is for TCode devices only."))
-            return
         if self.worker and self.worker.is_alive():
             messagebox.showwarning(self._t("正在运行"), self._t("请先停止实时输出，再做六轴轻测。"))
             return
@@ -3895,7 +4331,7 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         self._refresh_play_preset_buttons()
 
     def apply_hybrid_analysis_preset(self) -> None:
-        self._set_tracker_mode("混合分析（推荐-非舞蹈）")
+        self._set_tracker_mode(HYBRID_MODE)
         self.enable_smoothing.set(True)
         self.smoothing.set(0.08)
         self.enable_deadzone.set(True)
@@ -3921,7 +4357,7 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         self._refresh_play_preset_buttons()
 
     def apply_stable_l0_preset(self) -> None:
-        self._set_tracker_mode("混合分析（推荐-非舞蹈）")
+        self._set_tracker_mode(HYBRID_MODE)
         self.enable_smoothing.set(True)
         self.smoothing.set(0.30)
         self.enable_deadzone.set(True)
@@ -3944,37 +4380,12 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         self.status.set(self._t("已应用稳态 L0 + 低敏六轴"))
 
     def apply_play_preset(self, level: int, announce: bool = True) -> None:
-        presets = {
-            1: {"interval": 38, "step": 550, "smooth": 0.42, "deadzone": 0.010, "activity": 0.0060, "gain": 0.90, "visual": 0.50, "travel": 0.55, "edge": 14, "hold": 650},
-            2: {"interval": 30, "step": 900, "smooth": 0.34, "deadzone": 0.009, "activity": 0.0045, "gain": 1.10, "visual": 0.58, "travel": 0.75, "edge": 12, "hold": 750},
-            3: {"interval": 24, "step": 1300, "smooth": 0.28, "deadzone": 0.008, "activity": 0.0035, "gain": 1.35, "visual": 0.66, "travel": 1.00, "edge": 10, "hold": 850},
-            4: {"interval": 20, "step": 2100, "smooth": 0.20, "deadzone": 0.006, "activity": 0.0025, "gain": 1.65, "visual": 0.76, "travel": 1.15, "edge": 8, "hold": 950},
-            5: {"interval": 16, "step": 3200, "smooth": 0.14, "deadzone": 0.004, "activity": 0.0018, "gain": 2.00, "visual": 0.90, "travel": 1.30, "edge": 6, "hold": 1100},
-        }
         level = max(1, min(5, int(level)))
-        preset = presets[level]
-        self._set_tracker_mode("混合分析（推荐-非舞蹈）")
-        self.enable_speed_limit.set(True)
-        self.enable_smoothing.set(True)
-        self.enable_deadzone.set(True)
-        self.enable_l0_jitter_guard.set(True)
-        self.l0_guard_strength.set({1: 0.88, 2: 0.80, 3: 0.70, 4: 0.55, 5: 0.42}[level])
-        self.enable_extreme_reset.set(True)
-        self.extreme_hold_ms.set(preset["hold"])
-        self.enable_endpoint_guard.set(True)
-        self.endpoint_margin_pct.set(preset["edge"])
-        self.enable_activity_gate.set(True)
-        self.interval_ms.set(preset["interval"])
-        self.max_step.set(preset["step"])
-        self.smoothing.set(preset["smooth"])
-        self.deadzone.set(preset["deadzone"])
-        self.min_activity.set(preset["activity"])
-        self.motion_gain.set(preset["gain"])
-        self.visual_stroke_scale.set(preset["visual"])
-        self.l0_travel_scale.set(preset["travel"])
-        self.global_travel_scale.set(preset["travel"])
-        self.response_curve.set("Linear")
-        self.idle_mode.set("Hold")
+        travel = {1: 0.55, 2: 0.75, 3: 1.0, 4: 1.15, 5: 1.30}[level]
+        # These scales are consumed only by script mapping and final TCode output.
+        # Keep the selected analyzer and its running state intact.
+        self.l0_travel_scale.set(travel)
+        self.global_travel_scale.set(travel)
         self.play_preset_level.set(level)
         self._refresh_play_preset_buttons()
         if announce:
@@ -4005,283 +4416,67 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         self.record_status.set(f"{self._t('已保存:')} {self.recorder.action_count} {self._t('点')}")
 
     def pick_region(self, on_close: Callable[[bool], None] | None = None) -> None:
-        overlay = tk.Toplevel(self)
-        overlay.configure(background="black")
-        overlay.attributes("-fullscreen", True)
-        overlay.attributes("-alpha", 0.36)
-        overlay.attributes("-topmost", True)
-        overlay.config(cursor="crosshair")
-        overlay.grab_set()
-        canvas = tk.Canvas(overlay, background="black", highlightthickness=0)
-        canvas.pack(fill="both", expand=True)
-        overlay.update_idletasks()
+        if (self.worker and self.worker.is_alive()) or self._video_analysis_active():
+            messagebox.showwarning(self._dt("先停止分析", "Stop analysis first"),
+                self._dt("请先停止当前分析，再更改采集区域。", "Stop the current analysis before changing the capture region."), parent=self)
+            if on_close:
+                on_close(False)
+            return
+        if self._region_selector is not None and not self._region_selector.closed:
+            self._region_selector.window.lift()
+            return
+        try:
+            current = self._read_screen_region()
+        except ValueError:
+            current = None
+        previous_state = self.state()
 
-        root_x = overlay.winfo_rootx()
-        root_y = overlay.winfo_rooty()
-        physical_screen = virtual_screen_bounds()
-        logical_w = max(1, overlay.winfo_screenwidth())
-        logical_h = max(1, overlay.winfo_screenheight())
-        scale_x = physical_screen["width"] / logical_w if physical_screen["width"] > 0 else 1.0
-        scale_y = physical_screen["height"] / logical_h if physical_screen["height"] > 0 else 1.0
-        state: dict[str, object] = {
-            "start": None,
-            "region": None,
-            "panel": None,
-            "closed": False,
-        }
-
-        def local_to_screen(x_value: int, y_value: int) -> tuple[int, int]:
-            absolute_x = root_x + x_value
-            absolute_y = root_y + y_value
-            return (
-                physical_screen["left"] + round(absolute_x * scale_x),
-                physical_screen["top"] + round(absolute_y * scale_y),
-            )
-
-        def local_size_to_screen(width_value: int, height_value: int) -> tuple[int, int]:
-            return max(16, round(width_value * scale_x)), max(16, round(height_value * scale_y))
-
-        def screen_to_local(x_value: int, y_value: int) -> tuple[int, int]:
-            local_x = (x_value - physical_screen["left"]) / max(0.0001, scale_x) - root_x
-            local_y = (y_value - physical_screen["top"]) / max(0.0001, scale_y) - root_y
-            return round(local_x), round(local_y)
-
-        def screen_size_to_local(width_value: int, height_value: int) -> tuple[int, int]:
-            return max(1, round(width_value / max(0.0001, scale_x))), max(1, round(height_value / max(0.0001, scale_y)))
-
-        def draw_help() -> None:
-            canvas.delete("help")
-            canvas.create_rectangle(18, 18, 680, 100, fill="#090909", outline="#58e08a", width=2, tags="help")
-            canvas.create_text(
-                34,
-                34,
-                text=self._t("拖拽选择实时读取区域"),
-                anchor="nw",
-                fill="white",
-                font=("", 16, "bold"),
-                tags="help",
-            )
-            canvas.create_text(
-                34,
-                62,
-                text=self._t("建议只框住主要画面动作，避开弹幕、字幕和播放器控件；Enter 确认，R 重选，Esc 取消"),
-                anchor="nw",
-                fill="#d7d7d7",
-                font=("", 11),
-                tags="help",
-            )
-
-        def draw_current_region() -> None:
-            canvas.delete("current_region")
-            try:
-                x1, y1 = screen_to_local(self.x.get(), self.y.get())
-                width, height = screen_size_to_local(self.width.get(), self.height.get())
-                x2 = x1 + width
-                y2 = y1 + height
-            except tk.TclError:
+        def restore():
+            if previous_state == "withdrawn":
                 return
-            if self.width.get() <= 0 or self.height.get() <= 0:
-                return
-            canvas.create_rectangle(x1, y1, x2, y2, outline="#7fb4ff", width=2, dash=(6, 4), tags="current_region")
-            for ax, ay, bx, by in (
-                (x1, y1, x1 + 28, y1),
-                (x1, y1, x1, y1 + 28),
-                (x2, y1, x2 - 28, y1),
-                (x2, y1, x2, y1 + 28),
-                (x1, y2, x1 + 28, y2),
-                (x1, y2, x1, y2 - 28),
-                (x2, y2, x2 - 28, y2),
-                (x2, y2, x2, y2 - 28),
-            ):
-                canvas.create_line(ax, ay, bx, by, fill="#cfe3ff", width=3, tags="current_region")
-            canvas.create_text(
-                x1 + 8,
-                max(104, y1 + 8),
-                text=f"{self._t('当前区域')} {self.width.get()} x {self.height.get()}",
-                anchor="nw",
-                fill="#cfe3ff",
-                font=("", 11, "bold"),
-                tags="current_region",
-            )
+            self.deiconify()
+            if previous_state in ("zoomed", "iconic"):
+                self.state(previous_state)
+            else:
+                self.lift()
 
-        def clear_panel() -> None:
-            panel = state.get("panel")
-            if panel is not None:
-                try:
-                    canvas.delete(panel)
-                except tk.TclError:
-                    pass
-            state["panel"] = None
+        def complete(region):
+            self._region_selector = None
+            restore()
+            if region is not None:
+                for variable, value in zip((self.x, self.y, self.width, self.height),
+                                           (region.x, region.y, region.width, region.height)):
+                    variable.set(value)
+                self.status.set(self._dt("已选择物理像素区域", "Physical pixel region selected") +
+                    f": X {region.x} · Y {region.y} · {region.width} × {region.height} px")
+            if on_close:
+                on_close(region is not None)
 
-        def reset_selection(_event: tk.Event | None = None) -> None:
-            clear_panel()
-            state["region"] = None
-            state["start"] = None
-            canvas.delete("selection")
-            canvas.delete("cursor")
-            draw_help()
-            draw_current_region()
-
-        def finish(accepted: bool) -> None:
-            if state.get("closed"):
-                return
-            state["closed"] = True
-            try:
-                overlay.grab_release()
-            except tk.TclError:
-                pass
-            try:
-                overlay.destroy()
-            except tk.TclError:
-                pass
-            if on_close is not None:
-                self.after(50, lambda: on_close(accepted))
-
-        def confirm(_event: tk.Event | None = None) -> None:
-            region = state.get("region")
-            if not region:
-                return
-            x1, y1, width, height = region
-            self.x.set(int(x1))
-            self.y.set(int(y1))
-            self.width.set(int(width))
-            self.height.set(int(height))
-            self.status.set(f"{self._t('已选择区域')}: {width} x {height}")
-            finish(True)
-
-        def cancel(_event: tk.Event | None = None) -> None:
-            finish(False)
-
-        def draw_panel(x1: int, y1: int, x2: int, y2: int, width: int, height: int) -> None:
-            clear_panel()
-            screen_x, screen_y = local_to_screen(x1, y1)
-            screen_w, screen_h = local_size_to_screen(width, height)
-            panel = tk.Frame(overlay, background="#101010", padx=10, pady=8, highlightthickness=1, highlightbackground="#2f7d55")
-            tk.Label(
-                panel,
-                text=f"{screen_w} x {screen_h}    X {screen_x}  Y {screen_y}",
-                background="#101010",
-                foreground="white",
-                font=("", 10, "bold"),
-            ).grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 6))
-            tk.Button(panel, text=self._t("使用此区域"), command=confirm, width=10).grid(row=1, column=0, padx=(0, 6))
-            tk.Button(panel, text=self._t("重新选择"), command=reset_selection, width=10).grid(row=1, column=1, padx=(0, 6))
-            tk.Button(panel, text=self._t("取消"), command=cancel, width=8).grid(row=1, column=2)
-            px = min(max(24, x1), max(24, canvas.winfo_width() - 310))
-            py = y2 + 14 if y2 + 82 < canvas.winfo_height() else max(104, y1 - 82)
-            state["panel"] = canvas.create_window(px, py, window=panel, anchor="nw")
-
-        def draw_selection(x1: int, y1: int, x2: int, y2: int) -> None:
-            canvas.delete("selection")
-            left, right = sorted((x1, x2))
-            top, bottom = sorted((y1, y2))
-            width = max(0, right - left)
-            height = max(0, bottom - top)
-            canvas.create_rectangle(left, top, right, bottom, outline="#58e08a", width=3, tags="selection")
-            canvas.create_rectangle(left, top, right, bottom, outline="white", width=1, dash=(4, 3), tags="selection")
-            mid_x = (left + right) // 2
-            mid_y = (top + bottom) // 2
-            canvas.create_line(mid_x, top, mid_x, bottom, fill="#58e08a", width=1, dash=(3, 7), tags="selection")
-            canvas.create_line(left, mid_y, right, mid_y, fill="#58e08a", width=1, dash=(3, 7), tags="selection")
-            corner = min(38, max(16, min(width, height) // 5))
-            for ax, ay, bx, by in (
-                (left, top, left + corner, top),
-                (left, top, left, top + corner),
-                (right, top, right - corner, top),
-                (right, top, right, top + corner),
-                (left, bottom, left + corner, bottom),
-                (left, bottom, left, bottom - corner),
-                (right, bottom, right - corner, bottom),
-                (right, bottom, right, bottom - corner),
-            ):
-                canvas.create_line(ax, ay, bx, by, fill="#ffffff", width=4, tags="selection")
-            label_x = min(left + 10, max(10, canvas.winfo_width() - 210))
-            label_y = max(104, top - 30)
-            canvas.create_rectangle(label_x - 6, label_y - 5, label_x + 190, label_y + 21, fill="#111111", outline="#58e08a", tags="selection")
-            screen_x, screen_y = local_to_screen(left, top)
-            screen_w, screen_h = local_size_to_screen(width, height)
-            canvas.create_text(
-                label_x,
-                label_y,
-                text=f"{screen_w} x {screen_h}   X {screen_x}  Y {screen_y}",
-                anchor="nw",
-                fill="white",
-                font=("", 10, "bold"),
-                tags="selection",
-            )
-
-        def draw_cursor(event: tk.Event) -> None:
-            canvas.delete("cursor")
-            if state.get("region"):
-                return
-            canvas.create_line(event.x, 0, event.x, canvas.winfo_height(), fill="#555555", dash=(2, 8), tags="cursor")
-            canvas.create_line(0, event.y, canvas.winfo_width(), event.y, fill="#555555", dash=(2, 8), tags="cursor")
-
-        def down(event: tk.Event) -> None:
-            clear_panel()
-            state["region"] = None
-            state["start"] = (event.x, event.y)
-            canvas.delete("selection")
-            draw_selection(event.x, event.y, event.x, event.y)
-
-        def move(event: tk.Event) -> None:
-            draw_cursor(event)
-            start = state.get("start")
-            if start is None:
-                return
-            x1, y1 = start
-            draw_selection(int(x1), int(y1), event.x, event.y)
-
-        def up(event: tk.Event) -> None:
-            start = state.get("start")
-            state["start"] = None
-            if start is None:
-                return
-            sx, sy = start
-            left, right = sorted((int(sx), event.x))
-            top, bottom = sorted((int(sy), event.y))
-            width = right - left
-            height = bottom - top
-            if width < 24 or height < 24:
-                canvas.delete("selection")
-                canvas.create_text(
-                    event.x + 12,
-                    event.y + 12,
-                    text=self._t("区域太小，请重新拖拽"),
-                    anchor="nw",
-                    fill="#ffdddd",
-                    font=("", 11, "bold"),
-                    tags="selection",
-                )
-                return
-            screen_x, screen_y = local_to_screen(left, top)
-            screen_w, screen_h = local_size_to_screen(width, height)
-            state["region"] = (screen_x, screen_y, screen_w, screen_h)
-            draw_selection(left, top, right, bottom)
-            draw_panel(left, top, right, bottom, width, height)
-
-        draw_help()
-        draw_current_region()
-        overlay.bind("<ButtonPress-1>", down)
-        overlay.bind("<Motion>", draw_cursor)
-        overlay.bind("<B1-Motion>", move)
-        overlay.bind("<ButtonRelease-1>", up)
-        overlay.bind("<Return>", confirm)
-        overlay.bind("<r>", reset_selection)
-        overlay.bind("<R>", reset_selection)
-        overlay.bind("<Escape>", cancel)
-        overlay.focus_force()
+        # The single in-memory snapshot is taken after hiding our own window.
+        self.withdraw()
+        self.update_idletasks()
+        try:
+            self._region_selector = ScreenRegionSelector(self, current=current, on_done=complete, translate=self._t)
+        except Exception as exc:
+            self._region_selector = None
+            restore()
+            messagebox.showerror(self._dt("无法框选区域", "Could not select a region"), str(exc), parent=self)
+            if on_close:
+                on_close(False)
 
     def _run_capture(self) -> None:
         self._output_context.sink = self.sink
-        self._normalize_limits()
-        fps = max(1, min(120, self.fps.get()))
-        period = 1.0 / fps
         try:
-            if self.source_mode.get() == "Audio Only":
+            self._output_context.curve = OutputCurveFilter()
+            self._normalize_limits()
+            fps = max(1, min(120, self.fps.get()))
+            period = 1.0 / fps
+            if self._live_source_mode == "Audio Only":
                 self._run_audio(period)
                 return
-            analyzer = RealtimeAnalyzer(
+            analyzer = make_analyzer(
+                visual_settings=self._visual_settings, hybrid_source=self.rtm_hybrid_source.get(),
+                hybrid_v2_pose_enabled=self.hybrid_v2_pose_enabled.get(),
                 tracker_mode=self._tracker_internal(self.tracker_mode.get()),
                 output_mode=self.output_mode.get(),
                 smoothing=self.smoothing.get(),
@@ -4317,15 +4512,15 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
                 compression_latency=self.compression_latency.get(),
             )
             output = self._new_output(self.interval_ms.get())
-            if self.source_mode.get() == "Video File":
+            if self._live_source_mode == "Video File":
                 self._run_video(analyzer, output, period, 0.0)
             else:
                 self._run_screen(analyzer, output, period, 0.0)
+        except OutputWriteError as exc:
+            pass  # _emit_command already queued one failure for the GUI thread.
         except Exception as exc:
-            self._queue_latest({"error": str(exc)})
+            self._queue_latest({"error": f"{type(exc).__name__}: {exc}"})
         finally:
-            if isinstance(self.sink, IntifaceSink) and self._output_context.sink is self.sink:
-                self.sink.stop_output()
             self._queue_latest({"capture_stopped": True})
 
     def _run_screen(
@@ -4335,15 +4530,24 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         period: float,
         last_preview: float,
     ) -> None:
-        region = ScreenRegion(self.x.get(), self.y.get(), self.width.get(), self.height.get())
-        with ScreenCapture(region) as capture:
+        region = self._screen_region_snapshot
+        sequence = 0
+        measured_at = time.perf_counter()
+        processed = 0
+        processing_fps = 0.0
+        with LatestScreenCapture(region, lambda: self._capture_target_fps, capture_factory=ScreenCapture) as capture:
             while not self.stop_event.is_set():
-                started = time.perf_counter()
-                frame = capture.grab_bgr()
-                last_preview = self._process_frame(analyzer, output, frame, last_preview)
-                sleep_for = period - (time.perf_counter() - started)
-                if sleep_for > 0:
-                    time.sleep(sleep_for)
+                sample = capture.next_frame(sequence)
+                if sample is None or self.stop_event.is_set():
+                    continue
+                sequence = sample.sequence
+                now = time.perf_counter()
+                if now - measured_at >= 0.5:
+                    processing_fps = processed / (now - measured_at)
+                    measured_at, processed = now, 0
+                stats = (sample.fps, processing_fps, max(0.0, now - sample.captured_at) * 1000.0)
+                last_preview = self._process_frame(analyzer, output, sample.bgr, last_preview, capture_stats=stats, timestamp=sample.captured_at)
+                processed += 1
 
     def _run_video(
         self,
@@ -4361,17 +4565,29 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         video_fps = cap.get(cv2.CAP_PROP_FPS)
         if video_fps and video_fps > 1:
             period = 1.0 / min(120.0, video_fps)
+        visual = isinstance(analyzer, LabAnalyzer)
+        native_fps = video_fps if np.isfinite(video_fps) and video_fps > 0 else 30.0
+        playback_start = time.perf_counter()
+        index = 0
         try:
             while not self.stop_event.is_set():
                 started = time.perf_counter()
+                if visual:
+                    target = int((started - playback_start) * native_fps)
+                    while index < target and not self.stop_event.is_set():
+                        if not cap.grab():
+                            break
+                        index += 1
+                        analyzer.skipped += 1
                 ok, frame = cap.read()
                 if not ok:
                     self._queue_latest({"error": "视频分析完成"})
                     break
-                last_preview = self._process_frame(analyzer, output, frame, last_preview)
-                sleep_for = period - (time.perf_counter() - started)
+                last_preview = self._process_frame(analyzer, output, frame, last_preview, timestamp=index / native_fps)
+                index += 1
+                sleep_for = (playback_start + index / native_fps - time.perf_counter()) if visual else period - (time.perf_counter() - started)
                 if sleep_for > 0:
-                    time.sleep(sleep_for)
+                    self.stop_event.wait(sleep_for)
         finally:
             cap.release()
 
@@ -4390,11 +4606,12 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
                 samples, duration = capture.read()
                 result = analyzer.process(samples, duration or period)
                 positions = self._apply_six_axis_tuning(result.positions)
+                positions = self._fit_output_curve(positions)
                 self._refresh_live_output_mapping(output)
                 command = output.next_command(positions, result.activity)
                 command_text = self._emit_command(command)
                 if self.recorder.is_recording:
-                    self.recorder.add(self._positions_with_travel_controls(positions))
+                    self.recorder.add(self._positions_with_travel_controls(positions), *self._endpoint_options)
                 now = time.perf_counter()
                 if now - last_update > 0.08:
                     self._queue_latest(
@@ -4413,23 +4630,47 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         output: MultiAxisSafeOutput,
         frame: object,
         last_preview: float,
+        capture_stats: tuple[float, float, float] | None = None,
+        timestamp: float | None = None,
     ) -> float:
-        analysis_frame = self._prepare_analysis_frame(frame)
-        result = analyzer.process(analysis_frame)
-        positions = self._apply_six_axis_tuning(result.positions)
+        visual = isinstance(analyzer, LabAnalyzer)
+        analysis_frame = frame if visual else self._prepare_analysis_frame(frame)
         self._refresh_live_output_mapping(output)
-        command = output.next_command(positions, result.activity)
+        if visual:
+            analyzer.configure(self._visual_settings)
+            if analyzer.pose and analyzer.settings.pose_fast_v1:
+                analyzer.pose_fast.remember_output(output.input_position('L0'))
+            elif not analyzer.pose:
+                analyzer.remember_l0_output(output.input_position('L0'))
+            result = analyzer.process(analysis_frame, timestamp=timestamp)
+            if analyzer.settings != self._visual_settings or self.stop_event.is_set():
+                return last_preview
+        else:
+            generation = self._visual_settings.generation
+            if getattr(analyzer, "_reference_generation", generation) != generation:
+                analyzer.reset()
+            analyzer._reference_generation = generation
+            result = analyzer.process(analysis_frame)
+            if generation != self._visual_settings.generation or self.stop_event.is_set():
+                return last_preview
+        positions = self._visual_output_positions(analyzer, result.positions)
+        generated_axes = self._generated_l0_axes(analyzer)
+        positions = self._fit_output_curve(positions, passthrough=generated_axes)
+        command = output.next_command(positions, 1.0 if generated_axes else result.activity)
         command_text = self._emit_command(command)
         if self.recorder.is_recording:
-            self.recorder.add(self._positions_with_travel_controls(positions))
+            self.recorder.add(self._positions_with_travel_controls(positions), *self._endpoint_options)
         now = time.perf_counter()
-        if now - last_preview > 0.08:
+        if now - last_preview >= 1.0 / min(60, self._capture_target_fps):
             self._queue_latest(
                 {
-                    "preview": self._capture_preview_for_display(frame, analysis_frame, result.preview_bgr),
+                    "visual_frame": analyzer.visual_frame if visual else VisualFrame(
+                        (analysis_frame, result.preview_bgr), None, False, self._visual_settings.generation,
+                        reference=getattr(analyzer, "motion_reference", None)),
                     "command": command_text,
                     "activity": result.activity,
                     "record_count": self.recorder.action_count,
+                    "capture_stats": capture_stats,
                 }
             )
             return now
@@ -4443,8 +4684,10 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
             height, width = frame.shape[:2]
         except AttributeError:
             return frame
-        target_width = max(64, int(round(width * scale)))
-        target_height = max(64, int(round(height * scale)))
+        # Preserve the complete ROI and its aspect ratio, including thin strips.
+        scale = max(scale, min(1.0, 64.0 / max(1, min(width, height))))
+        target_width = max(1, int(round(width * scale)))
+        target_height = max(1, int(round(height * scale)))
         if target_width == width and target_height == height:
             return frame
         return cv2.resize(frame, (target_width, target_height), interpolation=cv2.INTER_AREA)
@@ -4484,7 +4727,24 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         return max(0.60, 1.0 - value * 0.08)
 
     def _active_axes(self) -> list[str]:
-        return ["L0"] if self.output_mode.get() != "Six Axis" else SIX_AXES.copy()
+        hybrid_only = self.source_mode.get() != "Audio Only" and self._tracker_internal(self.tracker_mode.get()) == HYBRID_MODE
+        return ["L0"] if hybrid_only or self.output_mode.get() != "Six Axis" else SIX_AXES.copy()
+
+    def _visual_output_positions(self, analyzer: RealtimeAnalyzer, positions: dict[str, float]) -> dict[str, float]:
+        if getattr(analyzer, "tracker_mode", "") == HYBRID_MODE:
+            return {"L0": positions["L0"]}
+        if getattr(analyzer, "tracker_mode", "") == RTM_POSE_2D_MODE:
+            positions = rtm_l0_amplitude(positions)
+            if getattr(analyzer, "pose_l0_output", None) is not None:
+                positions['L0'] = analyzer.pose_l0_output
+            if self._generated_l0_axes(analyzer):
+                positions["L0"] = analyzer.generated_l0
+        if analyzer._rtm_pose_enabled() and analyzer.output_mode == "Six Axis":
+            positions = rtm_rotation_amplitudes(positions)
+        if (isinstance(analyzer, LabAnalyzer) and analyzer.pose and analyzer.settings.pose_pattern):
+            excluded = ('L0',) if analyzer.pose_recovery.transition_at is not None else self._generated_l0_axes(analyzer)
+            positions = analyzer.pose_pattern.apply(positions, excluded=excluded)
+        return dict(positions) if isinstance(analyzer, LabAnalyzer) else self._apply_six_axis_tuning(positions)
 
     def _apply_six_axis_tuning(self, positions: dict[str, float]) -> dict[str, float]:
         if self.output_mode.get() != "Six Axis":
@@ -4571,6 +4831,8 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
             axis_position_scales=self._axis_position_scales(),
             axis_position_inverts=self._axis_position_inverts(),
             max_step=self.max_step.get() if self.enable_speed_limit.get() else 9999,
+            endpoint_slowdown=self._endpoint_options[0],
+            slowdown_margin=self._endpoint_options[1],
         )
 
     def _new_output(self, interval_ms: int) -> MultiAxisSafeOutput:
@@ -4594,10 +4856,19 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
             extreme_hold_ms=self.extreme_hold_ms.get(),
             enable_endpoint_guard=self.enable_endpoint_guard.get(),
             endpoint_margin=self.endpoint_margin_pct.get() / 100.0,
+            couple_l0_translation=self.source_mode.get() != "Audio Only" and self._tracker_internal(self.tracker_mode.get()) in (RTM_POSE_2D_MODE, HYBRID_V2_MODE) and self.output_mode.get() == "Six Axis",
+            coupling_endpoint_gain=0.5 if self._tracker_internal(self.tracker_mode.get()) == RTM_POSE_2D_MODE else 1.0,
+            coupling_middle_gain=3.5 if self._tracker_internal(self.tracker_mode.get()) == RTM_POSE_2D_MODE else 2.5,
+            coupling_peak_position=2/3 if self._tracker_internal(self.tracker_mode.get()) == RTM_POSE_2D_MODE else .5,
+            coupling_lower_knot=(1/3, 1.0) if self._tracker_internal(self.tracker_mode.get()) == RTM_POSE_2D_MODE else None,
+            couple_l0_rotation=self.source_mode.get() != 'Audio Only' and self._tracker_internal(self.tracker_mode.get()) == RTM_POSE_2D_MODE and self.output_mode.get() == 'Six Axis',
+            sync_timing=True,
+            endpoint_slowdown=self._endpoint_options[0],
+            slowdown_margin=self._endpoint_options[1],
         )
 
     def _queue_latest(self, item: dict[str, object]) -> None:
-        if any(key in item for key in ("connection_success", "connection_error", "device_scan", "gpu_event", "capture_stopped", "error")):
+        if any(key in item for key in ("connection_success", "connection_error", "output_failed", "device_scan", "gpu_event", "capture_stopped", "export_done", "error")):
             self.control_queue.put(item)
             return
         try:
@@ -4608,36 +4879,40 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
             pass
 
     def _poll_worker(self) -> None:
+        self._refresh_region_controls()
+        latest_preview = None
+        latest_visual = None
         if self.worker is not None and not self.worker.is_alive():
             self.worker = None
             self._set_device_controls_busy(self._connecting)
             self._refresh_start_button_text()
-        if isinstance(self.sink, IntifaceSink) and self.sink.error is not None:
-            message = str(self.sink.error)
-            self.stop()
-            self.disconnect_sink()
-            self.status.set(f"Intiface: {message}")
-            self.external_status.set(self._dt("设备连接中断或指令被拒绝，请重新扫描连接。", "Connection interrupted or command rejected. Scan and reconnect."))
         try:
             while True:
                 try:
                     item = self.control_queue.get_nowait()
                 except queue.Empty:
                     item = self.frame_queue.get_nowait()
-                if "device_scan" in item:
-                    self._finish_device_scan(item)
                 if "gpu_event" in item:
                     self._finish_gpu_event(item)
                 if "connection_success" in item:
                     self._finish_connection_success(item)
                 if "connection_error" in item:
                     self._finish_connection_error(item)
+                if "output_failed" in item:
+                    self._finish_output_failure(item)
                 if "error" in item:
                     self.status.set(str(item["error"]))
                 if "status_text" in item:
                     self.status.set(str(item["status_text"]))
                 if "preview" in item:
-                    self._update_preview(item["preview"])
+                    latest_preview = item["preview"]
+                if "visual_frame" in item:
+                    latest_visual = item["visual_frame"]
+                if item.get("capture_stats") is not None and not self.stop_event.is_set():
+                    sampled, analyzed, age_ms = item["capture_stats"]
+                    self.capture_rate_text.set(self._dt(
+                        f"采集 {sampled:.0f} / 分析 {analyzed:.0f} FPS · 输入帧龄 {age_ms:.0f} ms",
+                        f"Capture {sampled:.0f} / Analysis {analyzed:.0f} FPS · Input age {age_ms:.0f} ms"))
                 if "command" in item:
                     command = str(item["command"])
                     self.output_value.set(command)
@@ -4650,14 +4925,9 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
                     self.record_status.set(f"{self._t('录制中')}: {item['record_count']} {self._t('点')}")
                 if "rtm_model_path" in item:
                     model_path = str(item["rtm_model_path"])
-                    model_mode = self._tracker_internal(str(item.get("rtm_model_mode", self._rtm_pose_3d_download_mode or self.tracker_mode.get())))
-                    if model_mode == RTM_POSE_2D_MODE:
-                        self.rtm_pose_2d_model_path.set(model_path)
-                    else:
-                        self.rtm_pose_3d_model_path.set(model_path)
+                    self.rtm_pose_2d_model_path.set(model_path)
                     if self._rtm_pose_3d_download_target is not None:
                         self._rtm_pose_3d_download_target.set(model_path)
-                    self._set_tracker_mode(model_mode if model_mode in (RTM_POSE_2D_MODE, RTM_POSE_3D_MODE) else RTM_POSE_2D_MODE)
                     self._refresh_active_rtm_pose_model_path()
                 if "rtm_download_status" in item:
                     self.rtm_model_download_status_text.set(str(item["rtm_download_status"]))
@@ -4682,27 +4952,17 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
                         self.status.set(self._t("未找到 BLE 设备"))
         except queue.Empty:
             pass
-        self.after(50, self._poll_worker)
+        if latest_visual is not None:
+            self.integrated_preview.display(latest_visual)
+        elif latest_preview is not None:
+            self._update_preview(latest_preview)
+        self.after(16 if self.worker is not None else 50, self._poll_worker)
 
     def _update_preview(self, frame_bgr: object) -> None:
-        frame = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-        img = Image.fromarray(frame)
-        max_w = max(320, self.preview_canvas.winfo_width())
-        max_h = max(240, self.preview_canvas.winfo_height())
-        img.thumbnail((max_w, max_h))
-        self.preview_image = ImageTk.PhotoImage(img)
-        self._redraw_preview_image()
+        self.integrated_preview.display(VisualFrame((frame_bgr, frame_bgr), None, False, self._visual_settings.generation))
 
     def _redraw_preview_image(self) -> None:
-        if not hasattr(self, "preview_canvas") or self.preview_image is None:
-            return
-        x = max(0, self.preview_canvas.winfo_width() // 2)
-        y = max(0, self.preview_canvas.winfo_height() // 2)
-        if self.preview_canvas_image is None:
-            self.preview_canvas_image = self.preview_canvas.create_image(x, y, image=self.preview_image, anchor="center")
-        else:
-            self.preview_canvas.itemconfigure(self.preview_canvas_image, image=self.preview_image)
-            self.preview_canvas.coords(self.preview_canvas_image, x, y)
+        self.integrated_preview.render()
 
     def _normalize_limits(self) -> None:
         for axis in SIX_AXES:
@@ -4784,13 +5044,13 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         ratio = max(0.0, min(1.0, (value - low) / span))
         delta = value - self._previous_l0_value
         if delta <= -22:
-            label = self._t("插入中（去下限）")
+            label = self._t("向下限移动")
         elif delta >= 22:
-            label = self._t("拔出中（去上限）")
+            label = self._t("向上限移动")
         elif ratio <= 0.22:
-            label = self._t("插入端（下限）")
+            label = self._t("下限端点")
         elif ratio >= 0.78:
-            label = self._t("拔出端（上限）")
+            label = self._t("上限端点")
         else:
             label = self._t("中段")
         self.stroke_status.set(f"{label}  {ratio * 100:.0f}%")
@@ -4802,7 +5062,7 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         canvas.delete("all")
         width = int(canvas["width"])
         height = int(canvas["height"])
-        pad = 12
+        pad = 24
         try:
             low = max(0, min(9999, int(float(self.min_value.get()))))
             high = max(0, min(9999, int(float(self.max_value.get()))))
@@ -4819,8 +5079,8 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         canvas.create_rectangle(x - 14, y_for(high), x + 14, y_for(low), fill="#bfe7cc", outline="#58a873")
         y = y_for(max(0, min(9999, value)))
         canvas.create_oval(x - 19, y - 8, x + 19, y + 8, fill="#176f3f", outline="")
-        canvas.create_text(x, pad - 2, text=self._t("拔出"), anchor="s", fill="#555")
-        canvas.create_text(x, height - pad + 2, text=self._t("插入"), anchor="n", fill="#555")
+        canvas.create_text(x, pad - 2, text=self._t("上限方向"), anchor="s", fill="#555")
+        canvas.create_text(x, height - pad + 2, text=self._t("下限方向"), anchor="n", fill="#555")
 
     def _draw_axis_monitor(self, values: dict[str, int]) -> None:
         if not hasattr(self, "axis_canvas"):
@@ -4868,7 +5128,7 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         height = int(canvas["height"])
         pad_l = 46
         pad_r = 12
-        pad_t = 18
+        pad_t = 34
         pad_b = 22
         plot_w = max(1, width - pad_l - pad_r)
         plot_h = max(1, height - pad_t - pad_b)
@@ -4925,12 +5185,19 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
             legend_x += 44
 
     def _save_config(self) -> None:
+        self._analysis_preferences.remember(self._analysis_variables())
+        self.config_model.extra["analysis_profiles"] = {key: dict(value) for key, value in self._analysis_preferences.profiles.items()}
         cfg = self.config_model
-        cfg.x = self.x.get()
-        cfg.y = self.y.get()
-        cfg.width = self.width.get()
-        cfg.height = self.height.get()
-        cfg.fps = self.fps.get()
+        try:
+            region = self._read_screen_region()
+        except ValueError:
+            pass  # Keep the last complete rectangle while an entry is unfinished.
+        else:
+            cfg.x, cfg.y, cfg.width, cfg.height = region.x, region.y, region.width, region.height
+        cfg.fps = capture_fps(self.fps.get())
+        cfg.extra["output_curve_fitting"] = bool(self.output_curve_fitting.get())
+        cfg.extra["endpoint_slowdown_enabled"] = self._endpoint_options[0]
+        cfg.extra["endpoint_slowdown_pct"] = round(self._endpoint_options[1]*100)
         cfg.extra["source_mode"] = self.source_mode.get()
         cfg.extra["video_path"] = self.video_path.get()
         cfg.extra["output_mode"] = self.output_mode.get()
@@ -4976,11 +5243,19 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         cfg.extra["pose_v2_six_axis_analysis"] = self.pose_v2_six_axis_analysis.get()
         cfg.extra["pose_v2_l0_weight"] = self.pose_v2_l0_weight.get()
         cfg.extra["pose_v2_six_axis_weight"] = self.pose_v2_six_axis_weight.get()
-        cfg.extra["rtm_pose_3d_enabled"] = self._rtm_pose_3d_mode_active()
         cfg.extra["rtm_pose_2d_model_path"] = self.rtm_pose_2d_model_path.get()
-        cfg.extra["rtm_pose_3d_model_path"] = self.rtm_pose_3d_model_path.get()
-        cfg.extra["rtm_pose_3d_weight"] = 100 if self._rtm_pose_mode_active() else 0
+        for key in ("rtm_pose_3d_enabled", "rtm_pose_3d_model_path", "rtm_pose_3d_weight"):
+            cfg.extra.pop(key, None)
+        cfg.extra["visual_processing_edge"] = self.visual_processing_edge.get()
+        cfg.extra["hybrid_v2_pose_enabled"] = self.hybrid_v2_pose_enabled.get()
+        cfg.extra['v2_l0_reference'] = self.v2_l0_reference.get()
+        cfg.extra["rtm_pose_reject_enabled"] = self.rtm_pose_reject_enabled.get()
+        cfg.extra["rtm_pose_micro_smooth_enabled"] = self.rtm_pose_micro_smooth_enabled.get()
+        cfg.extra["rtm_hybrid_source"] = HYBRID_V2_MODE
         cfg.extra["rtm_hybrid_l0_enabled"] = self.rtm_hybrid_l0_enabled.get()
+        cfg.extra["pose_auto_l0_enabled"] = self.pose_auto_l0_enabled.get()
+        cfg.extra["pose_pattern_enabled"] = self.pose_pattern_enabled.get()
+        cfg.extra["pose_fast_v1_enabled"] = self.pose_fast_v1_enabled.get()
         cfg.extra["rtm_hybrid_l0_weight"] = max(1, min(100, int(self.rtm_hybrid_l0_weight.get())))
         cfg.extra["rtm_pose_gpu_enabled"] = self.rtm_pose_gpu_enabled.get()
         cfg.extra["rtm_pose_gpu_backend"] = self.rtm_pose_gpu_backend.get()
@@ -5024,7 +5299,6 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         cfg.ble_service_uuid = self.ble_service_uuid.get()
         cfg.ble_write_uuid = self.ble_write_uuid.get()
         cfg.last_sink = self.sink_type.get()
-        self._save_device_config()
         cfg.audio_mode = self.audio_mode.get()
         cfg.audio_gain = self.audio_gain.get()
         cfg.audio_threshold = self.audio_threshold.get()
@@ -5042,8 +5316,8 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
             self._config_save_after_id = None
         self._save_config()
         self.stop()
-        self.preview_bridge.stop()
         self.disconnect_sink()
+        self.preview_bridge.stop()
         self.destroy()
 
 
@@ -5052,6 +5326,18 @@ def main() -> None:
     parser.add_argument("--auto-connect", action="store_true", help="Connect to the selected serial device at startup")
     parser.add_argument("--center", action="store_true", help="Send center command after auto-connect")
     parser.add_argument("--language", choices=("auto", "zh", "cn", "en"), default="auto", help="Interface language override")
+    parser.add_argument("--smoke", action="store_true", help="Check UI startup with temporary Log-only settings")
     args = parser.parse_args()
-    app = OsrScreenApp(auto_connect=args.auto_connect, center_on_connect=args.center, ui_language=args.language)
-    app.mainloop()
+    if args.smoke:
+        from unittest.mock import patch
+        with patch.object(AppConfig, "load", side_effect=lambda: AppConfig(last_sink="Log only")), patch.object(AppConfig, "save"):
+            app = OsrScreenApp(enforce_age_gate=False, ui_language="en" if args.language == "auto" else args.language)
+            errors = []
+            app.report_callback_exception = lambda *details: errors.append(details)
+            app.after(1500, app.on_close)
+            app.mainloop()
+            if errors:
+                raise RuntimeError(f"UI callback failed: {errors}")
+    else:
+        app = OsrScreenApp(auto_connect=args.auto_connect, center_on_connect=args.center, ui_language=args.language)
+        app.mainloop()

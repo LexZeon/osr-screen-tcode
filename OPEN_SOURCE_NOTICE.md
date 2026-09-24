@@ -1,7 +1,6 @@
 # Open Source Notice
 
 
-**Adults only: this project is intended for adults. Minors are prohibited.**
 
 This repository is prepared for honest open-source publication.
 
@@ -14,6 +13,3 @@ Before publishing publicly, manually re-check dependency licenses and any reposi
 
 For infringement concerns, license corrections, suggestions, or collaboration: aivnailedeng@gmail.com
 Discord community: https://discord.gg/E7RY3rdKw
-
-
-Discord note: if you join the community, follow the adults-only restriction. The server/relevant channels should be configured as age-restricted so minors cannot access adult content.

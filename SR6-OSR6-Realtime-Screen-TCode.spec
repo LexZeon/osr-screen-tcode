@@ -30,7 +30,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='SR6-OSR6-Realtime-Screen-TCode-High-Hardware-Compatibility',
+    name='SR6-OSR6-Realtime-Screen-TCode',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -49,5 +49,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='SR6-OSR6-Realtime-Screen-TCode-High-Hardware-Compatibility',
+    name='SR6-OSR6-Realtime-Screen-TCode',
 )

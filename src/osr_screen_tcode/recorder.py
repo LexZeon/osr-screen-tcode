@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
+from .endpoint_slowdown import ScriptEndpointTiming
 
 
 class FunscriptRecorder:
@@ -62,6 +63,7 @@ class MultiAxisFunscriptRecorder:
         self._start = 0.0
         self._actions: dict[str, list[dict[str, int]]] = {}
         self._last_pos: dict[str, int] = {}
+        self._endpoint = ScriptEndpointTiming()
 
     @property
     def is_recording(self) -> bool:
@@ -75,20 +77,22 @@ class MultiAxisFunscriptRecorder:
         self._start = time.perf_counter()
         self._actions.clear()
         self._last_pos.clear()
+        self._endpoint = ScriptEndpointTiming()
 
     def stop(self) -> None:
         self._start = 0.0
         self._last_pos.clear()
 
-    def add(self, positions: dict[str, float]) -> None:
+    def add(self, positions: dict[str, float], slowdown=False, margin=.1) -> None:
         if not self.is_recording:
             return
         at = round((time.perf_counter() - self._start) * 1000)
-        self.add_at(positions, at)
+        self.add_at(positions, at, slowdown, margin)
 
-    def add_at(self, positions: dict[str, float], at: int) -> None:
+    def add_at(self, positions: dict[str, float], at: int, slowdown=False, margin=.1) -> None:
         if not self.is_recording:
             return
+        at = self._endpoint.timestamp(positions, at, slowdown, margin)
         for axis, position in positions.items():
             pos = max(0, min(100, round(position * 100)))
             if axis in self._last_pos and abs(pos - self._last_pos[axis]) < 2:

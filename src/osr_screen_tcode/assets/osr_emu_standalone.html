@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SR6/OSR6 Realtime Screen TCode High Hardware Compatibility - Preview</title>
+    <title>SR6/OSR6 Realtime Screen TCode - Preview</title>
     <style>
         body { margin:0; overflow:hidden; background:#1a1a1a; }
         #container { width:100vw; display:block; }
@@ -148,6 +148,7 @@
         let connected = false;
         let animFrameId = null;
         let lastCmd = '';
+        let directTCode = false;
         let currentWsUrl = "";
         let heartbeatTimer = null;
         let isReconnecting = false; // 重连锁，防止并发重连
@@ -233,7 +234,7 @@
 
         // ----- 更新模拟器 -----
         function updateEmulator() {
-            if (!osr) return;
+            if (!osr || directTCode) return;
             const timeMs = currentTime * 1000;
             const interval = 100;
             const cmdParts = [];
@@ -321,9 +322,11 @@
                             isPlaying = msgData.playing || false;
                             break;
                         case 'tcode':
-                            // 适配串口/UDP桥直推指令
+                            // Final output already includes every host gain/limit.
+                            // Do not let the OFS animation replace it with defaults.
                             const rawCmd = msgData.cmd;
                             if (rawCmd && osr) {
+                                directTCode = true;
                                 osr.write(rawCmd + '\n');
                             }
                             break;
@@ -331,6 +334,7 @@
                             const name = msgData.name;
                             const funscript = msgData.funscript;
                             if (funscript && funscript.actions) {
+                                directTCode = false;
                                 const actions = funscript.actions;
                                 actions.sort((a, b) => a.at - b.at);
                                 let axisName = 'main';

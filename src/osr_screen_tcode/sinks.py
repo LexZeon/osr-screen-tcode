@@ -8,6 +8,10 @@ from queue import Empty, Queue
 from typing import Protocol
 
 
+class OutputWriteError(RuntimeError):
+    """A transport rejected a command; it must not reach the simulator."""
+
+
 class TCodeSink(Protocol):
     def open(self) -> None:
         ...
@@ -58,8 +62,10 @@ class SerialSink:
 
     def write(self, payload: bytes) -> None:
         if self._serial is None:
-            return
-        self._serial.write(payload)
+            raise ConnectionError("Serial port is not connected")
+        written = self._serial.write(payload)
+        if written != len(payload):
+            raise OSError(f"Incomplete serial write: {written}/{len(payload)} bytes")
 
     def query(self, payload: bytes, wait_s: float = 0.6) -> bytes:
         if self._serial is None:
@@ -107,6 +113,8 @@ class BleSink:
     def open(self) -> None:
         if not self.address:
             raise ValueError("请选择 BLE 设备")
+        self._ready.clear()
+        self._error = None
         self._thread = threading.Thread(target=self._run_loop, daemon=True)
         self._thread.start()
         if not self._ready.wait(timeout=12):
@@ -117,6 +125,8 @@ class BleSink:
     def write(self, payload: bytes) -> None:
         if self._error is not None:
             raise self._error
+        if self._thread is None or not self._thread.is_alive() or not self._ready.is_set():
+            raise ConnectionError("BLE device is not connected")
         try:
             if self._queue.full():
                 self._queue.get_nowait()
@@ -125,6 +135,7 @@ class BleSink:
             pass
 
     def close(self) -> None:
+        self._ready.clear()
         try:
             self._queue.put_nowait(None)
         except Exception:

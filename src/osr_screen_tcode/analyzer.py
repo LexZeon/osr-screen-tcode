@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import threading
 import time
 
 import cv2
 import numpy as np
 
-from .pose_backends import OptionalRtmPose2dBackend, OptionalRtmPose3dBackend, RtmPose3dResult
+from .pose_backends import OptionalRtmPose2dBackend, RtmPose3dResult
+from .motion_reference import MotionReference, draw_reference, sample_vectors
 
 
 SIX_AXES = ["L0", "L1", "L2", "R0", "R1", "R2"]
@@ -84,7 +85,9 @@ class RealtimeAnalyzer:
         self.pose_v2_l0_weight = max(0.0, min(1.0, v2_l0_weight)) if self.pose_v2_dance_six_axis else 0.0
         self.pose_v2_six_axis_weight = max(0.0, min(1.0, v2_six_axis_weight)) if self.pose_v2_dance_six_axis else 0.0
         self.rtm_pose_2d_enabled = bool(rtm_pose_2d_enabled)
-        self.rtm_pose_3d_enabled = bool(rtm_pose_3d_enabled) and not self.rtm_pose_2d_enabled
+        if rtm_pose_3d_enabled:
+            raise ValueError("RTM Pose 3D analysis has been removed; select RTM Pose 2D.")
+        self.rtm_pose_3d_enabled = False
         self.rtm_pose_3d_weight = max(0.0, min(1.0, float(rtm_pose_3d_weight))) if self._rtm_pose_enabled() else 0.0
         self.rtm_hybrid_l0_enabled = bool(rtm_hybrid_l0_enabled) if self._rtm_pose_enabled() else False
         self.rtm_hybrid_l0_weight = max(0.01, min(1.0, float(rtm_hybrid_l0_weight))) if self.rtm_hybrid_l0_enabled else 0.0
@@ -92,7 +95,7 @@ class RealtimeAnalyzer:
         self.rtm_pose_kalman_enabled = bool(rtm_pose_kalman_enabled) if self._rtm_pose_enabled() else False
         self.rtm_pose_device = ("directml" if rtm_pose_gpu_backend == "directml" else "cuda") if bool(rtm_pose_gpu_enabled) else "cpu"
         self._rtm_pose_2d_backend = OptionalRtmPose2dBackend(rtm_pose_2d_model_path, device=self.rtm_pose_device) if self.rtm_pose_2d_enabled else None
-        self._rtm_pose_3d_backend = OptionalRtmPose3dBackend(rtm_pose_3d_model_path, device=self.rtm_pose_device) if self.rtm_pose_3d_enabled else None
+        self._rtm_pose_3d_backend = None  # Legacy shared geometry names do not enable 3D inference.
         self._rtm_pose_3d_last: RtmPose3dResult | None = None
         self._rtm_pose_3d_last_positions: dict[str, float] | None = None
         self._rtm_pose_3d_last_confidence = 0.0
@@ -221,6 +224,7 @@ class RealtimeAnalyzer:
         self._rtm_pose_kalman_time = None
 
     def process(self, frame_bgr: np.ndarray) -> AxisAnalysis:
+        self.motion_reference = MotionReference("v1") if self._is_hybrid_analysis_mode(self.tracker_mode) else None
         preview = frame_bgr.copy()
         if self._rtm_pose_3d_only():
             measured, confidence, pose_result = self._measure_rtm_pose_3d(frame_bgr)
@@ -237,7 +241,7 @@ class RealtimeAnalyzer:
         gray = cv2.GaussianBlur(gray, (5, 5), 0)
         if self._prev_gray is None:
             self._prev_gray = gray
-            self._draw_preview(preview, self._positions, 0.0, draw_l0_line=not self._rtm_pose_enabled())
+            self._draw_preview(preview, self._positions, 0.0, draw_l0_line=not self._rtm_pose_enabled() and self.motion_reference is None)
             if self._rtm_pose_enabled():
                 preview = self._draw_rtm_pose_3d_preview(preview)
             elif self.pose_l0_weight > 0.0 or self.pose_six_axis_weight > 0.0:
@@ -274,13 +278,16 @@ class RealtimeAnalyzer:
 
         self._prev_gray = gray
         active = self._active_positions()
-        self._draw_preview(preview, active, confidence, draw_l0_line=not self._rtm_pose_enabled())
+        self._draw_preview(preview, active, confidence, draw_l0_line=not self._rtm_pose_enabled() and self.motion_reference is None)
         if self._rtm_pose_enabled():
             preview = self._draw_rtm_pose_3d_preview(preview, pose_result if "pose_result" in locals() else None)
         elif self.pose_v2_dance_six_axis and (self.pose_v2_l0_weight > 0.0 or self.pose_v2_six_axis_weight > 0.0):
             preview = self._pose_v2_split_preview(preview)
         elif self.pose_l0_weight > 0.0 or self.pose_six_axis_weight > 0.0:
             preview = self._append_pose_preview(preview, active, activity)
+        if self.motion_reference is not None:
+            self.motion_reference = replace(self.motion_reference, l0=float(active["L0"]))
+            preview = draw_reference(preview, self.motion_reference)
         return AxisAnalysis(active, confidence, activity, preview)
 
     def _rtm_pose_3d_only(self) -> bool:
@@ -531,6 +538,7 @@ class RealtimeAnalyzer:
 
     def _measure_hybrid_analysis_flow(self, mask: np.ndarray, flow: np.ndarray, activity: float, preview: np.ndarray) -> float:
         roi = self._update_roi(mask, preview)
+        self.motion_reference = MotionReference("v1", "missing", roi)
         if roi is None or activity < 0.00035:
             self._relax_flow_position(activity)
             return self._flow_position
@@ -553,6 +561,12 @@ class RealtimeAnalyzer:
         self._flow_history_dy.append(dy)
         smooth_dx = float(np.median(self._flow_history_dx))
         smooth_dy = float(np.median(self._flow_history_dy))
+        ys, xs = np.nonzero(moving)
+        stride = max(1, (len(xs)+59)//60)
+        points = np.column_stack((xs[::stride]+x1, ys[::stride]+y1)).astype(float)
+        ends = points + roi_flow[ys[::stride], xs[::stride]]
+        self.motion_reference = MotionReference("v1", "ready", roi, sample_vectors(points, ends),
+                                                step=(smooth_dx*100, -smooth_dy*100, 0))
 
         sensitivity = 5.2 * self.motion_gain
         delta = -smooth_dy * sensitivity
@@ -1607,7 +1621,7 @@ class RealtimeAnalyzer:
         self._start_rtm_pose_3d_infer(frame_bgr)
         return self._latest_rtm_pose_3d_measurement()
 
-    def _rtm_pose_backend(self) -> OptionalRtmPose2dBackend | OptionalRtmPose3dBackend | None:
+    def _rtm_pose_backend(self) -> OptionalRtmPose2dBackend | None:
         if self.rtm_pose_2d_enabled:
             return self._rtm_pose_2d_backend
         return self._rtm_pose_3d_backend
@@ -1894,6 +1908,7 @@ class RealtimeAnalyzer:
         self,
         result: RtmPose3dResult,
         frame_shape: tuple[int, int],
+        timestamp: float | None = None,
     ) -> tuple[dict[str, float] | None, float]:
         core = self._rtm_pose_3d_virtual_core(result, frame_shape)
         if core is None:
@@ -1901,11 +1916,11 @@ class RealtimeAnalyzer:
         confidence = float(core["confidence"])
         if confidence <= 0.02:
             return None, 0.0
-        positions = self._rtm_pose_3d_axes_from_previous_core(core, confidence)
+        positions = self._rtm_pose_3d_axes_from_previous_core(core, confidence, timestamp=timestamp)
         return positions, confidence
 
-    def _rtm_pose_3d_axes_from_previous_core(self, core: dict[str, np.ndarray | float], confidence: float) -> dict[str, float]:
-        now = time.perf_counter()
+    def _rtm_pose_3d_axes_from_previous_core(self, core: dict[str, np.ndarray | float], confidence: float, timestamp: float | None = None) -> dict[str, float]:
+        now = time.perf_counter() if timestamp is None else timestamp
         hip_mid = np.asarray(core["hip_mid_2d"], dtype=np.float32)
         hip_line = np.asarray(core["hip_line_2d"], dtype=np.float32)
         hip_width = max(1.0, float(np.linalg.norm(hip_line)))

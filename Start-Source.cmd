@@ -45,7 +45,7 @@ if errorlevel 1 goto failed
 if errorlevel 1 goto failed
 
 :launch
-echo Starting SR6/OSR6 Realtime Screen TCode High Hardware Compatibility v2.0.0-test.3...
+"%RUNTIME%" -c "from osr_screen_tcode import APP_NAME, __version__; print(f'Starting {APP_NAME} v{__version__}...')"
 "%RUNTIME%" -m osr_screen_tcode %*
 set "RESULT=%ERRORLEVEL%"
 if not "%RESULT%"=="0" goto failed

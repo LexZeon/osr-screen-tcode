@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from osr_screen_tcode import __version__
 
-PRODUCT = "SR6-OSR6-Realtime-Screen-TCode-High-Hardware-Compatibility"
+PRODUCT = "SR6-OSR6-Realtime-Screen-TCode"
 NAME = f"{PRODUCT}-v{__version__}"
 FORBIDDEN_PARTS = {".git", ".venv", "__pycache__", ".pytest_cache", "models", "logs", "gpu-runtime"}
 MODEL_SUFFIXES = {".onnx", ".pt", ".pth", ".safetensors", ".whl"}

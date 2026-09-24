@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from .pose_output import l0_translation_gain, l0_rotation_gain
+from .endpoint_slowdown import approach_time_factor
+from .command_cadence import CommandCadence
 
 
 def clamp(value: float, low: float, high: float) -> float:
@@ -115,6 +118,15 @@ class MultiAxisSafeOutput:
         extreme_margin: float = 0.06,
         enable_endpoint_guard: bool = True,
         endpoint_margin: float = 0.10,
+        couple_l0_translation: bool = False,
+        endpoint_slowdown: bool = False,
+        slowdown_margin: float = .1,
+        coupling_endpoint_gain: float = 1.0,
+        coupling_middle_gain: float = 2.5,
+        coupling_peak_position: float = .5,
+        sync_timing: bool = False,
+        coupling_lower_knot: tuple | None = None,
+        couple_l0_rotation: bool = False,
     ) -> None:
         self.axes = axes
         self.min_value = int(clamp(min_value, 0, 9999))
@@ -145,10 +157,22 @@ class MultiAxisSafeOutput:
         self.extreme_margin = clamp(float(extreme_margin), 0.01, 0.18)
         self.enable_endpoint_guard = bool(enable_endpoint_guard)
         self.endpoint_margin = clamp(float(endpoint_margin), 0.0, 0.25)
+        self.couple_l0_translation = bool(couple_l0_translation)
+        self.coupling_endpoint_gain = float(coupling_endpoint_gain)
+        self.coupling_middle_gain = float(coupling_middle_gain)
+        self.coupling_peak_position = float(coupling_peak_position)
+        self.coupling_lower_knot = coupling_lower_knot
+        self.couple_l0_rotation = bool(couple_l0_rotation)
+        self.endpoint_slowdown = bool(endpoint_slowdown)
+        self.slowdown_margin = float(slowdown_margin)
         self._started_at = time.perf_counter()
         self._values = {axis: self._center_for(axis) for axis in axes}
         self._extreme_since: dict[str, float | None] = {axis: None for axis in axes}
         self._extreme_side: dict[str, int] = {axis: 0 for axis in axes}
+        self._slow_values = None
+        self._slow_until = 0.
+        self.sync_timing = bool(sync_timing)
+        self._cadence = CommandCadence()
 
     @property
     def center_value(self) -> int:
@@ -165,6 +189,8 @@ class MultiAxisSafeOutput:
         axis_position_scales: dict[str, float] | None = None,
         axis_position_inverts: dict[str, bool] | None = None,
         max_step: int | None = None,
+        endpoint_slowdown: bool | None = None,
+        slowdown_margin: float | None = None,
     ) -> None:
         if min_value is not None:
             self.min_value = int(clamp(min_value, 0, 9999))
@@ -193,19 +219,63 @@ class MultiAxisSafeOutput:
             }
         if max_step is not None:
             self.max_step = max(1, int(max_step))
+        if endpoint_slowdown is not None:
+            self.endpoint_slowdown = bool(endpoint_slowdown)
+        if slowdown_margin is not None:
+            self.slowdown_margin = float(slowdown_margin)
         for axis in self.axes:
             self._values.setdefault(axis, self._center_for(axis))
             self._extreme_since.setdefault(axis, None)
             self._extreme_side.setdefault(axis, 0)
 
+    def input_position(self, axis: str) -> float:
+        """Recover the input for the last commanded uncoupled axis position.
+
+        Used only to anchor Pose L0 handoff, never as a physical feedback signal.
+        Undo output mapping/ramp so user travel or inversion is not applied twice.
+        """
+        low, high = self.axis_limits.get(axis, (self.min_value, self.max_value))
+        scale = self.axis_position_scales.get(axis, self.position_scale)
+        if high <= low or scale <= 0:
+            return .5
+        value = self._values.get(axis, self._center_for(axis))
+        if self.startup_ramp_ms > 0:
+            ramp = clamp((time.perf_counter()-self._started_at)*1000/self.startup_ramp_ms, 0., 1.)
+            if ramp <= 0:
+                return .5
+            center = self._center_for(axis)
+            value = center+(value-center)/ramp
+        position = (value-low)/(high-low)
+        if self.enable_endpoint_guard and axis == 'L0':
+            position = (position-self.endpoint_margin)/(1.-2*self.endpoint_margin)
+        if (axis == 'L0' and self.invert_l0) or (axis != 'L0' and self.axis_position_inverts.get(axis, False)):
+            position = 1.-position
+        return clamp(.5+(position-.5)/scale, 0., 1.)
+
     def next_command(self, positions: dict[str, float], activity: float) -> MultiTCodeCommand:
         values: dict[str, int] = {}
+        time_factor = 1.
         now = time.perf_counter()
-        for axis in self.axes:
+        base_interval = self._cadence.interval_ms(now, self.interval_ms) if self.sync_timing else self.interval_ms
+        axes = self.axes
+        if (self.couple_l0_translation or self.couple_l0_rotation) and "L0" in axes:
+            axes = ["L0", *(a for a in axes if a != "L0")]
+        for axis in axes:
             if activity < self.min_activity:
                 target = self._center_for(axis) if self.idle_mode.lower().startswith("center") else self._values[axis]
             else:
-                target = self._map_axis(axis, positions.get(axis, 0.5))
+                gain = 1.0
+                coupled = (self.couple_l0_translation and axis in ('L1', 'L2')) or (self.couple_l0_rotation and axis in ('R1', 'R2'))
+                if coupled and "L0" in values:
+                    low, high = self.axis_limits["L0"]
+                    # Recompute from this command's limited/ramped L0 even when
+                    # L1/L2 observations did not move. Do not feed this back into
+                    # recognition, smoothing history, or the image-space chart.
+                    level = (values["L0"] - low) / (high - low) if high > low else 0.5
+                    gain = l0_rotation_gain(level) if axis in ('R1', 'R2') else l0_translation_gain(level, self.coupling_endpoint_gain,
+                                               self.coupling_middle_gain, self.coupling_peak_position,
+                                               self.coupling_lower_knot)
+                target = self._map_axis(axis, positions.get(axis, 0.5), position_gain=gain)
             target = self._release_stuck_extreme(axis, target, activity, now)
             if self.startup_ramp_ms > 0:
                 elapsed = (now - self._started_at) * 1000.0
@@ -217,20 +287,33 @@ class MultiAxisSafeOutput:
                 current += self.max_step if delta > 0 else -self.max_step
             else:
                 current = target
+            if self.endpoint_slowdown:
+                low, high = self.axis_limits[axis]
+                if high > low:
+                    time_factor = max(time_factor, approach_time_factor(
+                        (self._values[axis]-low)/(high-low), (current-low)/(high-low), self.slowdown_margin))
             self._values[axis] = int(clamp(current, 0, 9999))
             values[axis] = self._values[axis]
-        return MultiTCodeCommand(values, self.interval_ms)
+        interval = max(base_interval, round(base_interval*time_factor))
+        if self.endpoint_slowdown and values == self._slow_values:
+            interval = max(interval, round((self._slow_until-now)*1000))
+        self._slow_values = dict(values)
+        self._slow_until = now+interval/1000
+        return MultiTCodeCommand(values, interval)
 
     def center_command(self, interval_ms: int | None = None) -> MultiTCodeCommand:
+        self._cadence = CommandCadence()
+        self._slow_values = None
+        self._slow_until = 0.
         for axis in self.axes:
             self._values[axis] = self._center_for(axis)
             self._extreme_since[axis] = None
             self._extreme_side[axis] = 0
         return MultiTCodeCommand(dict(self._values), interval_ms or self.interval_ms)
 
-    def _map_axis(self, axis: str, position: float) -> int:
+    def _map_axis(self, axis: str, position: float, position_gain: float = 1.0) -> int:
         position = clamp(position, 0.0, 1.0)
-        scale = self.axis_position_scales.get(axis, self.position_scale)
+        scale = self.axis_position_scales.get(axis, self.position_scale) * position_gain
         position = clamp(0.5 + (position - 0.5) * scale, 0.0, 1.0)
         if (axis == "L0" and self.invert_l0) or (axis != "L0" and self.axis_position_inverts.get(axis, False)):
             position = 1.0 - position

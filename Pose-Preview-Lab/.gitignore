@@ -1,0 +1,4 @@
+.venv/
+__pycache__/
+*.onnx
+settings.local.json
