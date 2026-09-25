@@ -1,8 +1,8 @@
 # SR6/OSR6 Realtime Screen TCode 2.0.0-test.25
 
-> Historical test.25 source-release text. For the matching Windows/source release, use the [test.26 release notes](Release_2.0.0_test26.md).
+> Historical test.25 source-release text. The official **2.0.0** release retains test.25's analysis/output behavior and adds verified Windows packaging. Use the [2.0.0 release notes](Release_2.0.0.md) for the matching Windows/source release; the original test.25 tag and text remain unchanged.
 >
-> test.25 历史源码发布文案。新的 Windows 与源码配套发布使用 [test.26 文案](Release_2.0.0_test26.md)。
+> test.25 历史源码发布文案。正式版 **2.0.0** 沿用 test.25 的分析／输出行为并纳入经过验证的 Windows 打包支持，配套 Windows／源码发布使用 [2.0.0 文案](Release_2.0.0.md)；原 test.25 标签与下方历史正文保留。
 
 **源码预发布 / Source prerelease**
 

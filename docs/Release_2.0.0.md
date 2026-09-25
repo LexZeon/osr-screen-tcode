@@ -1,6 +1,8 @@
-# SR6/OSR6 Realtime Screen TCode v2.0.0-test.26
+# SR6/OSR6 Realtime Screen TCode v2.0.0
 
 ## English
+
+**Official 2.0.0 release:** test.25 is the analysis/output baseline, with Windows portable packaging included. Earlier tags and releases remain intact.
 
 ### Download and run
 
@@ -16,11 +18,13 @@ This release completes Windows packaging and the standalone-preview entry point,
 
 Models, downloadable GPU runtimes, personal settings, logs and caches are excluded. Start with **Log only**. The application is unsigned; physical robot-arm mapping, inverse kinematics, collision handling and feedback remain unverified.
 
-Validation: 423 isolated main tests, 38 Lab tests and the simulator stream check passed. A later packaging-only license fix passed all 12 targeted checks. Actual source and EXE startup passed in both languages, including the standalone Lab; the frozen EXE passed CPU/model inference and timed Log-only capture. Personal settings remained unchanged.
+Validation: **424 isolated main tests and 38 Lab tests passed**, including matching source/Windows manifests and license collection. Simulator final-command checks, actual source and rebuilt 2.0.0 EXE startup in both languages, standalone Lab, CPU inference and an external pose model passed. Personal settings were unchanged. Earlier preparation checks and limitations remain in the validation report.
 
-[Startup guide](https://github.com/LexZeon/osr-screen-tcode/blob/v2.0.0-test.26/tools/README-Portable.md) · [Changes and validation](https://github.com/LexZeon/osr-screen-tcode/blob/v2.0.0-test.26/docs/Test_2.0.0_test26.md) · [Third-party notices](https://github.com/LexZeon/osr-screen-tcode/blob/v2.0.0-test.26/THIRD_PARTY_NOTICES.md)
+[Startup guide](https://github.com/LexZeon/osr-screen-tcode/blob/v2.0.0/tools/README-Portable.md) · [Changes and validation](https://github.com/LexZeon/osr-screen-tcode/blob/v2.0.0/docs/Validation_2.0.0.md) · [Third-party notices](https://github.com/LexZeon/osr-screen-tcode/blob/v2.0.0/THIRD_PARTY_NOTICES.md)
 
 ## 中文
+
+**正式版 2.0.0：** 分析／输出以 test.25 为基线，提供 Windows 便携运行包。原有标签与发布保持不变。
 
 ### 下载和运行
 
@@ -36,6 +40,6 @@ Validation: 423 isolated main tests, 38 Lab tests and the simulator stream check
 
 模型、可下载 GPU 运行库、个人设置、日志及缓存不随包分发。首次建议用 **Log only** 检查。程序未数字签名；真实机械臂映射、逆运动学、碰撞检测和反馈仍未验证。
 
-验证：隔离主程序 423 项、Lab 38 项、模拟器指令流检查通过；后续纯打包许可修正的 12 项定向测试通过。实际源码／exe 中英文启动、独立 Lab、打包 CPU／模型推理和定时 Log only 读屏通过，个人设置未改变。
+验证：隔离主程序 **424 项、Lab 38 项通过**，包含源码／Windows 清单一致性和许可证收集。模拟器最终指令、实际源码与重新构建的 2.0.0 exe 中英文启动、独立 Lab、CPU 推理及外部模型检查通过，个人设置未变。前期准备验证及限制保留在验证报告中。
 
-[启动说明](https://github.com/LexZeon/osr-screen-tcode/blob/v2.0.0-test.26/tools/README-Portable.md) · [改动与验证](https://github.com/LexZeon/osr-screen-tcode/blob/v2.0.0-test.26/docs/Test_2.0.0_test26.md) · [第三方许可](https://github.com/LexZeon/osr-screen-tcode/blob/v2.0.0-test.26/THIRD_PARTY_NOTICES.md)
+[启动说明](https://github.com/LexZeon/osr-screen-tcode/blob/v2.0.0/tools/README-Portable.md) · [改动与验证](https://github.com/LexZeon/osr-screen-tcode/blob/v2.0.0/docs/Validation_2.0.0.md) · [第三方许可](https://github.com/LexZeon/osr-screen-tcode/blob/v2.0.0/THIRD_PARTY_NOTICES.md)

@@ -1,8 +1,8 @@
-# Start 2.0.0-test.26 / 启动 2.0.0-test.26
+# Start 2.0.0 / 启动 2.0.0
 
 ## English
 
-**Double-click [Start.cmd](Start.cmd)** and confirm **2.0.0-test.26**. Start.md is the guide; if your editor opens the script as text, double-click Start.cmd in File Explorer. For a bundled runtime, download the Windows.zip asset from the [test.26 release](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.0.0-test.26), extract the entire folder and double-click its Start.cmd or exe. Keep `_internal` beside the exe. Source startup needs Python 3.10+. The Windows package also includes `Pose-Preview-Lab/Start.cmd`.
+**Double-click [Start.cmd](Start.cmd)** and confirm the official version **2.0.0**. Start.md is the guide; if your editor opens the script as text, double-click Start.cmd in File Explorer. For a bundled runtime, download the Windows.zip asset from the [2.0.0 release](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.0.0), extract the entire folder and double-click its Start.cmd or exe. Keep `_internal` beside the exe. Source startup needs Python 3.10+. The Windows package also includes `Pose-Preview-Lab/Start.cmd`. This release retains test.25's analysis/output behavior and incorporates the verified packaging work; see the [2.0.0 validation record](docs/Validation_2.0.0.md).
 
 The default Hybrid v2 / Fused reference now distinguishes weak subject tracking, learned-rhythm prediction and a short velocity bridge. Dashed A? markers are estimates. Continuation remains limited to two seconds and cannot be extended by isolated detection flashes; explicit pauses, cuts and resets stop the old pattern. Cycle mode only continues confirmed travel. Existing saved settings and the other manual L0 reference modes are preserved.
 
@@ -24,13 +24,15 @@ Test.22 first maintains subject anchor **A**, then an independently tracked obje
 
 ## 中文
 
-**点击 [Start.cmd](Start.cmd) 运行测试版主程序。** 如果编辑器只打开文件，请在文件资源管理器中双击同目录的 Start.cmd；Start.md 本身是说明文件。
+**点击 [Start.cmd](Start.cmd) 运行 2.0.0 正式版主程序。** 如果编辑器只打开文件，请在文件资源管理器中双击同目录的 Start.cmd；Start.md 本身是说明文件。
 
-这是源码目录的说明。想免装 Python，请下载 [test.26 发布页](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.0.0-test.26) 的 **Windows.zip**，完整解压后双击其中的 `Start.cmd` 或 exe，保留同目录 `_internal`。运行包的独立预览也可通过 `Pose-Preview-Lab/Start.cmd` 打开。每版源码与运行包分别留样，不能混用其他版本的 exe／内部文件。
+这是源码目录的说明。想免装 Python，请下载 [2.0.0 发布页](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.0.0) 的 **Windows.zip**，完整解压后双击其中的 `Start.cmd` 或 exe，保留同目录 `_internal`。运行包的独立预览也可通过 `Pose-Preview-Lab/Start.cmd` 打开。每版源码与运行包分别留样，不能混用其他版本的 exe／内部文件。
+
+正式版沿用 test.25 的分析／输出行为，并纳入经过验证的打包支持；见 [2.0.0 验证记录](docs/Validation_2.0.0.md)。
 
 **test.22 历史设置事故：** 当时开发检查曾意外覆盖测试版个人配置，未找到原配置备份。当时已设为项目默认值并使用 Log only；原连接信息、个人行程与偏好需要重新设置。这不是恢复原设置，事故及修正见 [test.22 说明](docs/Test_2.0.0_test22.md#本机验证中的配置事故)。
 
-1. 关闭旧程序，双击 Start.cmd，确认标题 **SR6/OSR6 Realtime Screen TCode v2.0.0-test.26**。本源码启动器需要 Python 3.10+；Windows 运行包已自带必要运行环境。
+1. 关闭旧程序，双击 Start.cmd，确认标题 **SR6/OSR6 Realtime Screen TCode v2.0.0**。本源码启动器需要 Python 3.10+；Windows 运行包已自带必要运行环境。
 2. 默认仍为混合分析 v2（推荐-非舞蹈），默认打开“输出监视”。先选 Log only，选屏幕区域或视频，再开始分析。
 3. “显示预览”打开 3D 模拟器，使用经过倍率、反向、联动和输出限制后的最终指令；“分析预览”显示同帧骨架或实际运动参考。最长边默认 640。
 4. 列表第一是全/半行程模式，第二是 RTM Pose 2D。选择 Pose 可看到下面三个开关，主界面、分析预览和启动确认共用保存设置；舞蹈与混合模式分别记忆。
@@ -121,4 +123,4 @@ test.18 按“当前往复 → 曾经往复且仍能跟踪 → 当前持续幅�
 
 多显示器功能、验证结果和复测方法见 [test.24 说明](docs/Test_2.0.0_test24.md)。独立实验预览仍可从 [Pose-Preview-Lab/Start.cmd](Pose-Preview-Lab/Start.cmd) 打开，当前版本 **0.2.2-test**，同步本轮多屏框选和采集修正，仍不输出设备指令。
 
-test.26 运行包验证记录见 [test.26 说明](docs/Test_2.0.0_test26.md)。持续运行 v1 会增加处理开销，三维方向、目标估计与预测延续的实片效果和真实设备仍需复测。
+2.0.0 运行包验证记录见 [2.0.0 说明](docs/Validation_2.0.0.md)。持续运行 v1 会增加处理开销，三维方向、目标估计与预测延续的实片效果和真实设备仍需复测。

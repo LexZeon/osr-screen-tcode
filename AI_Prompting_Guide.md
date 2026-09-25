@@ -4,9 +4,9 @@ Without RTM, v2 secondary axes follow confirmed significant motion/reversals and
 
 不带 RTM 的 v2 对 L1/L2/R0/R1/R2 只跟随确认后的明显变化与方向反转，过滤小幅高频噪声并平滑输出；L0 不受此过滤影响。
 
-## Active 2.0 Test Work
+## Active 2.0.0 Release
 
-- Test.26: the user explicitly requires Windows portable assets plus matching source, and permanent per-version local samples. Read `docs/Test_2.0.0_test26.md` and `tools/README-Portable.md`. Never rewrite prior tags or mix archive versions. Build from committed, clean source; keep manifests/checksums, exclude models/GPU downloads/configs/logs, and test the extracted onedir application without external Python. Future authorized releases must retain both source and Windows samples. Release copy is in `docs/Release_2.0.0_test26.md`; the prior test.25 copy remains a historical source-only description.
+- The user designated test.25's functionality as the official **2.0.0** release. Analysis/output behavior stays at test.25; the locally prepared packaging support is included under 2.0.0, not published as test.26. Read `docs/Validation_2.0.0.md` and `tools/README-Portable.md`. Preserve old tags/packages. Publish matching source and Windows assets from clean committed source, with manifests and checksums; exclude models/GPU downloads/configs/logs and test the extracted app without external Python. Only consolidate previously built historical packages; do not create new EXEs for every old test version. Public notes are English first, then Chinese. Release copy: `docs/Release_2.0.0.md`; test.25 remains a historical source-only prerelease.
 
 - Test.25 source publication: the user explicitly requested publication after removing the former compatibility branding. The display/product name is now `SR6/OSR6 Realtime Screen TCode`, the publication branch is `2.0.0-beta`, and the prerelease tag is `v2.0.0-test.25`. Keep old remote refs/assets and main history; this does not authorize automatic publication of later changes. Source only, no new executable package. Publication validation reran 392 isolated main tests (434.184 s), 38 Lab tests (0.346 s), bilingual/Lab launch and simulator final-command checks; settings stayed unchanged. Third-party MIT notices are included. Future packaging remains a separate task; the existing build helper is not a verified complete test.25 portable/source packager.
 

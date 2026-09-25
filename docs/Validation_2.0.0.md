@@ -1,8 +1,8 @@
-# 2.0.0-test.26 — Windows packages and per-version archives / Windows 运行包与逐版留样
+# 2.0.0 — Windows packages and per-version archives / Windows 运行包与逐版留样
 
 ## English
 
-Test.26 completes portable Windows support on top of test.25's analysis and output behavior. The application version is `2.0.0-test.26`; package metadata is `2.0.0.dev26`. Analysis/output algorithms, settings defaults and the two-second continuation limit are unchanged. The old test.25 tag is not rewritten, and new binaries do not replace older release assets.
+Official release 2.0.0 uses test.25 as its analysis/output baseline and incorporates the verified portable Windows support. The application version and package metadata are both `2.0.0`. Analysis/output algorithms, settings defaults and the two-second continuation limit are unchanged. The old test.25 tag is not rewritten, and new binaries do not replace older release assets. Test.26 was a provisional release-preparation name, not a separately published version.
 
 ### Usage
 
@@ -20,7 +20,14 @@ Test.26 completes portable Windows support on top of test.25's analysis and outp
 - `tools/build_release.py`: builds source archives only from committed files in a clean Git checkout, includes Lab/Start.md, creates separate version outputs and refuses to overwrite old packages. It excludes models, downloadable GPU libraries, caches, logs, settings and personal paths while preserving licenses.
 - `tools/Start-Portable.cmd` and `tools/README-Portable.md`: provide bilingual extraction/startup instructions so that the source launcher is not mistaken for a Python-free application.
 
-### Validation
+### Final 2.0.0 validation
+
+- Final isolated source suite: **424 tests passed in 461.808 seconds**, including license collection and official-version manifest checks. Lab: **38 passed in 0.341 seconds**. The simulator final-command check passed.
+- Source Start.cmd and the rebuilt **2.0.0 EXE** passed English/Chinese startup and independent Lab startup. The EXE passed dependency/resource checks, CPU inference and an external RTM Pose 2D model. Main and Lab settings were unchanged; no device was connected or dependency installed.
+- Before documentation/legal assembly: **1,148 files / 277,459,368 bytes** audited. Lab and simulator matched source. EXE SHA-256: `88f67638a21b04f4d55e701642ddb5ec9aa5c75d5014e1b93edffd55e17d4e7f`. Compared with test.25, the other 57 original source files are unchanged; production changes are version and portable-startup support.
+- These results cover source and the frozen executable. Final ZIP extraction/startup and public asset hashes are recorded on the [2.0.0 release page](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.0.0) after clean-commit assembly. Both archives identify that commit in RELEASE_INFO.json; earlier preparation packages must not substitute for final artifacts.
+
+### Earlier release-preparation validation
 
 - Isolated full main suite: **423 passed in 537.951 seconds**. The later license-file collection correction has **12 packaging tests passed in 2.128 seconds**, including preservation of ONNX Runtime third-party notices and NumPy's nested license. The full run preceded that packaging-only correction; these are separate results.
 - Independent Lab: **38 passed in 0.330 seconds**. The simulator final-command stream check passed.
@@ -40,7 +47,7 @@ Models and optional GPU runtimes require separate downloads. Bundling the basic 
 
 ## 中文
 
-本版在 test.25 的分析与输出行为上补齐 Windows 便携运行支持。版本为 `2.0.0-test.26`，元数据 `2.0.0.dev26`。分析／输出算法、默认设置和两秒接续上限不变。不改写旧 test.25 标签，不以新的程序覆盖旧版附件。
+正式版 2.0.0 以 test.25 为分析与输出基线，纳入经过验证的 Windows 便携运行支持。版本和元数据均为 `2.0.0`。分析／输出算法、默认设置和两秒接续上限不变。不改写旧 test.25 标签，不以新的程序覆盖旧版附件。test.26 只是前期发布准备中的临时名称，没有单独发布。
 
 ### 使用
 
@@ -58,7 +65,14 @@ Models and optional GPU runtimes require separate downloads. Bundling the basic 
 - `tools/build_release.py`：仅已提交、干净 Git 文件可组成源码包；补全 Lab/Start.md，独立版本输出，拒绝覆盖旧包。排除模型、可下载 GPU 库、缓存、日志、设置及个人路径，保留许可证。
 - `tools/Start-Portable.cmd`、`tools/README-Portable.md`：双语解压和启动说明，避免把源码启动器当成免 Python 程序。
 
-### 验证
+### 最终 2.0.0 验证
+
+- 正式版本隔离完整 **424 项通过，461.808 秒**，含许可证收集及正式版本清单核对；Lab **38 项通过，0.341 秒**，模拟器最终指令检查通过。
+- 实际源码 Start.cmd 与重新构建的 **2.0.0 exe** 中英文启动、独立 Lab 启动通过；exe 的依赖／资源、CPU 推理及外部 RTM Pose 2D 模型执行通过。主程序和 Lab 个人设置未变，未连接设备或安装依赖。
+- 文档／法律声明装配前，运行载荷 **1,148 个文件／277,459,368 字节**通过审查；Lab、模拟器与源码一致。exe SHA-256：`88f67638a21b04f4d55e701642ddb5ec9aa5c75d5014e1b93edffd55e17d4e7f`。相比 test.25，其余原有 57 个源码文件完全未改，生产代码只涉及版本及便携启动支持。
+- 上述验证覆盖源码与打包 exe。干净提交装配后的最终 ZIP 解压／启动及公开附件哈希记录在 [2.0.0 发布页](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.0.0)。两个包通过 RELEASE_INFO.json 关联对应提交，不以早期准备包替代正式产物。
+
+### 前期发布准备验证
 
 - 隔离主程序完整 **423 项通过，537.951 秒**。随后许可证文件收集修正的 **12 项打包测试通过，2.128 秒**，覆盖 ONNX Runtime 第三方声明和 NumPy 深层许可证。完整检查早于这项纯打包修正，两组结果分开记录。
 - 独立 Lab **38 项通过，0.330 秒**；模拟器最终指令流检查通过。

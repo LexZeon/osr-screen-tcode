@@ -29,9 +29,10 @@ class ReleasePackagingTests(unittest.TestCase):
         self.dist = self.base / "dist" / release.PRODUCT
         self.output = self.base / "samples"
         self.commit = "a" * 40
+        self.version = "2.0.0"
         for name in release.REQUIRED_SOURCE:
             self.write(self.root / name, "Release fixture\n")
-        self.write(self.root / "src/osr_screen_tcode/__init__.py", '__version__ = "2.0.0-test.26"\n')
+        self.write(self.root / "src/osr_screen_tcode/__init__.py", f'__version__ = "{self.version}"\n')
         self.write(self.root / "tools/Start-Portable.cmd", "@echo off\r\necho portable\r\n")
         self.write(self.root / "tools/README-Portable.md", "Portable: extract everything.\n")
         self.tracked = sorted(Path(name) for name in release.REQUIRED_SOURCE)
@@ -59,7 +60,7 @@ class ReleasePackagingTests(unittest.TestCase):
         self.write(self.root / "Pose-Preview-Lab/settings.local.json", '{"private":true}')
         self.write(self.root / "src/untracked.py", "# not committed\n")
         folder = self.assemble()
-        self.assertEqual(folder, self.output / "v2.0.0-test.26")
+        self.assertEqual(folder, self.output / f"v{self.version}")
         source_zip = next(folder.glob("*-Source.zip"))
         windows_zip = next(folder.glob("*-Windows.zip"))
         with zipfile.ZipFile(source_zip) as archive:
@@ -67,6 +68,8 @@ class ReleasePackagingTests(unittest.TestCase):
             self.assertTrue(release.REQUIRED_SOURCE <= names)
             self.assertNotIn("Pose-Preview-Lab/settings.local.json", names)
             self.assertNotIn("src/untracked.py", names)
+            source_prefix = archive.namelist()[0].split("/")[0]
+            source_info = json.loads(archive.read(f"{source_prefix}/RELEASE_INFO.json"))
         with zipfile.ZipFile(windows_zip) as archive:
             prefix = archive.namelist()[0].split("/")[0]
             self.assertIn(f"{prefix}/{release.PRODUCT}.exe", archive.namelist())
@@ -77,6 +80,9 @@ class ReleasePackagingTests(unittest.TestCase):
             self.assertIn(f"{prefix}/docs/Source_Start.md", archive.namelist())
             info = json.loads(archive.read(f"{prefix}/RELEASE_INFO.json"))
             self.assertEqual(info["source_commit"], self.commit)
+            self.assertEqual(info["version"], self.version)
+            self.assertEqual(info, source_info)
+            self.assertEqual(info, json.loads((folder / "RELEASE_INFO.json").read_text(encoding="utf-8")))
             self.assertIs(info["source_tree_dirty"], False)
             self.assertNotIn(str(self.base), json.dumps(info))
             for line in archive.read(f"{prefix}/FILES_SHA256SUMS.txt").decode("utf-8").splitlines():
@@ -173,7 +179,7 @@ class ReleasePackagingTests(unittest.TestCase):
         ]), patch.object(release, "copy_licenses"):
             with self.assertRaisesRegex(RuntimeError, "Source changed during packaging"):
                 release.assemble(self.root, self.dist, self.output)
-        self.assertTrue((self.output / "v2.0.0-test.26").is_dir())
+        self.assertTrue((self.output / f"v{self.version}").is_dir())
 
     def test_license_collection_keeps_embedded_notices_and_excludes_own_and_gpu_metadata(self):
         installed = self.base / "installed"

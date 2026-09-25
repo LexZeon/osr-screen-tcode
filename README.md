@@ -2,11 +2,11 @@
 
 ## English
 
-Windows and source prerelease: **2.0.0-test.26**, named **SR6/OSR6 Realtime Screen TCode**, for visual-analysis and robot-arm simulation experiments. Existing SR6/OSR6 TCode serial/BLE transport remains. **Robot-arm joint mapping, inverse kinematics, collision checking and physical feedback have not been implemented or verified.**
+Official Windows and source release: **2.0.0**, named **SR6/OSR6 Realtime Screen TCode**. It promotes test.25's analysis/output behavior to the release version and adds verified portable-packaging support. The application remains a visual-analysis and robot-arm simulation experiment with existing SR6/OSR6 TCode serial/BLE transport. **Robot-arm joint mapping, inverse kinematics, collision checking and physical feedback have not been implemented or verified.**
 
 Other commercial-device adapters, discovery and custom bindings have been removed; legacy settings migrate to Log only. V2 includes persistent subject tracking and bounded brief-loss continuity, shared with confirmed quarter/half/full travel. RTM 2D base L0 output is multiplied by ten about center, before user travel and output constraints; this applies to live/record/export, not pose observations or v2.
 
-Download the **Windows.zip** asset from the [test.26 release](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.0.0-test.26), extract the entire folder and double-click its **Start.cmd** or exe. Keep `_internal` beside the exe; no separate Python installation is required. Its `Pose-Preview-Lab/Start.cmd` also uses the bundled runtime. For source development, the repository's **[Start.cmd](Start.cmd)** still requires Python 3.10+; [Start.md](Start.md) explains source startup. Begin with **Log only**. A legacy center command is not a validated safe robot-arm pose.
+Download the **Windows.zip** asset from the [2.0.0 release](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.0.0), extract the entire folder and double-click its **Start.cmd** or exe. Keep `_internal` beside the exe; no separate Python installation is required. Its `Pose-Preview-Lab/Start.cmd` also uses the bundled runtime. For source development, the repository's **[Start.cmd](Start.cmd)** still requires Python 3.10+; [Start.md](Start.md) explains source startup. Begin with **Log only**. A legacy center command is not a validated safe robot-arm pose.
 
 **Output Monitor** is the initial tab. **Show Preview** opens the bundled reference simulator, which receives final output after all host travel gains, coupling, inversion, limits and speed caps. **Analysis Preview** retains the paired sampled frames. Neither display is hardware feedback.
 
@@ -16,7 +16,7 @@ Hybrid 1 retains its original L0 core. V2 tracks the same subject with multiple 
 
 Direct RTM Pose 2D L1/L2 output coupling passes through four points: **0.5× at bottom L0, 1× at 1/3 travel, 3.5× at 2/3, and 0.5× at top**, with linear interpolation between them. V2 retains **1 / 2.5 / 1**, peaking at center. Pose rotation base gains are **R0 ×3, R1/R2 ×1.5**, including Pose rotation assistance; direct Pose R1/R2 also follow L0 with 1× coupling through 2/3 travel, falling to 0.5× at the top. Original footage and physical hardware remain unverified; standalone Lab **0.2.2-test** shares screen selection and physical capture coordinates without device output.
 
-Test.26 provides matching Windows/source archives with a commit manifest and SHA-256 checksums. GitHub's automatic source archives require Python; use the Windows asset for a bundled runtime. Previous releases retain their original assets. Models and optional GPU runtimes are not bundled. See the [test.26 guide](docs/Test_2.0.0_test26.md), [preview guide](Pose-Preview-Lab/Start.md), [third-party notices](THIRD_PARTY_NOTICES.md) and [license](LICENSE).
+2.0.0 provides matching Windows/source archives with a commit manifest and SHA-256 checksums. GitHub's automatic source archives require Python; use the Windows asset for a bundled runtime. Previous releases retain their original assets. Models and optional GPU runtimes are not bundled. See the [2.0.0 guide](docs/Validation_2.0.0.md), [preview guide](Pose-Preview-Lab/Start.md), [third-party notices](THIRD_PARTY_NOTICES.md) and [license](LICENSE).
 
 Thanks to **DK**, **机械纪元**, and **“电话机”** for guidance, volunteer testing and suggestions. Contact: **aivnailedeng@gmail.com**.
 
@@ -30,13 +30,13 @@ Without RTM, v2 secondary axes follow confirmed significant motion/reversals and
 
 Default analysis is Hybrid v2 (Recommended Non-Dance), with RTM 2D rotation assistance off. Reset restores these defaults; existing saved mode selections are preserved.
 
-## Windows 与源码预发布版
+## Windows 与源码正式版
 
-当前版本：**2.0.0-test.26**。本测试分支用于视觉分析与机械臂模拟实验，保留现有 SR6/OSR6 TCode 串口/BLE 接口。**尚未实现或验证机械臂关节映射、逆运动学、碰撞检测和真实位置反馈，不能当作已兼容机械臂的控制器。**
+当前正式版本：**2.0.0**，以 test.25 的分析／输出行为为正式版基线，纳入经过验证的便携打包支持。本项目用于视觉分析与机械臂模拟实验，保留现有 SR6/OSR6 TCode 串口/BLE 接口。**尚未实现或验证机械臂关节映射、逆运动学、碰撞检测和真实位置反馈，不能当作已兼容机械臂的控制器。**
 
 此前已移除其他商业设备适配、外部设备服务扫描和自定义功能绑定；旧外部设备配置迁移到 `Log only`。test.12 针对主体占大部分画面的 v2 背景缺失改进运动分层；保留全/半行程、最终时序减速和 RTM Pose 2D 的 L0 基础输出 ×10。原有输出限位与限速继续生效。
 
-本版本提供配套的 **Windows 免安装包和源码包**，项目名称为 **SR6/OSR6 Realtime Screen TCode**。在 [test.26 发布页](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.0.0-test.26) 下载名称以 **Windows.zip** 结尾的附件，完整解压后双击包内 `Start.cmd` 或 `SR6-OSR6-Realtime-Screen-TCode.exe`；不需要另装 Python。不要单独移走 exe 或 `_internal` 文件夹。源码包与运行包对应同一提交，附版本清单与 SHA-256 校验；旧发布包保留原版本。
+本版本提供配套的 **Windows 免安装包和源码包**，项目名称为 **SR6/OSR6 Realtime Screen TCode**。在 [2.0.0 发布页](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.0.0) 下载名称以 **Windows.zip** 结尾的附件，完整解压后双击包内 `Start.cmd` 或 `SR6-OSR6-Realtime-Screen-TCode.exe`；不需要另装 Python。不要单独移走 exe 或 `_internal` 文件夹。源码包与运行包对应同一提交，附版本清单与 SHA-256 校验；旧发布包保留原版本。
 
 ## 一键运行
 
@@ -50,7 +50,7 @@ Default analysis is Hybrid v2 (Recommended Non-Dance), with RTM 2D rotation assi
 
 ## 软件内分析预览
 
-**test.26：Windows 运行包与配套源码留样。** 补齐独立 Lab 的打包入口与单独设置目录，以及音频回环所需资源；每个发布版本分别保留源码、运行包、构建清单和校验值。主程序分析与最终输出算法沿用 test.25，估算仍最多 2 秒。验证与打包边界见 [test.26 说明](docs/Test_2.0.0_test26.md)。
+**2.0.0：Windows 运行包与配套源码留样。** 补齐独立 Lab 的打包入口与单独设置目录，以及音频回环所需资源；每个发布版本分别保留源码、运行包、构建清单和校验值。主程序分析与最终输出算法沿用 test.25，估算仍最多 2 秒。验证与打包边界见 [2.0.0 说明](docs/Validation_2.0.0.md)。
 
 **test.25：短暂缺测的主体与脚本接续。** 默认融合参考先尝试基于真实像素的弱主体跟踪，再使用已确认的节奏估算；节奏尚未确认时，只允许近期稳定速度短暂减速接续，不凭空生成往复。估算仍最多 **2 秒**，单帧识别闪回不会续期，明确暂停／切镜头会停止旧规律。淡色虚框、虚线轴和 **A?** 表示弱跟踪或位置估计；实际测量与估算分别标注。全／半／1/4 行程共用，只续接已经确认的行程。没有新增开关或更改个人设置；详见 [test.25 说明](docs/Test_2.0.0_test25.md)。
 
@@ -145,7 +145,7 @@ Test.9 adds Full/Half Travel on the shared v2 pipeline, with automatic half/full
 
 ## 文档
 
-- [test.26 Windows 运行包与版本留样](docs/Test_2.0.0_test26.md)
+- [2.0.0 Windows 运行包与版本留样](docs/Validation_2.0.0.md)
 - [test.25 短暂缺测接续、验证与边界](docs/Test_2.0.0_test25.md)
 - [test.24 多屏框选、采集与预览](docs/Test_2.0.0_test24.md)
 - [test.12 变更与范围](docs/Test_2.0.0_test12.md)

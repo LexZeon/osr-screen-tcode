@@ -1,8 +1,8 @@
 # Pose Preview Lab 0.2.2-test
 
-**Included with OSR test.26:** extract the complete **Windows.zip**, then run `Pose-Preview-Lab/Start.cmd`. It dispatches the same bundled EXE into the independent preview, with no separate Python installation. Source startup still needs Python 3.10+. Keep the complete archive together. Lab remains **0.2.2-test**. See the [portable guide](../tools/README-Portable.md) and [test.26 report](../docs/Test_2.0.0_test26.md).
+**Included with OSR 2.0.0:** extract the complete **Windows.zip**, then run `Pose-Preview-Lab/Start.cmd`. It dispatches the same bundled EXE into the independent preview, with no separate Python installation. Source startup still needs Python 3.10+. Keep the complete archive together. Lab remains **0.2.2-test**. See the [portable guide](../tools/README-Portable.md) and [2.0.0 report](../docs/Validation_2.0.0.md).
 
-**随 OSR test.26 提供：** 完整解压 **Windows.zip** 后运行 `Pose-Preview-Lab/Start.cmd`，由同一内置 exe 打开独立预览，无需另装 Python；源码启动仍需 Python 3.10+。请保留完整运行包，Lab 版本仍为 **0.2.2-test**。见 [便携包说明](../tools/README-Portable.md) 和 [test.26 记录](../docs/Test_2.0.0_test26.md)。
+**随 OSR 2.0.0 提供：** 完整解压 **Windows.zip** 后运行 `Pose-Preview-Lab/Start.cmd`，由同一内置 exe 打开独立预览，无需另装 Python；源码启动仍需 Python 3.10+。请保留完整运行包，Lab 版本仍为 **0.2.2-test**。见 [便携包说明](../tools/README-Portable.md) 和 [2.0.0 记录](../docs/Validation_2.0.0.md)。
 
 独立骨架预览测试器，不连接设备，不生成脚本，不读取或修改主软件设置。
 
@@ -64,7 +64,7 @@ CPU 推理，屏幕目标 60 FPS，实际速度受模型和硬件限制。视频
 
 ## English
 
-Double-click **Start.cmd in this folder**. In the complete test.26 Windows package it uses the bundled EXE without external Python. Source startup requires Python 3.10+; a local environment and dependencies are installed if no usable existing environment is found. No model is bundled or downloaded.
+Double-click **Start.cmd in this folder**. In the complete 2.0.0 Windows package it uses the bundled EXE without external Python. Source startup requires Python 3.10+; a local environment and dependencies are installed if no usable existing environment is found. No model is bundled or downloaded.
 Choose RTM Pose 2D (requires a 256x192 ONNX model), Image Motion (translation), or Image Motion v2 (translation plus scale). The image modes require no model and are not the main application's hybrid algorithms.
 Select a region on any monitor or across monitors, confirm it, and start Screen, or open a video. Enter confirms, R reselects, and Esc cancels. Changing mode stops playback; restart to apply.
 RTM left: raw orange joints, rejected observations in red. Right: selected processing on the same frame. All four switches default OFF and apply live. Micro smoothing only filters displacements within 3 processing pixels; larger movements pass through.
