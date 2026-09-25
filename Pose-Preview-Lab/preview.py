@@ -12,7 +12,7 @@ HERE = Path(__file__).resolve().parent
 # Reuse only source-local desktop geometry/capture helpers, not the main app,
 # its settings, analysis, device modules, or any separately installed copy.
 SOURCE = str(HERE.parent / "src")
-if SOURCE not in sys.path:
+if not getattr(sys, "frozen", False) and SOURCE not in sys.path:
     sys.path.insert(0, SOURCE)
 from osr_screen_tcode.screen_geometry import configure_dpi_awareness
 
@@ -30,6 +30,9 @@ from observations import ImageObservations
 from frame_motion import FrameMotion
 from osr_screen_tcode.capture import ScreenCapture, ScreenRegion
 from osr_screen_tcode.region_selector import ScreenRegionSelector
+from osr_screen_tcode.preview_lab_launcher import preview_lab_paths
+
+SETTINGS_PATH, MODEL_DIR = preview_lab_paths(Path(__file__).resolve())
 
 VERSION = "0.2.2-test"
 MODES = ("RTM 骨架 / RTM Pose 2D", "画面运动 / Image Motion", "画面运动 v2 / Image Motion v2")
@@ -74,12 +77,12 @@ class App:
         self.history = deque(maxlen=600)
         saved = {}
         try:
-            saved = json.loads((HERE / "settings.local.json").read_text(encoding="utf-8"))
+            saved = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
             if not isinstance(saved, dict):
                 saved = {}
         except (OSError, ValueError):
             pass
-        models = sorted((HERE.parent / "models").glob("rtmpose-*_simcc*.onnx"))
+        models = sorted(MODEL_DIR.glob("rtmpose-*_simcc*.onnx"))
         self.model = tk.StringVar(value=saved.get("model", str(models[0]) if models else ""))
         self.mode = tk.StringVar(value=saved.get("mode") if saved.get("mode") in MODES else MODES[0])
         self.processing_edge = saved.get("resolution", 640)
@@ -431,7 +434,8 @@ class App:
         saved["version"] = VERSION
         saved["resolution"] = self.processing_edge
         try:
-            (HERE / "settings.local.json").write_text(json.dumps(saved, indent=2), encoding="utf-8")
+            SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+            SETTINGS_PATH.write_text(json.dumps(saved, indent=2), encoding="utf-8")
         except OSError:
             pass
         self.root.destroy()

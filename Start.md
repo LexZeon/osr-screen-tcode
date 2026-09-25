@@ -1,10 +1,36 @@
-# 启动 2.0.0-test.25 / Start 2.0.0-test.25
+# Start 2.0.0-test.26 / 启动 2.0.0-test.26
+
+## English
+
+**Double-click [Start.cmd](Start.cmd)** and confirm **2.0.0-test.26**. Start.md is the guide; if your editor opens the script as text, double-click Start.cmd in File Explorer. For a bundled runtime, download the Windows.zip asset from the [test.26 release](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.0.0-test.26), extract the entire folder and double-click its Start.cmd or exe. Keep `_internal` beside the exe. Source startup needs Python 3.10+. The Windows package also includes `Pose-Preview-Lab/Start.cmd`.
+
+The default Hybrid v2 / Fused reference now distinguishes weak subject tracking, learned-rhythm prediction and a short velocity bridge. Dashed A? markers are estimates. Continuation remains limited to two seconds and cannot be extended by isolated detection flashes; explicit pauses, cuts and resets stop the old pattern. Cycle mode only continues confirmed travel. Existing saved settings and the other manual L0 reference modes are preserved.
+
+**Test.24 screen selection:** stop analysis, open the region picker and drag across the desired display area. Teal borders, display numbers, resolution, coordinates and dimensions identify the selection. The selected area stays bright while the surroundings dim. Choose **Use this region / Enter**, **Select again / R**, or **Cancel / Esc**; cancellation preserves the prior region. Narrow displays use a compact button layout.
+
+The picker shows a single in-memory **screen snapshot**, never saved or uploaded. After confirming and closing it, starting analysis captures fresh live frames; the snapshot does not freeze subsequent analysis. X/Y and width/height are physical pixels, including negative coordinates on displays above or left of the primary display. Cross-display gaps are black. Out-of-desktop and gap-only regions are rejected instead of being silently moved.
+
+Stop before editing the region. After unplugging, rearranging or changing a display's resolution, select the region again; a detected change stops the old capture. **Capture** reports the actual screen coordinates and dimensions; **Analysis size** reports the processing image dimensions, with the default longest edge still 640. Preview scaling and letterboxing only change presentation. Standalone **Lab 0.2.2-test** shares these fixes and remains free of device output. Validation and limitations are in the [test.24 guide](docs/Test_2.0.0_test24.md).
+
+Test.23 follows a persistent subject-box center using distributed measurements, with round-trip-verified DIS support for deformation. Yellow marks the tracked motion box, A its center/reference, and green circles the actual support groups. Main and secondary axes share this motion. Camera evidence, saved/default choices and final output processing remain separate. See the [test.23 guide](docs/Test_2.0.0_test23.md).
+
+**Historical test.22 preferences incident:** a development check accidentally overwrote this machine's test preferences. No original backup was recovered. They were reset to factory defaults with Log only; personal connection and travel preferences need re-entry. This was not recovery of the original settings. See the incident record in the [test.22 guide](docs/Test_2.0.0_test22.md).
+
+Select **v2 L0 reference → Fused reference (default)**. Orange T? is an independently tracked object-boundary candidate. It uses its own features and appearance, not a visual match to the mover. Confirmed axis-origin-to-target distance drives L0: farther is higher, estimated 100% reach is bottom before final gains. Source changes continue from the current output.
+
+An offscreen arrow indicates direction only. If the target is unseen, obscured or absent after a cut, L0 follows reciprocal motion of visible objects; it does not wait for either contact participant to appear. Unknown target reach is never displayed as confirmed contact. Only loss of the visible motion itself invokes the existing learned-rhythm continuation, up to 2 seconds with braking in the last 0.5 seconds. Cuts clear old evidence. Quarter/half/full mode shares this reference and retains its travel classes and cosine shape. Saved choices and final output limits remain. See the [test.22 guide](docs/Test_2.0.0_test22.md).
+
+Test.22 first maintains subject anchor **A**, then an independently tracked object candidate **T?**. With no reliable object, **V?** explicitly denotes an assumed endpoint inferred from confirmed subject reciprocation. It is not an observed object or contact percentage. Recovery measures actual subject/background pixels against the last verified frame; intermittent target readiness must settle before taking over L0. No new setting is required; select **Fused reference** if an older reference choice was saved. Strong deformation, sustained blur, occlusion and semantic contact remain limitations.
+
+## 中文
 
 **点击 [Start.cmd](Start.cmd) 运行测试版主程序。** 如果编辑器只打开文件，请在文件资源管理器中双击同目录的 Start.cmd；Start.md 本身是说明文件。
 
+这是源码目录的说明。想免装 Python，请下载 [test.26 发布页](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.0.0-test.26) 的 **Windows.zip**，完整解压后双击其中的 `Start.cmd` 或 exe，保留同目录 `_internal`。运行包的独立预览也可通过 `Pose-Preview-Lab/Start.cmd` 打开。每版源码与运行包分别留样，不能混用其他版本的 exe／内部文件。
+
 **test.22 历史设置事故：** 当时开发检查曾意外覆盖测试版个人配置，未找到原配置备份。当时已设为项目默认值并使用 Log only；原连接信息、个人行程与偏好需要重新设置。这不是恢复原设置，事故及修正见 [test.22 说明](docs/Test_2.0.0_test22.md#本机验证中的配置事故)。
 
-1. 关闭旧程序，双击 Start.cmd，确认标题 **SR6/OSR6 Realtime Screen TCode 2.0.0-test.25**。本次为源码预发布，没有新的免安装 exe 或 Windows 运行包；GitHub 自动源码压缩包需先完整解压并安装 Python 3.10+。
+1. 关闭旧程序，双击 Start.cmd，确认标题 **SR6/OSR6 Realtime Screen TCode v2.0.0-test.26**。本源码启动器需要 Python 3.10+；Windows 运行包已自带必要运行环境。
 2. 默认仍为混合分析 v2（推荐-非舞蹈），默认打开“输出监视”。先选 Log only，选屏幕区域或视频，再开始分析。
 3. “显示预览”打开 3D 模拟器，使用经过倍率、反向、联动和输出限制后的最终指令；“分析预览”显示同帧骨架或实际运动参考。最长边默认 640。
 4. 列表第一是全/半行程模式，第二是 RTM Pose 2D。选择 Pose 可看到下面三个开关，主界面、分析预览和启动确认共用保存设置；舞蹈与混合模式分别记忆。
@@ -16,8 +42,6 @@
 估算最多 **2 秒**，不会因为偶尔识别到一帧而不断续期；没有确认节奏时，稳定速度只能短暂减速延续，不能自动变成往复。持续缺测后保持当前位置，识别稳定恢复后平滑接回。切镜头、明确暂停、重新设置参考或点击停止会结束旧规律。全／半／1/4 行程只续接已经确认的行程。
 
 默认最长边 640、多显示器框选及最终输出倍率保留；独立预览仍为 0.2.2-test。本次无需修改设置，其他三种手选 L0 参考保留原输出语义。见 [test.25 验证与边界](docs/Test_2.0.0_test25.md)。
-
-The default Hybrid v2 / Fused reference now distinguishes weak subject tracking, learned-rhythm prediction and a short velocity bridge. Dashed A? markers are estimates. Continuation remains limited to two seconds and cannot be extended by isolated detection flashes; explicit pauses, cuts and resets stop the old pattern. Cycle mode only continues confirmed travel. Existing saved settings and the other manual L0 reference modes are preserved.
 
 ## test.24 多显示器框选与尺寸核对
 
@@ -95,24 +119,6 @@ test.18 按“当前往复 → 曾经往复且仍能跟踪 → 当前持续幅�
 - v2 保留 test.12 的小背景和快速窗口跟踪改进。读屏拖动窗口时保留窗口外背景；黄框／绿点应跟随主体、蓝点应留在背景。参考认反时点“重设参考”。无有效独立背景时仍可能保持。
 - **接近上下限时减速**默认开、距离 10%，只延长到达时间，不限制目标位置；导出脚本可能比视频更长。到达时间下限默认 24 ms，实时参考实际更新间隔，它不是发送频率开关。
 
-文件位置、验证结果和复测方法见 [test.24 说明](docs/Test_2.0.0_test24.md)。独立实验预览仍可从 [Pose-Preview-Lab/Start.cmd](Pose-Preview-Lab/Start.cmd) 打开，当前版本 **0.2.2-test**，同步本轮多屏框选和采集修正，仍不输出设备指令。
+多显示器功能、验证结果和复测方法见 [test.24 说明](docs/Test_2.0.0_test24.md)。独立实验预览仍可从 [Pose-Preview-Lab/Start.cmd](Pose-Preview-Lab/Start.cmd) 打开，当前版本 **0.2.2-test**，同步本轮多屏框选和采集修正，仍不输出设备指令。
 
-本轮验证记录见 test.24 说明。持续运行 v1 会增加处理开销，三维方向、目标估计与预测延续的实片效果和真实设备仍需复测。
-
-**Double-click [Start.cmd](Start.cmd)** and confirm **2.0.0-test.24**. Start.md is the guide; if your editor opens the script as text, double-click Start.cmd in File Explorer. No new exe/ZIP was built.
-
-**Test.24 screen selection:** stop analysis, open the region picker and drag across the desired display area. Teal borders, display numbers, resolution, coordinates and dimensions identify the selection. The selected area stays bright while the surroundings dim. Choose **Use this region / Enter**, **Select again / R**, or **Cancel / Esc**; cancellation preserves the prior region. Narrow displays use a compact button layout.
-
-The picker shows a single in-memory **screen snapshot**, never saved or uploaded. After confirming and closing it, starting analysis captures fresh live frames; the snapshot does not freeze subsequent analysis. X/Y and width/height are physical pixels, including negative coordinates on displays above or left of the primary display. Cross-display gaps are black. Out-of-desktop and gap-only regions are rejected instead of being silently moved.
-
-Stop before editing the region. After unplugging, rearranging or changing a display's resolution, select the region again; a detected change stops the old capture. **Capture** reports the actual screen coordinates and dimensions; **Analysis size** reports the processing image dimensions, with the default longest edge still 640. Preview scaling and letterboxing only change presentation. Standalone **Lab 0.2.2-test** shares these fixes and remains free of device output. Validation and limitations are in the [test.24 guide](docs/Test_2.0.0_test24.md).
-
-Test.23 follows a persistent subject-box center using distributed measurements, with round-trip-verified DIS support for deformation. Yellow marks the tracked motion box, A its center/reference, and green circles the actual support groups. Main and secondary axes share this motion. Camera evidence, saved/default choices and final output processing remain separate. See the [test.23 guide](docs/Test_2.0.0_test23.md).
-
-**Historical test.22 preferences incident:** a development check accidentally overwrote this machine's test preferences. No original backup was recovered. They were reset to factory defaults with Log only; personal connection and travel preferences need re-entry. This was not recovery of the original settings. See the incident record in the [test.22 guide](docs/Test_2.0.0_test22.md).
-
-Select **v2 L0 reference → Fused reference (default)**. Orange T? is an independently tracked object-boundary candidate. It uses its own features and appearance, not a visual match to the mover. Confirmed axis-origin-to-target distance drives L0: farther is higher, estimated 100% reach is bottom before final gains. Source changes continue from the current output.
-
-An offscreen arrow indicates direction only. If the target is unseen, obscured or absent after a cut, L0 follows reciprocal motion of visible objects; it does not wait for either contact participant to appear. Unknown target reach is never displayed as confirmed contact. Only loss of the visible motion itself invokes the existing learned-rhythm continuation, up to 2 seconds with braking in the last 0.5 seconds. Cuts clear old evidence. Quarter/half/full mode shares this reference and retains its travel classes and cosine shape. Saved choices and final output limits remain. See the [test.22 guide](docs/Test_2.0.0_test22.md).
-
-Test.22 first maintains subject anchor **A**, then an independently tracked object candidate **T?**. With no reliable object, **V?** explicitly denotes an assumed endpoint inferred from confirmed subject reciprocation. It is not an observed object or contact percentage. Recovery measures actual subject/background pixels against the last verified frame; intermittent target readiness must settle before taking over L0. No new setting is required; select **Fused reference** if an older reference choice was saved. Strong deformation, sustained blur, occlusion and semantic contact remain limitations.
+test.26 运行包验证记录见 [test.26 说明](docs/Test_2.0.0_test26.md)。持续运行 v1 会增加处理开销，三维方向、目标估计与预测延续的实片效果和真实设备仍需复测。

@@ -1,11 +1,15 @@
 # Pose Preview Lab 0.2.2-test
 
+**Included with OSR test.26:** extract the complete **Windows.zip**, then run `Pose-Preview-Lab/Start.cmd`. It dispatches the same bundled EXE into the independent preview, with no separate Python installation. Source startup still needs Python 3.10+. Keep the complete archive together. Lab remains **0.2.2-test**. See the [portable guide](../tools/README-Portable.md) and [test.26 report](../docs/Test_2.0.0_test26.md).
+
+**随 OSR test.26 提供：** 完整解压 **Windows.zip** 后运行 `Pose-Preview-Lab/Start.cmd`，由同一内置 exe 打开独立预览，无需另装 Python；源码启动仍需 Python 3.10+。请保留完整运行包，Lab 版本仍为 **0.2.2-test**。见 [便携包说明](../tools/README-Portable.md) 和 [test.26 记录](../docs/Test_2.0.0_test26.md)。
+
 独立骨架预览测试器，不连接设备，不生成脚本，不读取或修改主软件设置。
 
 ## 一键运行
 
 双击本目录的 **Start.cmd**，不是上一级的 Start.cmd。Start.md 是说明文件，不是可执行程序。
-本机优先只读复用已有 Python 环境。其他电脑需要安装 Python 3.10+；首次启动会在本目录创建环境并安装依赖，需要网络。模型不随源码提供、不自动下载。
+Windows 运行包使用同一内置 exe，无需外部 Python。仅源码启动需要 Python 3.10+：优先只读复用已有环境，否则首次启动在本目录创建环境并安装依赖，需要网络。模型不随源码或运行包提供、不自动下载。
 
 1. 选择预览模式。RTM 模式需要 RTM Pose 2D 的 256x192 ONNX 模型，本机可自动发现上一级 models 里的匹配文件；不支持 3D 模型。两个画面运动模式不需要模型。
 2. 点击“框选屏幕”，在任意显示器或跨显示器拖出人物所在区域，确认后点击“开始屏幕预览”。Enter 确认、R 重选、Esc 取消。请避免框入测试器自身。
@@ -38,7 +42,7 @@
 
 已用 1×640、640×1、16×16 和缩小后短边仅 1 像素的合成帧检查两个画面运动模式的完整分析调用：它们显示缺失，不生成运动数值。保留可显示画面不等于具有足够特征可分析；遇到这类选区应扩大实际画面范围，不会自动裁剪、拉伸或补出运动。
 
-本目录需要与上级测试源码的 `src/osr_screen_tcode` 一起保留，不能单独复制本目录后删除上级共享屏幕组件。它不导入主界面、设备控制或主程序个人设置。
+源码使用时，本目录需要与上级测试源码的 `src/osr_screen_tcode` 一起保留，不能单独复制本目录后删除上级共享屏幕组件；Windows 运行包应保留上级 exe、`_internal` 及整个目录。它不导入主界面、设备控制或主程序个人设置。
 
 ## 怎么验证
 
@@ -56,11 +60,11 @@ CPU 推理，屏幕目标 60 FPS，实际速度受模型和硬件限制。视频
 这是单人区域的预览实验；强透视、快速转身、多人、卡通人物可能误识别。骨长门限也可能错拒真实变化。
 模型可能对没有人物的画面仍给出关键点，本工具不能可靠判定人物存在。
 
-设置保存在本目录 settings.local.json，已忽略上传；删除这个文件即可恢复默认。0.1.0 的处理开关会在升级后首次重置为关闭，此后正常记住选择。源码中不包含模型、CUDA 或 DirectML 运行环境。
+源码启动的设置保存在本目录 settings.local.json，已忽略上传；删除这个文件即可恢复默认。Windows 运行包使用本工具独立的用户设置目录，不写主软件设置或依赖解压目录可写。0.1.0 的处理开关会在升级后首次重置为关闭，此后正常记住选择。源码和运行包不包含模型或可下载的 CUDA／DirectML 运行环境。
 
 ## English
 
-Double-click **Start.cmd in this folder**. Python 3.10+ is required; a local environment and dependencies are installed if no usable existing environment is found. No model is bundled or downloaded.
+Double-click **Start.cmd in this folder**. In the complete test.26 Windows package it uses the bundled EXE without external Python. Source startup requires Python 3.10+; a local environment and dependencies are installed if no usable existing environment is found. No model is bundled or downloaded.
 Choose RTM Pose 2D (requires a 256x192 ONNX model), Image Motion (translation), or Image Motion v2 (translation plus scale). The image modes require no model and are not the main application's hybrid algorithms.
 Select a region on any monitor or across monitors, confirm it, and start Screen, or open a video. Enter confirms, R reselects, and Esc cancels. Changing mode stops playback; restart to apply.
 RTM left: raw orange joints, rejected observations in red. Right: selected processing on the same frame. All four switches default OFF and apply live. Micro smoothing only filters displacements within 3 processing pixels; larger movements pass through.
@@ -68,9 +72,9 @@ Charts show relative X/right, Y/up in percent of image width/height, and image s
 Max edge: 320/480/640/960/1280, default 640. Changes apply live, reset the reference, preserve aspect ratio and do not upscale. Resizing occurs after capture; the screenshot size is unchanged and RTM input remains 192x256. Lower resolution mainly reduces image-processing overhead, not necessarily inference time.
 Compare stillness, fast motion, occlusion and re-entry. Predictions expire after 0.25 seconds. Timing is processing time, not end-to-end latency. Smoothness is not proof of accuracy.
 Version 0.2.1 preserves saved 0.2.0 switches and continuous-shot filtering. Obvious image cuts, broad pose jumps, image resizing or gaps over 0.2 seconds reset stale history. Implausibly stretched stale endpoints are hidden. Gap is source-sample spacing; Skipped counts deliberate file-playback skips, not screen frame loss. Similar cuts may be missed and flashes/fast motion may trigger resets.
-Version 0.2.2 shares physical desktop coordinates and the region selector with the source application. Negative origins for monitors above/left of the primary display are retained. Mixed resolutions/scales and cross-monitor rectangles use the same coordinates for selection and capture. New selections clear stale preview/history; cancellation keeps the previous selection. Stop before selecting again. Invalid or disconnected regions are rejected instead of silently moved; reselect after changing the display layout. Uncovered gaps between monitors remain black. Very thin regions retain at least one processing pixel on the short edge; such regions are rarely useful for pose analysis. Keep this folder alongside the parent `src/osr_screen_tcode` shared screen helpers; the main GUI, device control and personal settings are not imported.
+Version 0.2.2 shares physical desktop coordinates and the region selector with the source application. Negative origins for monitors above/left of the primary display are retained. Mixed resolutions/scales and cross-monitor rectangles use the same coordinates for selection and capture. New selections clear stale preview/history; cancellation keeps the previous selection. Stop before selecting again. Invalid or disconnected regions are rejected instead of silently moved; reselect after changing the display layout. Uncovered gaps between monitors remain black. Very thin regions retain at least one processing pixel on the short edge; such regions are rarely useful for pose analysis. For source startup, keep this folder alongside the parent `src/osr_screen_tcode` shared screen helpers; for portable startup, retain the entire Windows folder, including the parent EXE and `_internal`. The main GUI, device control and personal settings are not imported.
 The complete image-motion analysis was checked with synthetic 1×640, 640×1, 16×16 and downscaled one-pixel strips. Both image modes report missing measurements without inventing motion. A displayable image may still lack usable features; enlarge the selected content rather than relying on automatic cropping, stretching or extrapolation.
-No device connection, axis mapping, script output or main application configuration is used. Settings remain local and git-ignored.
+No device connection, axis mapping, script output or main application configuration is used. Source settings remain local in this folder's git-ignored `settings.local.json`; the Windows package uses the Lab's separate user-settings directory without changing main-application settings or requiring a writable extraction folder.
 
 ## 来源 / Attribution
 

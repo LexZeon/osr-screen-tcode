@@ -4,6 +4,7 @@ from pathlib import Path
 import sys
 
 source_root = str(Path(SPECPATH) / 'src')
+lab_root = Path(SPECPATH) / 'Pose-Preview-Lab'
 # A shared development venv may have another checkout installed editable.
 sys.path[:] = [source_root, *[path for path in sys.path
                             if not (Path(path) / 'osr_screen_tcode').is_dir()]]
@@ -13,7 +14,10 @@ a = Analysis(
     ['src/osr_screen_tcode/__main__.py'],
     pathex=[source_root],
     binaries=[],
-    datas=[('src/osr_screen_tcode/assets/osr_emu_standalone.html', 'osr_screen_tcode/assets')] + collect_data_files('pip'),
+    datas=[('src/osr_screen_tcode/assets/osr_emu_standalone.html', 'osr_screen_tcode/assets')]
+        + [(str(lab_root / name), 'Pose-Preview-Lab')
+           for name in ('preview.py', 'stabilizer.py', 'observations.py', 'frame_motion.py')]
+        + collect_data_files('pip') + collect_data_files('soundcard', includes=['*.h']),
     hiddenimports=['websockets', 'rtmlib', 'onnxruntime', 'bleak', 'serial.tools.list_ports'] + collect_submodules('pip'),
     hookspath=[],
     hooksconfig={},
@@ -34,7 +38,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -47,7 +51,7 @@ coll = COLLECT(
     a.binaries,
     a.datas,
     strip=False,
-    upx=True,
+    upx=False,
     upx_exclude=[],
     name='SR6-OSR6-Realtime-Screen-TCode',
 )

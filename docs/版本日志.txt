@@ -4,7 +4,15 @@ SR6/OSR6 Realtime Screen TCode 版本日志
 - 每次发给别人使用前，都要更新这里。
 - 小修复递增最后一位，例如 0.9.1。
 - 功能明显变化递增中间位，例如 0.10.0。
-- 当前版本：2.0.0-test.25。
+- 当前版本：2.0.0-test.26。
+
+2.0.0-test.26 - 2026-09-24
+- English: matching portable Windows/source archives with per-version manifests and checksums, standalone Lab dispatch and bundled audio resources. No analysis/output algorithm changes; old tags and releases remain intact.
+- 按用户要求提供配套 Windows 免安装包、源码包、Start.cmd 和版本留样；旧 test.25 标签和附件保留，不以新程序冒充旧源码。
+- 补齐同一 exe 的独立 Lab 启动分派，独立预览设置写单独用户目录；主界面不恢复旧按钮。
+- 构建包含音频回环头文件、Lab 公开脚本和许可证；源码完整包含 Lab/Start.md，排除本地模型、下载 GPU 库、设置、日志及缓存。
+- 打包按版本独立输出，记录源码提交、SHA-256 与构建清单，拒绝覆盖已有版本；以解压后的产物复验主程序、独立预览与必要运行组件。
+- 分析与最终输出算法沿用test.25，估算最多2秒；设置与恢复默认不变。验证结果见docs/Test_2.0.0_test26.md。
 
 2.0.0-test.25 - 2026-09-24
 - 后续按用户授权整理源码预发布：显示名称统一为 SR6/OSR6 Realtime Screen TCode，移除兼容性宣传，同步界面、模拟器、元数据、教程和未来构建名称；使用2.0.0-beta分支与v2.0.0-test.25预发布标签，保留旧版本，不提供新exe运行包。

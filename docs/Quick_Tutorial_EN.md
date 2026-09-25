@@ -1,16 +1,25 @@
-# Quick Tutorial — 2.0.0-test.25
+# Quick Tutorial — 2.0.0-test.26
 
-**SR6/OSR6 Realtime Screen TCode** is a Windows screen/video analysis and TCode scripting experiment. This prerelease provides **source code**, not a new portable Windows application. GitHub's automatic “Source code” ZIP/tar archives are source downloads; old executable releases do not contain these changes.
+**SR6/OSR6 Realtime Screen TCode** is a Windows screen/video analysis and TCode scripting experiment. This prerelease provides matching **Windows and source archives**. Download the **Windows.zip** asset for a bundled runtime; GitHub's automatic “Source code” ZIP/tar archives require Python. Older releases retain their original files.
+
+## Run the Windows package
+
+1. Open the [test.26 release](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.0.0-test.26) and download the asset whose name ends in **Windows.zip**.
+2. Extract the **complete folder**, then double-click its `Start.cmd` or `SR6-OSR6-Realtime-Screen-TCode.exe`. No separate Python installation is required. Keep `_internal` and all supporting files beside the executable; do not run inside the ZIP or move the EXE alone.
+3. Confirm the window shows **2.0.0-test.26** and select **Log only** before starting analysis. Existing settings are retained; **Restore defaults** is optional and replaces your saved preferences.
+4. For the independent visual preview, double-click `Pose-Preview-Lab/Start.cmd` in the extracted folder. It uses the bundled runtime and does not send device commands.
+
+The separately attached `Start.cmd` is a spare launcher for the extracted application folder, not a self-contained application. Matching Windows/source archives include commit manifests and file checksums; use the release's `SHA256SUMS.txt` to verify downloads. See the [portable startup guide](../tools/README-Portable.md).
 
 ## Start from source
 
 1. Install Python **3.10 or newer** with Tkinter support. The standard Windows Python installer includes Tkinter.
 2. Download this prerelease's source archive and extract the entire folder, or check out its tag. Keep `src`, `Pose-Preview-Lab`, the launchers and requirements together.
 3. Double-click the root [Start.cmd](../Start.cmd). On a fresh checkout it creates this folder's `.venv` and installs dependencies, so the first start needs internet access. It may reuse an existing compatible environment; a shared neighboring environment is read-only and is never upgraded by the launcher.
-4. Confirm the window shows **2.0.0-test.25**. [Start.md](../Start.md) is the operating guide, not an executable.
+4. Confirm the window shows **2.0.0-test.26**. [Start.md](../Start.md) is the operating guide, not an executable.
 5. Select **Log only** before starting analysis. Existing settings are retained; **Restore defaults** is optional and replaces your saved preferences.
 
-Models and optional GPU components are downloaded separately through the application's controls. Hybrid v2 without RTM rotation assistance does not require a pose model. RTM Pose 2D and RTM rotation assistance need a compatible local model; model download and optional GPU setup are described in the [README](../README.md). No trained models or downloadable GPU runtimes are included in this source release.
+Models and optional GPU components are downloaded separately through the application's controls. Hybrid v2 without RTM rotation assistance does not require a pose model. RTM Pose 2D and RTM rotation assistance need a compatible local model; model download and optional GPU setup are described in the [README](../README.md). No trained models or downloadable GPU runtimes are included in either archive.
 
 ## Check analysis and output
 
@@ -42,4 +51,4 @@ The five intensity presets affect final realtime/recorded/exported output, not a
 
 Start with Log only. Existing SR6/OSR6 serial/BLE TCode interfaces remain, but robot-arm joint mapping, inverse kinematics, collision handling and physical feedback are not implemented or verified. A simulator or centering command does not establish hardware safety or compatibility. Blur, occlusion, similar-looking cuts and long loss can still cause tracking to stop.
 
-See the [test.25 validation and limitations](Test_2.0.0_test25.md), [README](../README.md), [license](../LICENSE) and [third-party notices](../THIRD_PARTY_NOTICES.md). The standalone [Pose Preview Lab](../Pose-Preview-Lab/Start.md) remains available for comparison and never sends device commands.
+See the [test.26 packaging and validation report](Test_2.0.0_test26.md), [test.25 analysis limitations](Test_2.0.0_test25.md), [README](../README.md), [license](../LICENSE) and [third-party notices](../THIRD_PARTY_NOTICES.md). Test.26 retains test.25's analysis/output behavior. The application is unsigned; bundling the CPU runtime does not verify every GPU configuration or physical hardware. The standalone [Pose Preview Lab](../Pose-Preview-Lab/Start.md) remains available for comparison and never sends device commands.

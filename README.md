@@ -1,5 +1,27 @@
 # SR6/OSR6 Realtime Screen TCode
 
+## English
+
+Windows and source prerelease: **2.0.0-test.26**, named **SR6/OSR6 Realtime Screen TCode**, for visual-analysis and robot-arm simulation experiments. Existing SR6/OSR6 TCode serial/BLE transport remains. **Robot-arm joint mapping, inverse kinematics, collision checking and physical feedback have not been implemented or verified.**
+
+Other commercial-device adapters, discovery and custom bindings have been removed; legacy settings migrate to Log only. V2 includes persistent subject tracking and bounded brief-loss continuity, shared with confirmed quarter/half/full travel. RTM 2D base L0 output is multiplied by ten about center, before user travel and output constraints; this applies to live/record/export, not pose observations or v2.
+
+Download the **Windows.zip** asset from the [test.26 release](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.0.0-test.26), extract the entire folder and double-click its **Start.cmd** or exe. Keep `_internal` beside the exe; no separate Python installation is required. Its `Pose-Preview-Lab/Start.cmd` also uses the bundled runtime. For source development, the repository's **[Start.cmd](Start.cmd)** still requires Python 3.10+; [Start.md](Start.md) explains source startup. Begin with **Log only**. A legacy center command is not a validated safe robot-arm pose.
+
+**Output Monitor** is the initial tab. **Show Preview** opens the bundled reference simulator, which receives final output after all host travel gains, coupling, inversion, limits and speed caps. **Analysis Preview** retains the paired sampled frames. Neither display is hardware feedback.
+
+Full/Half Travel is listed first, followed by RTM 2D; Hybrid v2 remains selected by default. Dance defaults to 45 FPS, curve fitting on, GPU off, all four pose options on, L0 blending off at 30%, and compression latency 0. Dance and hybrid settings are saved separately. The L0 source label is shown only when dance blending is enabled and uses v2 only. The v2 rotation-assistance switch is hidden in dance and disabled in Hybrid 1.
+
+Hybrid 1 retains its original L0 core. V2 tracks the same subject with multiple samples and independently checks background motion. Confirmed reciprocal strokes calibrate L0 travel. With the default fused reference, brief loss can use weak tracking or an already confirmed rhythm for **at most 2 seconds**, then hold; an unconfirmed velocity bridge is limited to 0.3 seconds and 15% travel before gains. Pauses and cuts stop old estimates. Actual samples and estimated **A?** markers are shown separately. Five presets affect final script/live travel only. Max edge stays 640.
+
+Direct RTM Pose 2D L1/L2 output coupling passes through four points: **0.5× at bottom L0, 1× at 1/3 travel, 3.5× at 2/3, and 0.5× at top**, with linear interpolation between them. V2 retains **1 / 2.5 / 1**, peaking at center. Pose rotation base gains are **R0 ×3, R1/R2 ×1.5**, including Pose rotation assistance; direct Pose R1/R2 also follow L0 with 1× coupling through 2/3 travel, falling to 0.5× at the top. Original footage and physical hardware remain unverified; standalone Lab **0.2.2-test** shares screen selection and physical capture coordinates without device output.
+
+Test.26 provides matching Windows/source archives with a commit manifest and SHA-256 checksums. GitHub's automatic source archives require Python; use the Windows asset for a bundled runtime. Previous releases retain their original assets. Models and optional GPU runtimes are not bundled. See the [test.26 guide](docs/Test_2.0.0_test26.md), [preview guide](Pose-Preview-Lab/Start.md), [third-party notices](THIRD_PARTY_NOTICES.md) and [license](LICENSE).
+
+Thanks to **DK**, **机械纪元**, and **“电话机”** for guidance, volunteer testing and suggestions. Contact: **aivnailedeng@gmail.com**.
+
+## 中文
+
 不带 RTM 的 v2 对 L1/L2/R0/R1/R2 只跟随确认后的明显变化与方向反转，过滤小幅高频噪声并平滑输出；L0 不受此过滤影响。
 
 Without RTM, v2 secondary axes follow confirmed significant motion/reversals and produce smooth output; this filter never changes L0.
@@ -8,23 +30,27 @@ Without RTM, v2 secondary axes follow confirmed significant motion/reversals and
 
 Default analysis is Hybrid v2 (Recommended Non-Dance), with RTM 2D rotation assistance off. Reset restores these defaults; existing saved mode selections are preserved.
 
-## 源码预发布版
+## Windows 与源码预发布版
 
-当前版本：**2.0.0-test.25**。本测试分支用于视觉分析与机械臂模拟实验，保留现有 SR6/OSR6 TCode 串口/BLE 接口。**尚未实现或验证机械臂关节映射、逆运动学、碰撞检测和真实位置反馈，不能当作已兼容机械臂的控制器。**
+当前版本：**2.0.0-test.26**。本测试分支用于视觉分析与机械臂模拟实验，保留现有 SR6/OSR6 TCode 串口/BLE 接口。**尚未实现或验证机械臂关节映射、逆运动学、碰撞检测和真实位置反馈，不能当作已兼容机械臂的控制器。**
 
 此前已移除其他商业设备适配、外部设备服务扫描和自定义功能绑定；旧外部设备配置迁移到 `Log only`。test.12 针对主体占大部分画面的 v2 背景缺失改进运动分层；保留全/半行程、最终时序减速和 RTM Pose 2D 的 L0 基础输出 ×10。原有输出限位与限速继续生效。
 
-本版本作为 **test.25 源码预发布**提供，项目名称为 **SR6/OSR6 Realtime Screen TCode**。下载本版本源码并使用 Start.cmd 启动；**没有本版本免安装 exe 或 Windows 运行包**。GitHub 自动提供的源码压缩包需要 Python 环境。旧发布包保留原版本。
+本版本提供配套的 **Windows 免安装包和源码包**，项目名称为 **SR6/OSR6 Realtime Screen TCode**。在 [test.26 发布页](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.0.0-test.26) 下载名称以 **Windows.zip** 结尾的附件，完整解压后双击包内 `Start.cmd` 或 `SR6-OSR6-Realtime-Screen-TCode.exe`；不需要另装 Python。不要单独移走 exe 或 `_internal` 文件夹。源码包与运行包对应同一提交，附版本清单与 SHA-256 校验；旧发布包保留原版本。
 
 ## 一键运行
 
-Windows 下双击仓库根目录 **Start.cmd**。需要可用 Python 3.10+；启动器会复用已安装环境，或在本目录建立环境并安装依赖。不会向相邻正式仓库环境安装依赖。
+**普通用户使用 Windows 包：** 解压完整目录后双击包内 **Start.cmd** 或 exe。`Pose-Preview-Lab/Start.cmd` 打开独立预览，也无需外部 Python。
+
+**开发者使用源码：** Windows 下双击仓库根目录 **Start.cmd**。需要可用 Python 3.10+；启动器会复用已安装环境，或在本目录建立环境并安装依赖。不会向相邻正式仓库环境安装依赖。
 
 [Start.md](Start.md) 是操作说明，不是可执行启动文件；如果链接只显示源码，请在文件资源管理器中双击同目录的 [Start.cmd](Start.cmd)。
 
 先使用 `Log only`，不连接硬件。实际机械结构的关节定义、限位与独立急停需要另外验证；现有回中动作不能视为机械臂的安全姿态。
 
 ## 软件内分析预览
+
+**test.26：Windows 运行包与配套源码留样。** 补齐独立 Lab 的打包入口与单独设置目录，以及音频回环所需资源；每个发布版本分别保留源码、运行包、构建清单和校验值。主程序分析与最终输出算法沿用 test.25，估算仍最多 2 秒。验证与打包边界见 [test.26 说明](docs/Test_2.0.0_test26.md)。
 
 **test.25：短暂缺测的主体与脚本接续。** 默认融合参考先尝试基于真实像素的弱主体跟踪，再使用已确认的节奏估算；节奏尚未确认时，只允许近期稳定速度短暂减速接续，不凭空生成往复。估算仍最多 **2 秒**，单帧识别闪回不会续期，明确暂停／切镜头会停止旧规律。淡色虚框、虚线轴和 **A?** 表示弱跟踪或位置估计；实际测量与估算分别标注。全／半／1/4 行程共用，只续接已经确认的行程。没有新增开关或更改个人设置；详见 [test.25 说明](docs/Test_2.0.0_test25.md)。
 
@@ -97,15 +123,15 @@ Test.9 adds Full/Half Travel on the shared v2 pipeline, with automatic half/full
 默认打开 **输出监视** 页。**显示预览**打开内置的 [nb-3d-simulator](https://github.com/nbnb9527/nb-3d-simulator) 参考模拟器，显示经过总行程／逐轴倍率、反向、联动、限位和限速等处理后的最终输出指令。“分析预览”页保留同一采样帧的原始／处理后画面。两种显示都不是硬件反馈。
 
 - RTM Pose 2D 移植了 Lab 0.2.1 的四项可选稳定处理、切镜头／断帧重置和异常预测端点隐藏；需要本地 256x192 ONNX 模型。RTM Pose 3D 已移除。
-- 混合分析 1 标为“推荐-平面大幅动作”，保留原有 L0 核心。**混合分析 v2 标为非舞蹈推荐**，先估计背景运镜，再分析相对背景运动的局部区域；参考不足时保持。确认有效双向往复后逐步校准 L0 行程，五档仍只改最终输出。持续双向运动确定三维主轴方向，六轴 L1/L2 分析相对主轴的横向分量，方向改变不会重映射旧位置。
+- 混合分析 1 标为“推荐-平面大幅动作”，保留原有 L0 核心。**混合分析 v2 标为非舞蹈推荐**，持续跟踪同一主体并独立验证背景运镜。默认融合参考遇到短暂缺测时，可用弱跟踪或已确认节奏接续最多 **2 秒**，随后保持；未确认节奏的短速度接续仅限 0.3 秒／倍率前 15% 行程。暂停或切镜头会停止旧估算。确认有效双向往复后逐步校准 L0 行程，五档仍只改最终输出。持续双向运动确定三维主轴方向，六轴 L1/L2 分析相对主轴的横向分量，方向改变不会重映射旧位置。
 - v1/v2 在分析画面中显示实际采用的黄框区域、绿色采样点／运动箭头；v2 另显示蓝色背景参考点、主方向、往复跨度和校准倍率。右侧参考画面不被说明遮挡。这里的 L0 是输出倍率前的分析值。
 - **RTM Pose 2D 的 L0 基础输出幅度为原来的 10 倍**，相对中位放大，单／六轴、实时／录制／导出都生效；后续用户倍率与输出限制照常作用，骨架观测不变，混合分析 v2 不重复使用此舞蹈倍率。
-- Pose 提供的 R1/R2 基础倍率为 **1.5**（此前 2 倍的 75%），直接 Pose 和混合／全半模式中的 Pose 旋转辅助同步生效；R0 不变。
+- Pose 提供的旋转基础倍率为 **R0 ×3、R1/R2 ×1.5**（R1/R2 为此前 2 倍的 75%），直接 Pose 和混合／全半模式中的 Pose 旋转辅助同步生效。直接 Pose 的 R1/R2 另外跟随 L0 联动：底部至 2/3 行程保持 1 倍，之后线性降至顶部 0.5 倍。
 - **到达时间下限 ms** 默认为 24，保存／恢复默认沿用原设置。实时 TCode 的到达时间还参考最近实际更新间隔，再应用上下限减速；20 ms 并不表示降低发送频率。模拟器继续接收最终指令。此节奏修正尚未经过实机微抖复测。
 - **五档只调整最终录制、导出脚本和实时输出幅度**（0.55 / 0.75 / 1 / 1.15 / 1.30），不改变分析方法或识别处理。
 - 全/半行程模式排在列表第一，RTM Pose 2D 第二，默认选中项仍为 v2。舞蹈默认 45 FPS、曲线拟合开、GPU 关、四项骨架处理全开、混合 L0 关且权重 30%、压缩延迟 0；混合分析的四项处理默认关。两组设置分别保存与恢复默认，已有明确保存的选择保留。最长边仍为 640。
 - 舞蹈启用混合 L0 后才显示来源，来源只保留 v2。v2 旋转辅助项在混合分析 1/v2 和全/半行程模式显示，v1 中禁用，舞蹈隐藏。
-- RTM Pose 2D 六轴 L1/L2 仅在 TCode 输出处应用联动：L0 最低处 **0.5 倍**，**2/3 处最高 3.5 倍**，最高处回到 **0.5 倍**，其间连续线性变化。采用当前指令已受限的 L0，固定识别位置也会随之收拢或展开。v2 的图像平移联动保持 **1／2.5／1**、峰值在中位。骨架、图表和脚本分析数据不受此倍率影响。
+- RTM Pose 2D 六轴 L1/L2 仅在 TCode 输出处应用联动：L0 最低处 **0.5 倍**，**1/3 处 1 倍**，**2/3 处最高 3.5 倍**，最高处回到 **0.5 倍**，相邻节点之间连续线性变化。采用当前指令已受限的 L0，固定识别位置也会随之收拢或展开。v2 的图像平移联动保持 **1／2.5／1**、峰值在中位。骨架、图表和脚本分析数据不受此倍率影响。
 - 图表显示画面位移与尺度，尺度不是实际深度；运镜和缩放也会影响数值。
 - 独立 `Pose-Preview-Lab/Start.cmd` 当前为 0.2.2-test，使用同一套多屏框选与采集坐标；其自身仍不输出设备指令。
 
@@ -119,6 +145,7 @@ Test.9 adds Full/Half Travel on the shared v2 pipeline, with automatic half/full
 
 ## 文档
 
+- [test.26 Windows 运行包与版本留样](docs/Test_2.0.0_test26.md)
 - [test.25 短暂缺测接续、验证与边界](docs/Test_2.0.0_test25.md)
 - [test.24 多屏框选、采集与预览](docs/Test_2.0.0_test24.md)
 - [test.12 变更与范围](docs/Test_2.0.0_test12.md)
@@ -135,21 +162,3 @@ Test.9 adds Full/Half Travel on the shared v2 pipeline, with automatic half/full
 感谢 **DK**、**机械纪元** 的技术指导，以及 **“电话机”** 的志愿测试与建议。保留所用开源组件的原始署名，详见第三方声明。
 
 合作、版权和反馈：**aivnailedeng@gmail.com**
-
-## English
-
-Source prerelease: **2.0.0-test.25**, named **SR6/OSR6 Realtime Screen TCode**, for visual-analysis and robot-arm simulation experiments. Existing SR6/OSR6 TCode serial/BLE transport remains. **Robot-arm joint mapping, inverse kinematics, collision checking and physical feedback have not been implemented or verified.**
-
-Other commercial-device adapters, discovery and custom bindings have been removed; legacy settings migrate to Log only. V2 includes persistent subject tracking and bounded brief-loss continuity, shared with confirmed quarter/half/full travel. RTM 2D base L0 output is multiplied by ten about center, before user travel and output constraints; this applies to live/record/export, not pose observations or v2.
-
-Double-click the repository's **[Start.cmd](Start.cmd)** on Windows. [Start.md](Start.md) is the guide, not an executable. Python 3.10+ or a compatible existing environment is required. Start with **Log only** and no hardware. A legacy center command is not a validated safe robot-arm pose.
-
-**Output Monitor** is the initial tab. **Show Preview** opens the bundled reference simulator, which receives final output after all host travel gains, coupling, inversion, limits and speed caps. **Analysis Preview** retains the paired sampled frames. Neither display is hardware feedback.
-
-Full/Half Travel is listed first, followed by RTM 2D; Hybrid v2 remains selected by default. Dance defaults to 45 FPS, curve fitting on, GPU off, all four pose options on, L0 blending off at 30%, and compression latency 0. Dance and hybrid settings are saved separately. The L0 source label is shown only when dance blending is enabled and uses v2 only. The v2 rotation-assistance switch is hidden in dance and disabled in Hybrid 1.
-
-Hybrid 1 retains its original L0 core. V2 separates competing motion regions to find small background patches in close-ups. A short multi-frame baseline helps identify these regions; only current-frame displacement enters output. Confirmed reciprocal strokes calibrate L0 travel; insufficient reference holds output. Actual ROI/flow samples and layered background references appear in the image. Five presets affect final script/live travel only. Max edge stays 640. Direct RTM Pose 2D TCode coupling rises from **0.5 at low L0 to 3.5 at 2/3 travel**, then falls to **0.5 at high L0**; v2 retains **1 / 2.5 / 1**, peaking at center. Original footage and robot-arm compatibility remain unverified; standalone Lab **0.2.2-test** shares the new screen selection and physical capture coordinates without device output.
-
-There is no test.25 portable executable or Windows runtime package. GitHub's automatic source archives require Python; previous releases retain their original assets. Models and optional GPU runtimes are not bundled. See the [test.25 guide](docs/Test_2.0.0_test25.md), [preview guide](Pose-Preview-Lab/Start.md), [third-party notices](THIRD_PARTY_NOTICES.md) and [license](LICENSE).
-
-Thanks to **DK**, **机械纪元**, and **“电话机”** for guidance, volunteer testing and suggestions. Contact: **aivnailedeng@gmail.com**.
