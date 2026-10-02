@@ -2,11 +2,13 @@
 
 ## English
 
-Official Windows and source release: **2.0.0**, named **SR6/OSR6 Realtime Screen TCode**. It promotes test.25's analysis/output behavior to the release version and adds verified portable-packaging support. The application remains a visual-analysis and robot-arm simulation experiment with existing SR6/OSR6 TCode serial/BLE transport. **Robot-arm joint mapping, inverse kinematics, collision checking and physical feedback have not been implemented or verified.**
+**2.0.1** fixes clipped controls on high-DPI displays. Drag the divider between controls and preview to adjust the saved width; narrow panes support horizontal scrolling and Shift+wheel. Start this source with [Start.cmd](Start.cmd), or use the matching [2.0.1 Windows package](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.0.1). Older 2.0.0 packages do not contain this fix; see the [change and validation record](docs/Validation_2.0.1.md).
+
+**SR6/OSR6 Realtime Screen TCode 2.0.1** retains 2.0.0's analysis/output behavior and portable-packaging support. The application remains a visual-analysis and robot-arm simulation experiment with existing SR6/OSR6 TCode serial/BLE transport. **Robot-arm joint mapping, inverse kinematics, collision checking and physical feedback have not been implemented or verified.**
 
 Other commercial-device adapters, discovery and custom bindings have been removed; legacy settings migrate to Log only. V2 includes persistent subject tracking and bounded brief-loss continuity, shared with confirmed quarter/half/full travel. RTM 2D base L0 output is multiplied by ten about center, before user travel and output constraints; this applies to live/record/export, not pose observations or v2.
 
-Download the **Windows.zip** asset from the [2.0.0 release](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.0.0), extract the entire folder and double-click its **Start.cmd** or exe. Keep `_internal` beside the exe; no separate Python installation is required. Its `Pose-Preview-Lab/Start.cmd` also uses the bundled runtime. For source development, the repository's **[Start.cmd](Start.cmd)** still requires Python 3.10+; [Start.md](Start.md) explains source startup. Begin with **Log only**. A legacy center command is not a validated safe robot-arm pose.
+Download the **Windows.zip** asset from the [2.0.1 release](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.0.1), extract the entire folder and double-click its **Start.cmd** or exe. Keep `_internal` beside the exe; no separate Python installation is required. Its `Pose-Preview-Lab/Start.cmd` also uses the bundled runtime. For source development, the repository's **[Start.cmd](Start.cmd)** still requires Python 3.10+; [Start.md](Start.md) explains source startup. Begin with **Log only**. A legacy center command is not a validated safe robot-arm pose.
 
 **Output Monitor** is the initial tab. **Show Preview** opens the bundled reference simulator, which receives final output after all host travel gains, coupling, inversion, limits and speed caps. **Analysis Preview** retains the paired sampled frames. Neither display is hardware feedback.
 
@@ -22,6 +24,8 @@ Thanks to **DK**, **机械纪元**, and **“电话机”** for guidance, volunt
 
 ## 中文
 
+**2.0.1** 修复高 DPI 屏幕控制栏显示不全：拖动控制区与预览之间的分隔栏可调整并保存宽度，较窄时支持底部横向滚动条和 Shift＋滚轮。通过源码目录 [Start.cmd](Start.cmd) 或配套的 [2.0.1 Windows 包](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.0.1) 启动；旧版 2.0.0 运行包不包含此修复，详见[更新与验证记录](docs/Validation_2.0.1.md)。
+
 不带 RTM 的 v2 对 L1/L2/R0/R1/R2 只跟随确认后的明显变化与方向反转，过滤小幅高频噪声并平滑输出；L0 不受此过滤影响。
 
 Without RTM, v2 secondary axes follow confirmed significant motion/reversals and produce smooth output; this filter never changes L0.
@@ -30,9 +34,9 @@ Without RTM, v2 secondary axes follow confirmed significant motion/reversals and
 
 Default analysis is Hybrid v2 (Recommended Non-Dance), with RTM 2D rotation assistance off. Reset restores these defaults; existing saved mode selections are preserved.
 
-## Windows 与源码正式版
+## 2.0.0 历史发布说明
 
-当前正式版本：**2.0.0**，以 test.25 的分析／输出行为为正式版基线，纳入经过验证的便携打包支持。本项目用于视觉分析与机械臂模拟实验，保留现有 SR6/OSR6 TCode 串口/BLE 接口。**尚未实现或验证机械臂关节映射、逆运动学、碰撞检测和真实位置反馈，不能当作已兼容机械臂的控制器。**
+此前正式版本：**2.0.0**，以 test.25 的分析／输出行为为正式版基线，纳入经过验证的便携打包支持。本项目用于视觉分析与机械臂模拟实验，保留现有 SR6/OSR6 TCode 串口/BLE 接口。**尚未实现或验证机械臂关节映射、逆运动学、碰撞检测和真实位置反馈，不能当作已兼容机械臂的控制器。**
 
 此前已移除其他商业设备适配、外部设备服务扫描和自定义功能绑定；旧外部设备配置迁移到 `Log only`。test.12 针对主体占大部分画面的 v2 背景缺失改进运动分层；保留全/半行程、最终时序减速和 RTM Pose 2D 的 L0 基础输出 ×10。原有输出限位与限速继续生效。
 

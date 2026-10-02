@@ -4,7 +4,14 @@ SR6/OSR6 Realtime Screen TCode 版本日志
 - 每次发给别人使用前，都要更新这里。
 - 小修复递增最后一位，例如 0.9.1。
 - 功能明显变化递增中间位，例如 0.10.0。
-- 当前版本：2.0.0。
+- 当前版本：2.0.1。
+
+2.0.1 - 2026-10-02
+- English: fix clipped controls on high-DPI displays with natural content sizing and a draggable divider. Save its width in device-independent units; reset defaults restores automatic sizing. Overflow scrolling and Tab navigation keep controls reachable, and mouse-wheel scrolling no longer changes combobox selections accidentally.
+- English: fit startup to the launching monitor's work area, scale output-monitor spacing and repaint axes on resize. Analysis/output algorithms and the two-second continuation limit are unchanged. Preserve old 2.0.0 tags/assets. Final validation is recorded in docs/Validation_2.0.1.md.
+- 修复高 DPI 下左侧控制栏显示不全：按内容实际宽度布局，新增可拖动分隔栏；栏宽按设备无关单位保存，恢复默认时重新自动适配。
+- 窄窗口支持自动横向滚动条、Shift＋滚轮与 Tab 焦点自动滚入；滚轮经过下拉框时不会误改选项。
+- 启动窗口适配所在屏幕工作区；输出监视间距随缩放调整，停止输出时改变尺寸也会重画六轴显示。分析／输出算法和两秒接续上限不变，保留旧 2.0.0 标签及附件；最终验证见 docs/Validation_2.0.1.md。
 
 2.0.0 - 2026-09-24
 - English: official 2.0.0 release of test.25 functionality, with matching portable Windows/source archives with per-version manifests and checksums, standalone Lab dispatch and bundled audio resources. No analysis/output algorithm changes; old tags and releases remain intact.

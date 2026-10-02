@@ -1,8 +1,10 @@
-# Start 2.0.0 / 启动 2.0.0
+# Start 2.0.1 / 启动 2.0.1
 
 ## English
 
-**Double-click [Start.cmd](Start.cmd)** and confirm the official version **2.0.0**. Start.md is the guide; if your editor opens the script as text, double-click Start.cmd in File Explorer. For a bundled runtime, download the Windows.zip asset from the [2.0.0 release](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.0.0), extract the entire folder and double-click its Start.cmd or exe. Keep `_internal` beside the exe. Source startup needs Python 3.10+. The Windows package also includes `Pose-Preview-Lab/Start.cmd`. This release retains test.25's analysis/output behavior and incorporates the verified packaging work; see the [2.0.0 validation record](docs/Validation_2.0.0.md).
+**Double-click [Start.cmd](Start.cmd)** and confirm **2.0.1** in the title. Start.md is the guide; if your editor opens the script as text, double-click Start.cmd in File Explorer. Source startup requires Python 3.10+. To run without Python, extract the entire [2.0.1 Windows package](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.0.1) and double-click its Start.cmd. Older 2.0.0 packages do not contain this fix.
+
+**High-DPI controls:** drag the visible divider between the controls and preview. Width is saved in logical pixels and restored at the current display scale. If controls need more room, use the bottom horizontal scrollbar or Shift+wheel; normal wheel scrolls vertically without changing a combobox selection. Tab navigation brings the focused control into view. **Reset all defaults** also resets the divider to the measured default width. Initial window size follows the display scale and is capped by the launching monitor's work area. See the [update record](docs/Validation_2.0.1.md).
 
 The default Hybrid v2 / Fused reference now distinguishes weak subject tracking, learned-rhythm prediction and a short velocity bridge. Dashed A? markers are estimates. Continuation remains limited to two seconds and cannot be extended by isolated detection flashes; explicit pauses, cuts and resets stop the old pattern. Cycle mode only continues confirmed travel. Existing saved settings and the other manual L0 reference modes are preserved.
 
@@ -24,9 +26,11 @@ Test.22 first maintains subject anchor **A**, then an independently tracked obje
 
 ## 中文
 
-**点击 [Start.cmd](Start.cmd) 运行 2.0.0 正式版主程序。** 如果编辑器只打开文件，请在文件资源管理器中双击同目录的 Start.cmd；Start.md 本身是说明文件。
+**双击 [Start.cmd](Start.cmd) 运行 2.0.1 主程序，核对窗口标题。** 如果编辑器只打开文件，请在文件资源管理器中双击同目录的 Start.cmd；Start.md 本身是说明文件。需要 Python 3.10+；已发布的 2.0.0 Windows 包尚不包含本次修复。
 
-这是源码目录的说明。想免装 Python，请下载 [2.0.0 发布页](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.0.0) 的 **Windows.zip**，完整解压后双击其中的 `Start.cmd` 或 exe，保留同目录 `_internal`。运行包的独立预览也可通过 `Pose-Preview-Lab/Start.cmd` 打开。每版源码与运行包分别留样，不能混用其他版本的 exe／内部文件。
+**高 DPI 控制栏：** 拖动控制区与预览之间的分隔栏调整宽度，栏宽按逻辑像素保存并按启动时的显示缩放恢复。较窄时用底部横向滚动条或 Shift＋滚轮；普通滚轮上下滚动，不会误改下拉框选项。按 Tab 切换到的控件会自动滚入视野。**恢复所有默认设置**同时重置栏宽。初始窗口按缩放比例和当前显示器可用区域确定大小。见[本次更新记录](docs/Validation_2.0.1.md)。
+
+这是源码目录的说明。想免装 Python，请下载 [2.0.1 发布页](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.0.1) 的 **Windows.zip**，完整解压后双击其中的 `Start.cmd` 或 exe，保留同目录 `_internal`。运行包的独立预览也可通过 `Pose-Preview-Lab/Start.cmd` 打开。每版源码与运行包分别留样，不能混用其他版本的 exe／内部文件。
 
 正式版沿用 test.25 的分析／输出行为，并纳入经过验证的打包支持；见 [2.0.0 验证记录](docs/Validation_2.0.0.md)。
 

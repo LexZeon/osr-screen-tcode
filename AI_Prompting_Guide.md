@@ -1,10 +1,16 @@
 # AI Prompting Guide
 
+## Current update: 2.0.1 / 当前更新
+
+High-DPI control-sidebar fix based on the published 2.0.0 source. Read `docs/Validation_2.0.1.md`. Main panes use `ui_layout.py`: natural content width, draggable divider, overflow scrolling, focus visibility and pane-specific wheel handling. Only an explicitly dragged width is saved in `extra.sidebar_width_dip`; factory reset removes it. Preserve physical capture coordinates and all analysis/output logic. The user explicitly requested upload after the fix, authorizing this 2.0.1 source/Windows release. Future releases need new authorization. Official 2.0.0 assets and version archives remain unchanged.
+
+基于正式 2.0.0 的高 DPI 控制栏修复，当前为 2.0.1 修复版。布局位于 `ui_layout.py`，按实际内容宽度显示，可拖动分隔、横向滚动及自动显示键盘焦点；滚轮不会误改栏内下拉框选项。手动栏宽以逻辑像素保存，恢复默认时清除。采集物理坐标、分析与输出算法保留；用户已要求“做完也上传”，授权本轮 2.0.1 配套源码／Windows 发布；不自动沿用到以后版本。
+
 Without RTM, v2 secondary axes follow confirmed significant motion/reversals and produce smooth output; this filter never changes L0.
 
 不带 RTM 的 v2 对 L1/L2/R0/R1/R2 只跟随确认后的明显变化与方向反转，过滤小幅高频噪声并平滑输出；L0 不受此过滤影响。
 
-## Active 2.0.0 Release
+## Previous 2.0.0 Release
 
 - The user designated test.25's functionality as the official **2.0.0** release. Analysis/output behavior stays at test.25; the locally prepared packaging support is included under 2.0.0, not published as test.26. Read `docs/Validation_2.0.0.md` and `tools/README-Portable.md`. Preserve old tags/packages. Publish matching source and Windows assets from clean committed source, with manifests and checksums; exclude models/GPU downloads/configs/logs and test the extracted app without external Python. Only consolidate previously built historical packages; do not create new EXEs for every old test version. Public notes are English first, then Chinese. Release copy: `docs/Release_2.0.0.md`; test.25 remains a historical source-only prerelease.
 

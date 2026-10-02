@@ -32,7 +32,7 @@ from .gpu_runtime import activate_local_runtime
 activate_local_runtime()
 
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, font as tkfont, messagebox, ttk
 
 import cv2
 import numpy as np
@@ -64,6 +64,7 @@ from .visual_lab.stabilizer import Options
 from .device_controls import DeviceControls
 from .gpu_controls import GpuControls
 from .ui_widgets import WideCombobox, monitor_workarea
+from .ui_layout import MainPanes
 from .recorder import MultiAxisFunscriptRecorder
 from .sinks import (
     OutputWriteError,
@@ -1735,12 +1736,11 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
 
     def _build_ui(self) -> None:
         self._configure_style()
-        self.columnconfigure(0, weight=0)
-        self.columnconfigure(1, weight=1)
+        self.columnconfigure(0, weight=1)
         self.rowconfigure(1, weight=1)
 
         header = ttk.Frame(self, padding=(12, 6))
-        header.grid(row=0, column=0, columnspan=2, sticky="ew")
+        header.grid(row=0, column=0, sticky="ew")
         header.columnconfigure(0, weight=1)
         product_label = ttk.Label(header, text=f"{APP_NAME}  v{__version__}", wraplength=900)
         product_label.grid(row=0, column=0, sticky="ew")
@@ -1749,37 +1749,18 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         ttk.Label(header, text=self._dt("机械臂模拟测试；实际硬件映射尚未验证。",
                                        "Robot-arm simulation test; physical hardware mapping is unverified.")).grid(row=2, column=0, sticky="w")
 
-        sidebar_shell = ttk.Frame(self)
-        sidebar_shell.grid(row=1, column=0, sticky="ns")
-        sidebar_shell.rowconfigure(0, weight=1)
-        sidebar_shell.columnconfigure(0, weight=1)
-        sidebar_canvas = tk.Canvas(sidebar_shell, width=340, highlightthickness=0)
-        sidebar_scrollbar = ttk.Scrollbar(sidebar_shell, orient="vertical", command=sidebar_canvas.yview)
-        sidebar_canvas.configure(yscrollcommand=sidebar_scrollbar.set)
-        sidebar_canvas.grid(row=0, column=0, sticky="ns")
-        sidebar_scrollbar.grid(row=0, column=1, sticky="ns")
-        sidebar = ttk.Frame(sidebar_canvas, padding=12)
-        sidebar_window = sidebar_canvas.create_window((0, 0), window=sidebar, anchor="nw")
-        sidebar.columnconfigure(1, weight=1)
-
-        def update_scroll_region(_event: tk.Event) -> None:
-            sidebar_canvas.configure(scrollregion=sidebar_canvas.bbox("all"))
-
-        def update_sidebar_width(event: tk.Event) -> None:
-            sidebar_canvas.itemconfigure(sidebar_window, width=event.width)
-
-        def on_mousewheel(event: tk.Event) -> None:
-            sidebar_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-
-        sidebar.bind("<Configure>", update_scroll_region)
-        sidebar_canvas.bind("<Configure>", update_sidebar_width)
-        sidebar_canvas.bind("<Enter>", lambda _event: sidebar_canvas.bind_all("<MouseWheel>", on_mousewheel))
-        sidebar_canvas.bind("<Leave>", lambda _event: sidebar_canvas.unbind_all("<MouseWheel>"))
-
-        preview = ttk.Frame(self, padding=(0, 12, 12, 12))
-        preview.grid(row=1, column=1, sticky="nsew")
+        self.main_panes = MainPanes(self, self.config_model.extra.get("sidebar_width_dip"),
+                                    on_width_changed=self._schedule_config_save)
+        self.main_panes.grid(row=1, column=0, sticky="nsew")
+        sidebar = self.main_panes.sidebar.content
+        layout_hint = ttk.Label(sidebar, text=self._dt("控制区 · 拖动右侧分隔栏 ↔", "Controls · drag divider ↔"), foreground="#555")
+        layout_hint.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 6))
+        Tooltip(layout_hint, self._dt(
+            "拖动分隔栏调整控制区宽度；栏宽自动保存。较窄时可用底部横向滚动条或 Shift＋滚轮。恢复默认设置会重置栏宽。",
+            "Drag the divider to resize controls; width is saved. In a narrow pane, use the bottom scrollbar or Shift+wheel. Reset defaults also resets the width."))
+        preview = self.main_panes.preview
         preview.rowconfigure(0, weight=1)
-        preview.columnconfigure(0, weight=1, minsize=560)
+        preview.columnconfigure(0, weight=1)
         self.preview_tabs = ttk.Notebook(preview)
         self.preview_tabs.grid(row=0, column=0, sticky="nsew")
         self.analysis_tab = ttk.Frame(self.preview_tabs)
@@ -1807,7 +1788,10 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
             self.preset_buttons[level] = button
         ttk.Label(preset_bar, text="仅调整最终输出幅度", foreground="#555").grid(row=0, column=6, sticky="w", padx=(4, 0))
 
-        self.stroke_canvas = tk.Canvas(monitor, width=72, height=176, highlightthickness=0, background="#f4f4f4")
+        ui_scale = self.main_panes.scale
+        label_font = tkfont.nametofont("TkDefaultFont", root=self)
+        stroke_width = max(round(72 * ui_scale), max(label_font.measure(self._t(text)) for text in ("上限方向", "下限方向")) + 12)
+        self.stroke_canvas = tk.Canvas(monitor, width=stroke_width, height=round(176 * ui_scale), highlightthickness=0, background="#f4f4f4")
         self.stroke_canvas.grid(row=1, column=0, rowspan=4, sticky="nsw", padx=(0, 12))
         ttk.Label(monitor, textvariable=self.l0_status, font=("", 30, "bold")).grid(row=1, column=1, sticky="w")
         ttk.Label(monitor, textvariable=self.stroke_status, font=("", 15, "bold"), foreground="#0b6b3a").grid(row=2, column=1, sticky="w")
@@ -1817,9 +1801,10 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         ttk.Button(monitor, text="全行程", command=self.apply_full_preset, style="Primary.TButton").grid(row=2, column=2, sticky="ew", pady=4)
         self.monitor_connect_button = ttk.Button(monitor, textvariable=self.connect_button_text, command=self.connect_and_center)
         self.monitor_connect_button.grid(row=3, column=2, sticky="ew")
-        self.axis_canvas = tk.Canvas(monitor, width=520, height=136, highlightthickness=0, background="#f8f8f8")
+        self.axis_canvas = tk.Canvas(monitor, width=520, height=round(136 * ui_scale), highlightthickness=0, background="#f8f8f8")
         self.axis_canvas.grid(row=5, column=0, columnspan=3, sticky="ew", pady=(10, 0))
-        self.curve_canvas = tk.Canvas(monitor, width=520, height=150, highlightthickness=0, background="#101418")
+        self.axis_canvas.bind("<Configure>", lambda _event: self._draw_axis_monitor(self._last_axis_values))
+        self.curve_canvas = tk.Canvas(monitor, width=520, height=round(150 * ui_scale), highlightthickness=0, background="#101418")
         self.curve_canvas.grid(row=6, column=0, columnspan=3, sticky="ew", pady=(8, 0))
         self.curve_canvas.bind("<Configure>", lambda _event: self._draw_script_curve())
 
@@ -1834,7 +1819,7 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         ttk.Label(stats, textvariable=self.record_status, anchor="e").grid(row=0, column=2, sticky="e")
         ttk.Label(preview, textvariable=self.status, foreground="#555").grid(row=3, column=0, sticky="ew", pady=(4, 0))
 
-        row = 0
+        row = 1
         row = self._connection_controls(sidebar, row)
         row = self._quick_controls(sidebar, row)
         row = self._axis_limit_controls(sidebar, row)
@@ -1853,6 +1838,7 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         self._draw_script_curve()
         self._install_tooltips(self)
         self._localize_widget_tree(self)
+        self.main_panes.fit_initial_window()
 
     def _configure_style(self) -> None:
         style = ttk.Style(self)
@@ -4014,6 +4000,7 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
             self._analysis_preferences = AnalysisPreferences({key: analysis_defaults(key) for key in ("hybrid", "dance")}, defaults.tracker_mode)
             self._analysis_preferences.apply(self._analysis_variables())
             self.preview_tabs.select(self.output_tab)
+            self.main_panes.reset_width()
         finally:
             self._config_autosave_suspended = False
         self._save_config()
@@ -5062,7 +5049,8 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         canvas.delete("all")
         width = int(canvas["width"])
         height = int(canvas["height"])
-        pad = 24
+        scale = self.main_panes.scale
+        pad = round(24 * scale)
         try:
             low = max(0, min(9999, int(float(self.min_value.get()))))
             high = max(0, min(9999, int(float(self.max_value.get()))))
@@ -5089,8 +5077,9 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         canvas.delete("all")
         width = max(360, canvas.winfo_width() or int(canvas["width"]))
         height = int(canvas["height"])
-        left = 42
-        right = width - 52
+        scale = self.main_panes.scale
+        left = round(42 * scale)
+        right = width - round(52 * scale)
         row_h = height / 6.0
         active_axes = set(self._active_axes())
         for index, axis in enumerate(SIX_AXES):
@@ -5126,10 +5115,11 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         canvas.delete("all")
         width = max(360, canvas.winfo_width() or int(canvas["width"]))
         height = int(canvas["height"])
-        pad_l = 46
-        pad_r = 12
-        pad_t = 34
-        pad_b = 22
+        scale = self.main_panes.scale
+        pad_l = round(46 * scale)
+        pad_r = round(12 * scale)
+        pad_t = round(34 * scale)
+        pad_b = round(22 * scale)
         plot_w = max(1, width - pad_l - pad_r)
         plot_h = max(1, height - pad_t - pad_b)
         canvas.create_rectangle(0, 0, width, height, fill="#101418", outline="")
@@ -5180,14 +5170,18 @@ class OsrScreenApp(DeviceControls, GpuControls, tk.Tk):
         legend_x = pad_l
         for axis in active_axes:
             color = colors.get(axis, "#ffffff")
-            canvas.create_rectangle(legend_x, height - 15, legend_x + 10, height - 5, fill=color, outline="")
-            canvas.create_text(legend_x + 14, height - 10, text=axis, anchor="w", fill="#d8e0e6", font=("", 8, "bold"))
-            legend_x += 44
+            canvas.create_rectangle(legend_x, height - 15 * scale, legend_x + 10 * scale, height - 5 * scale, fill=color, outline="")
+            canvas.create_text(legend_x + 14 * scale, height - 11 * scale, text=axis, anchor="w", fill="#d8e0e6", font=("", 8, "bold"))
+            legend_x += 44 * scale
 
     def _save_config(self) -> None:
         self._analysis_preferences.remember(self._analysis_variables())
         self.config_model.extra["analysis_profiles"] = {key: dict(value) for key, value in self._analysis_preferences.profiles.items()}
         cfg = self.config_model
+        if self.main_panes.preferred_width is None:
+            cfg.extra.pop("sidebar_width_dip", None)
+        else:
+            cfg.extra["sidebar_width_dip"] = round(self.main_panes.preferred_width, 2)
         try:
             region = self._read_screen_region()
         except ValueError:
