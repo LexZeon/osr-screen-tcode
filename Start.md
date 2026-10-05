@@ -1,8 +1,17 @@
-# Start 2.0.1 / 启动 2.0.1
+# Start 2.0.2 / 启动 2.0.2
 
 ## English
 
-**Double-click [Start.cmd](Start.cmd)** and confirm **2.0.1** in the title. Start.md is the guide; if your editor opens the script as text, double-click Start.cmd in File Explorer. Source startup requires Python 3.10+. To run without Python, extract the entire [2.0.1 Windows package](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.0.1) and double-click its Start.cmd. Older 2.0.0 packages do not contain this fix.
+**Double-click [Start.cmd](Start.cmd)** and confirm **2.0.2** in the title. Start.md is the guide; if your editor opens the script as text, double-click Start.cmd in File Explorer. Source startup requires Python 3.10+. To run without Python, extract the entire [2.0.2 Windows package](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.0.2) and double-click its Start.cmd. Older packages do not contain the optional models below.
+
+**Optional Hybrid v2 models:** choose Hybrid v2 or Full/Half Travel, then find **v2 optional models (off by default)** in sidebar advanced settings or the start-confirmation dialog. In Analysis Preview, first click **+ Models**. Its bounded panel supports vertical/horizontal scrolling and reveals focused controls when using Tab.
+
+1. Keep both switches off for the original route. Try one at a time on the same clip before combining them.
+2. Use **Download** or **Select model** for the supported ONNX file, then enable **ViTTrack subject tracking**. It can run on CPU and first needs an independently identified subject.
+3. To try **NeuFlow v2**, download/select its separate ONNX model. Open **GPU settings**, explicitly enable GPU and select **CUDA (NVIDIA)**. Install the private runtime only if needed, and restart when prompted. This NeuFlow model does not support DirectML; RTM Pose can still use DirectML.
+4. Start with **Log only**. NeuFlow is called adaptively after ordinary motion evidence is insufficient. The preview shows model status; missing or failed models use the original route. Changing an active model option stops analysis so the next start can apply it consistently.
+
+Reset all defaults turns both model switches off; downloaded files remain available for later use. Models are not included in the source or Windows ZIP. They do not establish real depth/contact or extend the two-second estimate limit. See [2.0.2 validation and limitations](docs/Validation_2.0.2.md).
 
 **High-DPI controls:** drag the visible divider between the controls and preview. Width is saved in logical pixels and restored at the current display scale. If controls need more room, use the bottom horizontal scrollbar or Shift+wheel; normal wheel scrolls vertically without changing a combobox selection. Tab navigation brings the focused control into view. **Reset all defaults** also resets the divider to the measured default width. Initial window size follows the display scale and is capped by the launching monitor's work area. See the [update record](docs/Validation_2.0.1.md).
 
@@ -26,17 +35,26 @@ Test.22 first maintains subject anchor **A**, then an independently tracked obje
 
 ## 中文
 
-**双击 [Start.cmd](Start.cmd) 运行 2.0.1 主程序，核对窗口标题。** 如果编辑器只打开文件，请在文件资源管理器中双击同目录的 Start.cmd；Start.md 本身是说明文件。需要 Python 3.10+；已发布的 2.0.0 Windows 包尚不包含本次修复。
+**双击 [Start.cmd](Start.cmd) 运行 2.0.2 主程序，核对窗口标题。** 如果编辑器只打开文件，请在文件资源管理器中双击同目录的 Start.cmd；Start.md 本身是说明文件。源码需要 Python 3.10+，旧运行包不包含下面的可选模型功能。
+
+**混合 v2 可选模型：** 选择“混合分析 v2”或“全／半行程”后，在侧栏高级设置或启动确认框找到“v2 可选模型（默认关闭）”；分析预览中先点 **+ 模型**。该区域高度受限，可上下／横向滚动，按 Tab 切换时会显示当前控件。
+
+1. 两项关闭时使用原分析。建议先对同一片段分别测试，再决定是否同时开启。
+2. 点“下载／选择模型”准备受支持的 ONNX 文件，然后勾选“ViTTrack 主体跟踪”。可用 CPU，需先由原分析识别出主体。
+3. 使用 NeuFlow v2 前，下载／选择其单独提供的 ONNX 模型；打开“GPU 设置”，明确启用 GPU 并选择“CUDA（NVIDIA）”。需要时安装私有运行库，按提示重启。本次 NeuFlow 不支持 DirectML；RTM Pose 仍可使用 DirectML。
+4. 先用 Log only 测试。NeuFlow 仅在原运动证据不足时自适应调用；预览显示模型状态，缺失或失败时使用原分析。更改正在使用的模型选项会停止当前分析，下次开始时统一生效。
+
+恢复默认会关闭两个模型开关，已下载文件保留。模型不包含在源码或 Windows 压缩包中，也不代表真实深度／接触；缺测估算仍最多两秒。详见 [2.0.2 验证及局限](docs/Validation_2.0.2.md)。
 
 **高 DPI 控制栏：** 拖动控制区与预览之间的分隔栏调整宽度，栏宽按逻辑像素保存并按启动时的显示缩放恢复。较窄时用底部横向滚动条或 Shift＋滚轮；普通滚轮上下滚动，不会误改下拉框选项。按 Tab 切换到的控件会自动滚入视野。**恢复所有默认设置**同时重置栏宽。初始窗口按缩放比例和当前显示器可用区域确定大小。见[本次更新记录](docs/Validation_2.0.1.md)。
 
-这是源码目录的说明。想免装 Python，请下载 [2.0.1 发布页](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.0.1) 的 **Windows.zip**，完整解压后双击其中的 `Start.cmd` 或 exe，保留同目录 `_internal`。运行包的独立预览也可通过 `Pose-Preview-Lab/Start.cmd` 打开。每版源码与运行包分别留样，不能混用其他版本的 exe／内部文件。
+这是源码目录的说明。想免装 Python，请下载 [2.0.2 发布页](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.0.2) 的 **Windows.zip**，完整解压后双击其中的 `Start.cmd` 或 exe，保留同目录 `_internal`。运行包的独立预览也可通过 `Pose-Preview-Lab/Start.cmd` 打开。每版源码与运行包分别留样，不能混用其他版本的 exe／内部文件。
 
-正式版沿用 test.25 的分析／输出行为，并纳入经过验证的打包支持；见 [2.0.0 验证记录](docs/Validation_2.0.0.md)。
+2.0.2 在既有分析上加入默认关闭的可选模型，保留最终输出处理与便携打包方式；2.0.0 的历史基线见 [2.0.0 验证记录](docs/Validation_2.0.0.md)。
 
 **test.22 历史设置事故：** 当时开发检查曾意外覆盖测试版个人配置，未找到原配置备份。当时已设为项目默认值并使用 Log only；原连接信息、个人行程与偏好需要重新设置。这不是恢复原设置，事故及修正见 [test.22 说明](docs/Test_2.0.0_test22.md#本机验证中的配置事故)。
 
-1. 关闭旧程序，双击 Start.cmd，确认标题 **SR6/OSR6 Realtime Screen TCode v2.0.0**。本源码启动器需要 Python 3.10+；Windows 运行包已自带必要运行环境。
+1. 关闭旧程序，双击 Start.cmd，确认标题 **SR6/OSR6 Realtime Screen TCode v2.0.2**。本源码启动器需要 Python 3.10+；Windows 运行包已自带必要运行环境。
 2. 默认仍为混合分析 v2（推荐-非舞蹈），默认打开“输出监视”。先选 Log only，选屏幕区域或视频，再开始分析。
 3. “显示预览”打开 3D 模拟器，使用经过倍率、反向、联动和输出限制后的最终指令；“分析预览”显示同帧骨架或实际运动参考。最长边默认 640。
 4. 列表第一是全/半行程模式，第二是 RTM Pose 2D。选择 Pose 可看到下面三个开关，主界面、分析预览和启动确认共用保存设置；舞蹈与混合模式分别记忆。

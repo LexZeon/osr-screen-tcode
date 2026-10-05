@@ -25,6 +25,13 @@ STROKE_CYCLE_MODE = "全/半行程模式（基于混合分析）"
 
 
 def normalize_visual_settings(extra: dict) -> None:
+    # Opt-in experiments never become enabled merely because a legacy setting
+    # contains a truthy string (for example "false"). Model files stay external.
+    for model in ("vittrack", "neuflow"):
+        enabled = f"v2_{model}_enabled"
+        path = f"v2_{model}_model_path"
+        extra[enabled] = extra.get(enabled) is True
+        extra[path] = extra.get(path, "").strip() if isinstance(extra.get(path, ""), str) else ""
     if extra.get('v2_l0_reference') not in ('fusion', 'motion', 'center', 'interaction'):
         extra['v2_l0_reference'] = 'fusion'
     if extra.get("visual_processing_edge", 640) not in (320, 480, 640, 960, 1280):

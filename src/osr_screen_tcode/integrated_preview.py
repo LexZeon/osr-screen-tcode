@@ -20,9 +20,13 @@ class IntegratedPreview(ttk.Frame):
         self.photo = None
         self.t = app._dt
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(3, weight=1)
+        self.rowconfigure(4, weight=1)
+        # Keep model setup on the preview's single-column grid. The existing
+        # multi-column controls can have a wider natural minimum than a narrow
+        # pane, which must not enlarge this bounded scrolling viewport.
+        self.v2_model_controls = app._v2_model_controls(self, 0, bounded=True)
         controls = ttk.Frame(self, padding=(6, 4))
-        controls.grid(row=0, column=0, sticky="ew")
+        controls.grid(row=1, column=0, sticky="ew")
         controls.columnconfigure(3, weight=1)
         ttk.Label(controls, text=self.t("分析模式", "Analysis mode")).grid(row=0, column=0, sticky="w")
         self.mode_box = WideCombobox(controls, textvariable=app.tracker_mode, values=app._tracker_choices(), state="readonly")
@@ -57,19 +61,19 @@ class IntegratedPreview(ttk.Frame):
             widget.grid(row=3 + i // 2, column=(i % 2) * 2, columnspan=2, sticky="w", pady=2)
             self.switches.append(widget)
         self.details = tk.StringVar(value=self.t("选择屏幕区域或视频后开始分析", "Select a screen region or video, then start analysis"))
-        ttk.Label(self, textvariable=self.details, wraplength=620).grid(row=1, column=0, sticky="ew", padx=6)
+        ttk.Label(self, textvariable=self.details, wraplength=620).grid(row=2, column=0, sticky="ew", padx=6)
         self.headings = tk.StringVar()
-        ttk.Label(self, textvariable=self.headings, anchor="center").grid(row=2, column=0, sticky="ew", pady=3)
+        ttk.Label(self, textvariable=self.headings, anchor="center").grid(row=3, column=0, sticky="ew", pady=3)
         self.canvas = tk.Canvas(self, background="#111111", highlightthickness=0, width=640, height=300)
-        self.canvas.grid(row=3, column=0, sticky="nsew")
+        self.canvas.grid(row=4, column=0, sticky="nsew")
         self.canvas.bind("<Configure>", lambda _event: self.render())
         self.chart = tk.Canvas(self, height=150, background="#171b1d", highlightthickness=0)
-        self.chart.grid(row=4, column=0, sticky="ew", pady=(4, 0))
+        self.chart.grid(row=5, column=0, sticky="ew", pady=(4, 0))
         self.chart.bind("<Configure>", lambda _event: self.render_chart())
         ttk.Label(self, text=self.t(
             "画面尺度不是真实深度。图表为识别观测；输出监视为指令值，不是硬件反馈。",
             "Image scale is not depth. Charts show observations; the output monitor shows commands, not feedback."),
-            wraplength=620).grid(row=5, column=0, sticky="ew", padx=6, pady=4)
+            wraplength=620).grid(row=6, column=0, sticky="ew", padx=6, pady=4)
         self.refresh_mode()
 
     def refresh_mode(self):

@@ -92,6 +92,8 @@ class LabAnalyzer:
         self.tracker_mode = kwargs.get("tracker_mode", RTM_POSE_2D_MODE)
         self.output_mode = kwargs.get("output_mode", "L0 Only")
         self.pose = self.tracker_mode == RTM_POSE_2D_MODE
+        model_options = kwargs.pop('v2_model_options', None)
+        self.v2_model_options = dict(model_options or {}) if not self.pose else {}
         v2_pose = kwargs.pop("hybrid_v2_pose_enabled", False)
         self.pose_rotations = self.pose or (self.output_mode == "Six Axis" and v2_pose)
         self.settings = settings
@@ -135,7 +137,10 @@ class LabAnalyzer:
     def _reset_tracking(self):
         self.stabilizer = Stabilizer(self.settings.options)
         self.observations = ImageObservations()
-        self.motion = CameraRelativeMotion()
+        assist = getattr(getattr(self, 'motion', None), 'model_assist', None)
+        if assist is not None:
+            assist.reset()
+        self.motion = CameraRelativeMotion(self.v2_model_options, model_assist=assist)
         self.dominant = DominantMotion(adaptive_l0=True)
         self.frame_rotation = FrameRotation()
         self.secondary = SecondaryMotionFilter(self.positions)
@@ -191,7 +196,8 @@ class LabAnalyzer:
         rotations = {}
         hip_y = None
         if not self.pose_rotations:
-            observation, vectors = self.motion.update(gray, stamp)
+            observation, vectors = (self.motion.update(gray, stamp, frame)
+                if getattr(self.motion, 'model_assist', None) is not None else self.motion.update(gray, stamp))
             marked = frame.copy()
             pair = (frame, marked)
             if observation.values is not None:
@@ -272,7 +278,8 @@ class LabAnalyzer:
             if observation.center is not None:
                 cv2.drawMarker(pair[1], tuple(int(v) for v in observation.center), (240, 240, 240), cv2.MARKER_CROSS, 16, 2)
             if not self.pose:
-                observation, vectors = self.motion.update(gray, stamp)
+                observation, vectors = (self.motion.update(gray, stamp, frame)
+                    if getattr(self.motion, 'model_assist', None) is not None else self.motion.update(gray, stamp))
                 confidence = 1.0 if observation.values is not None else 0.0
                 if confidence:
                     self.positions.update(self.dominant.update(observation.values, stamp) or {})
@@ -473,6 +480,7 @@ def make_analyzer(*, visual_settings=VisualSettings(), hybrid_source=HYBRID_V2_M
     if mode in (HYBRID_V2_MODE, RTM_POSE_2D_MODE):
         return LabAnalyzer(settings=visual_settings, hybrid_source=hybrid_source, **kwargs)
     kwargs.pop("hybrid_v2_pose_enabled", None)
+    kwargs.pop('v2_model_options', None)
     # Leave the original hybrid L0 implementation and its processing untouched.
     if mode == HYBRID_MODE:
         kwargs["output_mode"] = "L0 Only"

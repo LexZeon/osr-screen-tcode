@@ -12,6 +12,33 @@ from .region_support import cells
 from .motion_tracking import _patch_errors
 
 
+def validated_flow_points(previous, gray, flow, reverse):
+    """Sample real forward/backward fields with the existing DIS safeguards."""
+    h, w = gray.shape
+    expected = (h, w, 2)
+    if previous.shape != gray.shape or min(h, w) < 24:
+        return np.empty((0, 2), np.float32), np.empty((0, 2), np.float32)
+    if (flow is None or reverse is None or flow.shape != expected or reverse.shape != expected
+            or not np.isfinite(flow).all() or not np.isfinite(reverse).all()):
+        raise ValueError('Invalid dense flow fields')
+    stride = max(5, int(np.ceil(np.sqrt(w*h/1200))))
+    yy, xx = np.mgrid[7:h-7:stride, 7:w-7:stride]
+    a = np.column_stack((xx.ravel(), yy.ravel())).astype(np.float32)
+    b = a+flow[yy.ravel(), xx.ravel()]
+    back = cv2.remap(reverse, b[:, 0:1], b[:, 1:2], cv2.INTER_LINEAR)[:, 0]
+    error = np.linalg.norm(b+back-a, axis=1)
+    image = previous.astype(np.float32)
+    contrast = np.maximum(0, cv2.blur(image*image, (9, 9))-cv2.blur(image, (9, 9))**2)
+    good = (np.isfinite(b).all(axis=1) & (error < .85)
+            & (contrast[yy.ravel(), xx.ravel()] > 16)
+            & np.all((b >= 5) & (b < (w-5, h-5)), axis=1))
+    a, b = a[good], b[good]
+    if len(a):
+        good = _patch_errors(previous, gray, a, b) < 20
+        a, b = a[good], b[good]
+    return a, b
+
+
 class DenseRegionFlow:
     """V1's DIS flow with explicit round-trip/appearance verification.
 
@@ -30,22 +57,10 @@ class DenseRegionFlow:
             return np.empty((0, 2), np.float32), np.empty((0, 2), np.float32)
         flow = self.forward.calc(previous, gray, None)
         reverse = self.backward.calc(gray, previous, None)
-        stride = max(5, int(np.ceil(np.sqrt(w*h/1200))))
-        yy, xx = np.mgrid[7:h-7:stride, 7:w-7:stride]
-        a = np.column_stack((xx.ravel(), yy.ravel())).astype(np.float32)
-        b = a+flow[yy.ravel(), xx.ravel()]
-        back = cv2.remap(reverse, b[:, 0:1], b[:, 1:2], cv2.INTER_LINEAR)[:, 0]
-        error = np.linalg.norm(b+back-a, axis=1)
-        image = previous.astype(np.float32)
-        contrast = np.maximum(0, cv2.blur(image*image, (9, 9))-cv2.blur(image, (9, 9))**2)
-        good = (np.isfinite(b).all(axis=1) & (error < .85)
-                & (contrast[yy.ravel(), xx.ravel()] > 16)
-                & np.all((b >= 5) & (b < (w-5, h-5)), axis=1))
-        a, b = a[good], b[good]
-        if len(a):
-            good = _patch_errors(previous, gray, a, b) < 20
-            a, b = a[good], b[good]
-        return a, b
+        try:
+            return validated_flow_points(previous, gray, flow, reverse)
+        except ValueError:
+            return np.empty((0, 2), np.float32), np.empty((0, 2), np.float32)
 
 
 def coherent_support(points, displacement, shape):

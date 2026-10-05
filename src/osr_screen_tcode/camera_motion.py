@@ -50,7 +50,14 @@ def same_scene_structure(previous, current):
 
 
 class CameraRelativeMotion:
-    def __init__(self):
+    def __init__(self, model_options=None, *, model_assist=None):
+        self.model_options = dict(model_options or {})
+        self.model_assist = model_assist
+        if self.model_assist is None and any(self.model_options.get(name+'_enabled') is True
+                                              for name in ('vittrack', 'neuflow')):
+            from .v2_model_assist import V2ModelAssist
+            self.model_assist = V2ModelAssist(self.model_options)
+        self.frame_bgr = None
         self.gray = None
         self.timestamp = None
         self.measured_at = None
@@ -100,26 +107,48 @@ class CameraRelativeMotion:
             self.dense_tracks = self.dense_flow.track(self.previous_gray, self.gray)
         return self.dense_tracks
 
+    def _model_points(self):
+        if self.model_assist is not None:
+            return self.model_assist.flow_points(self.previous_gray, self.gray)
+        return None
+
     def _dense_foreground(self, camera, w, h):
-        a, b = self._dense_points()
-        residual = b-(a @ camera[:, :2].T+camera[:, 2])
-        moving = np.linalg.norm(residual, axis=1) > .5
-        a, residual = a[moving], residual[moving]
-        good = coherent_support(a, residual, (h, w))
-        return a[good] if len(good) and good.mean() >= .65 else None
+        tracks = self._dense_points()
+        for attempt in range(2):
+            if tracks is None:
+                return None
+            a, b = tracks
+            residual = b-(a @ camera[:, :2].T+camera[:, 2])
+            moving = np.linalg.norm(residual, axis=1) > .5
+            a, residual = a[moving], residual[moving]
+            good = coherent_support(a, residual, (h, w))
+            if len(good) and good.mean() >= .65:
+                return a[good]
+            if attempt == 0:
+                tracks = self._model_points()
+        return None
 
     def _dense_box(self, camera, noise, selected, prior):
-        da, db = self._dense_points()
         if len(selected) == 0:
             return None
         low, high = (np.asarray(prior[:2]), np.asarray(prior[2:])) if prior else (selected.min(axis=0), selected.max(axis=0))
-        inside = np.all((da >= low) & (da <= high), axis=1)
-        # Keep genuine low-speed subject samples at reversals. Camera labels
-        # remain independent; initialization still needs a moving envelope.
-        if prior is None:
-            residual = db-(da @ camera[:, :2].T+camera[:, 2])
-            inside &= np.linalg.norm(residual, axis=1) > noise
-        return box_fit(da[inside], db[inside], camera, self.gray.shape, noise, prior=prior)
+        tracks = self._dense_points()
+        for attempt in range(2):
+            if tracks is None:
+                return None
+            da, db = tracks
+            inside = np.all((da >= low) & (da <= high), axis=1)
+            # Initialization still needs a moving envelope; camera labels
+            # remain independent for both ordinary and neural samples.
+            if prior is None:
+                residual = db-(da @ camera[:, :2].T+camera[:, 2])
+                inside &= np.linalg.norm(residual, axis=1) > noise
+            fitted = box_fit(da[inside], db[inside], camera, self.gray.shape, noise, prior=prior)
+            if fitted is not None:
+                return fitted
+            if attempt == 0:
+                tracks = self._model_points()
+        return None
 
     @staticmethod
     def _features(gray):
@@ -318,6 +347,8 @@ class CameraRelativeMotion:
             state = "holding"
         else:
             self.needs_reference = True
+            if self.model_assist is not None:
+                self.model_assist.reset_tracker()
             self.roi = None
             self.subject_origin = self.subject_box = None
             self.subject_corners = None
@@ -333,6 +364,8 @@ class CameraRelativeMotion:
             self.patch_focus = MotionFocus()
             self.interaction = InteractionPoint()
             if hard:
+                if self.model_assist is not None:
+                    self.model_assist.reset()
                 self.camera_source = ""
                 self.layers.reset()
                 self.long_layers.reset()
@@ -418,6 +451,14 @@ class CameraRelativeMotion:
         # Bound extra fitting even on a busy image. Always include the prior.
         masks = [preferred]+sorted((m for m in masks if m is not preferred),
                                     key=lambda m: int(m.sum()), reverse=True)[:7]
+        model_mask = self.model_assist.subject_mask(a, b) if self.model_assist is not None else None
+        if model_mask is not None:
+            # A large model box may include genuine background pixels. Those
+            # cannot outvote foreground merely because the box contains them.
+            residual = b-(a @ camera[:, :2].T+camera[:, 2])
+            model_mask &= np.linalg.norm(residual, axis=1) > self.region_tracks[2]
+        if model_mask is not None and model_mask.sum() >= 8:
+            masks.append(model_mask)
         if self.roi is not None:
             covered = any(overlap((*a[m].min(axis=0), *a[m].max(axis=0)), self.roi) >= .5
                           for m in masks)
@@ -443,7 +484,11 @@ class CameraRelativeMotion:
                 continue
             candidates.append(candidate)
             accepted.append(mask)
-        selected = self.region_focus.choose(candidates, stamp)
+        # The model proposes a matching region, not its motion. It must pass
+        # the same local fit and independent camera checks before competing.
+        # Confirmed stronger reciprocal regions retain their existing priority.
+        anchor = next((i for i, mask in enumerate(accepted) if mask is model_mask), None)
+        selected = self.region_focus.choose(candidates, stamp, anchor=anchor)
         self.focus_switched = self.region_focus.changed
         return preferred if selected is None else accepted[selected]
 
@@ -551,14 +596,32 @@ class CameraRelativeMotion:
                     return self.last, []
         return self._hold(stamp, state, background, camera_step)
 
-    def update(self, gray, timestamp):
+    def update(self, gray, timestamp, frame_bgr=None):
+        # Optional color inputs are local to this exact camera sample. Default
+        # operation performs no model import, copy or inference.
+        current = None
+        if self.model_assist is not None:
+            current = (cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR) if frame_bgr is None else frame_bgr)
+            if current.shape[:2] != gray.shape:
+                raise ValueError('Model frame and motion frame dimensions differ')
+        result = self._update(gray, timestamp, current)
+        if self.model_assist is not None:
+            self.reference = replace(self.reference, model_diagnostics=self.model_assist.snapshot(),
+                                     model_box=self.model_assist.current_box)
+        return result
+
+    def _update(self, gray, timestamp, frame_bgr=None):
         self.target_data = None
         if not math.isfinite(timestamp) or (self.timestamp is not None and timestamp <= self.timestamp):
             return self.last, []
         self.interaction.step = 0.
         if self.gray is None or self.gray.shape != gray.shape or timestamp-self.timestamp > .5:
-            self.__init__()
+            options, assist = self.model_options, self.model_assist
+            if assist is not None:
+                assist.reset()
+            self.__init__(options, model_assist=assist)
             self.gray, self.timestamp = gray.copy(), timestamp
+            self.frame_bgr = None if frame_bgr is None else frame_bgr.copy()
             self.measured_at = timestamp
             self.gray_history.append((self.gray, timestamp))
             return self._hold(timestamp, "calibrating")
@@ -590,6 +653,8 @@ class CameraRelativeMotion:
                                     tuple(self.values) if valid else None)
             return self.last, []
         previous = self.gray
+        previous_bgr = self.frame_bgr
+        self.frame_bgr = None if frame_bgr is None else frame_bgr.copy()
         self.previous_gray = previous
         self.dense_tracks = None
         measurement_dt = timestamp-self.measured_at
@@ -607,6 +672,11 @@ class CameraRelativeMotion:
             self.reason = "jump"
             self.counts = (0, 0, 0, 0)
             return self._hold(timestamp, "missing", hard=True)
+        if self.model_assist is not None:
+            if previous_bgr is None:
+                previous_bgr = cv2.cvtColor(previous, cv2.COLOR_GRAY2BGR)
+            prior = self.roi if self.subject_confirmed and not self.needs_reference else None
+            self.model_assist.begin(previous_bgr, frame_bgr, timestamp, prior)
         if self.last is not None and self.last.values is None and not self.needs_reference:
             recovered = self._recover_subject(timestamp)
             if recovered is not None:
@@ -635,11 +705,28 @@ class CameraRelativeMotion:
             self.foreground_points = None
         self.counts = (len(points), 0, 0, 0)
         self.reason = "features"
-        if len(points) < (4 if self.background_points is not None else 6):
+        enough = len(points) >= (4 if self.background_points is not None else 6)
+        neural_enabled = self.model_assist is not None and self.model_options.get('neuflow_enabled') is True
+        if not enough and not neural_enabled:
             return self._hold(timestamp, "missing")
         self.reason = "tracking"
         h, w = gray.shape
-        a, b, self.tracking_rescued = track_pair(previous, gray, points)
+        if enough:
+            a, b, self.tracking_rescued = track_pair(previous, gray, points)
+        else:
+            a = b = np.empty((0, 2), np.float32)
+        if neural_enabled and len(a) < max(12, len(points)*.55):
+            dense = self.model_assist.flow_points(previous, gray)
+            if dense is not None:
+                da, db = dense
+                # Keep sparse observations first and cap spatially distributed
+                # additions. A dense texture cannot provide unbounded votes.
+                if len(a):
+                    novel = np.min(np.linalg.norm(da[:, None]-a[None], axis=2), axis=1) > 4
+                    da, db = da[novel], db[novel]
+                stride = max(1, int(np.ceil(len(da)/384)))
+                a = np.concatenate((a, da[::stride])).astype(np.float32)
+                b = np.concatenate((b, db[::stride])).astype(np.float32)
         self.counts = (len(points), len(a), 0, 0)
         if len(points) >= 12 and len(a) < max(4, len(points)*.1):
             if same_scene_structure(previous, gray):
@@ -901,6 +988,8 @@ class CameraRelativeMotion:
             state = "ready"
             self.subject_confirmed = True
         self.roi, self.last_subject = tuple(float(v) for v in box), timestamp
+        if self.model_assist is not None and (changed_region or self.focus_switched):
+            self.model_assist.reset_tracker()
         self.foreground_points = support_seeds(fb)
         self.needs_reference = False
         self.loss_since = None

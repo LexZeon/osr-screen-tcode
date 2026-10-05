@@ -29,8 +29,9 @@ def _fingerprint(path: Path) -> bytes | None:
 
 @contextmanager
 def isolated_settings(report: dict):
-    # Do not import app, preview or gpu_runtime above this boundary: they copy
-    # these module constants at import time.
+    # App/preview imports belong inside this boundary. The explicit NeuFlow
+    # diagnostic alone selects an existing private GPU runtime beforehand;
+    # it does not install libraries or save personal settings.
     from . import config
 
     personal = config.CONFIG_PATH
@@ -113,6 +114,126 @@ def _check_model(model: Path, report: dict) -> None:
     if backend.device != "cpu":
         raise RuntimeError("Model diagnostic unexpectedly selected a GPU")
     report["checks"].append("external_pose_model_cpu_inference")
+
+
+def _prepare_v2_gpu_runtime() -> None:
+    # Resolve the user's already-installed CUDA overlay while APP_DIR still
+    # points to it and before dependency imports lock in an ORT installation.
+    # Scope the environment override; do not alter the user's backend choice.
+    with patch.dict(os.environ, {"OSR_TCODE_GPU_BACKEND": "cuda"}):
+        from .gpu_runtime import activate_local_runtime
+
+        activate_local_runtime()
+
+
+def _validate_window_origin(origin) -> tuple[int, int]:
+    from .screen_geometry import screen_monitors
+
+    if len(origin) != 2 or any(type(value) is not int for value in origin):
+        raise ValueError("--window-origin requires two signed integer pixel coordinates")
+    x, y = origin
+    if not any(monitor["left"] <= x < monitor["left"] + monitor["width"]
+               and monitor["top"] <= y < monitor["top"] + monitor["height"]
+               for monitor in screen_monitors()):
+        raise ValueError("--window-origin must be on an available monitor")
+    return x, y
+
+
+@contextmanager
+def _live_window_origin(origin):
+    """Place only explicitly requested diagnostic roots, never normal startup.
+
+    Tk's negative offsets are edge-relative; the existing native positioning
+    helper instead uses signed physical desktop coordinates. Placing the root
+    at its first geometry request lets the normal monitor-fitting code size it
+    for that monitor. No monitor layout is stored or hardcoded.
+    """
+    if origin is None:
+        yield
+        return
+    x, y = _validate_window_origin(origin)
+    import tkinter as tk
+    from .screen_geometry import move_physical_window
+
+    original = tk.Tk.geometry
+    placing = False
+
+    def positioned(window, new_geometry=None):
+        nonlocal placing
+        result = original(window, new_geometry)
+        if new_geometry is not None and not placing:
+            placing = True
+            try:
+                move_physical_window(window, x, y)
+            finally:
+                placing = False
+        return result
+
+    with patch.object(tk.Tk, "geometry", positioned):
+        yield
+
+
+def _check_vittrack(model: Path, report: dict) -> None:
+    import numpy as np
+    from .v2_models import ViTTrackBackend
+
+    rng = np.random.default_rng(19)
+    patch_image = rng.integers(0, 255, (80, 80, 3), dtype=np.uint8)
+    background = np.full((240, 400, 3), 70, dtype=np.uint8)
+    first = background.copy()
+    first[80:160, 100:180] = patch_image
+    tracker = ViTTrackBackend(str(model), device="cpu")
+    initialized = tracker.initialize(first, (100, 80, 80, 80))
+    if not initialized.valid:
+        raise RuntimeError("ViTTrack diagnostic initialization failed: " + initialized.reason)
+    timings, confidence, errors = [], [], []
+    for displacement in (3, 6, 9, 12, 15):
+        frame = background.copy()
+        frame[80:160, 100 + displacement:180 + displacement] = patch_image
+        started = time.perf_counter()
+        tracked = tracker.update(frame)
+        timings.append(time.perf_counter() - started)
+        if not tracked.valid or tracked.confidence < .5 or tracked.bbox_xywh is None:
+            raise RuntimeError("ViTTrack did not retain the known moving subject")
+        x, y, width, height = tracked.bbox_xywh
+        error = float(np.linalg.norm((x + width / 2 - 140 - displacement, y + height / 2 - 120)))
+        if error > 12:
+            raise RuntimeError("ViTTrack returned an incorrect subject location")
+        confidence.append(tracked.confidence)
+        errors.append(error)
+    report["vittrack"] = {"provider": tracker.provider, "image_shape": [240, 400, 3],
+                          "tracked_frames": len(timings), "frame_seconds": timings,
+                          "minimum_confidence": min(confidence), "maximum_center_error_pixels": max(errors)}
+    report["checks"].append("external_vittrack_model_cpu_tracking")
+
+
+def _check_neuflow(model: Path, report: dict) -> None:
+    import numpy as np
+    from .v2_models import NeuFlowBackend
+
+    rng = np.random.default_rng(17)
+    first = rng.integers(0, 256, (384, 640, 3), dtype=np.uint8)
+    second = np.roll(first, 8, axis=1)
+    backend = NeuFlowBackend(str(model), device="cuda", require_gpu=True)
+    timings, observed = [], []
+    for _ in range(2):
+        started = time.perf_counter()
+        flow = backend.infer(first, second, backward=True)
+        timings.append(time.perf_counter() - started)
+        if not flow.valid or backend.provider != "CUDAExecutionProvider":
+            raise RuntimeError("NeuFlow CUDA diagnostic failed: " + flow.reason)
+        for field, expected in ((flow.forward, (8., 0.)), (flow.backward, (-8., 0.))):
+            if field is None or field.shape != (384, 640, 2) or not np.isfinite(field).all():
+                raise RuntimeError("NeuFlow returned an invalid flow field")
+            center = field[48:-48, 48:-48]
+            error = np.linalg.norm(center - np.asarray(expected), axis=2)
+            if float(np.percentile(error, 95)) > 1.5:
+                raise RuntimeError("NeuFlow did not reproduce the known frame translation")
+            observed.append(float(np.percentile(error, 95)))
+    report["neuflow"] = {"provider": backend.provider, "image_shape": [384, 640, 3],
+                         "flow_shape": [384, 640, 2], "pair_seconds": timings,
+                         "maximum_95th_percentile_error_pixels": max(observed)}
+    report["checks"].append("external_neuflow_model_cuda_bidirectional_flow")
 
 
 def _check_live(seconds: float, language: str, model: Path | None, report: dict) -> None:
@@ -216,12 +337,30 @@ def _check_live(seconds: float, language: str, model: Path | None, report: dict)
 
 
 def _perform_checks(args, report: dict) -> None:
-    with isolated_settings(report):
-        _check_dependencies(report)
-        if args.model is not None:
-            _check_model(args.model, report)
-        if args.live_seconds is not None:
-            _check_live(args.live_seconds, args.language, args.model, report)
+    from . import config
+
+    personal = config.CONFIG_PATH
+    before = _fingerprint(personal)
+    neuflow_model = getattr(args, "neuflow_model", None)
+    vittrack_model = getattr(args, "vittrack_model", None)
+    try:
+        if neuflow_model is not None:
+            _prepare_v2_gpu_runtime()
+        with isolated_settings(report):
+            _check_dependencies(report)
+            if args.model is not None:
+                _check_model(args.model, report)
+            if vittrack_model is not None:
+                _check_vittrack(vittrack_model, report)
+            if neuflow_model is not None:
+                _check_neuflow(neuflow_model, report)
+            if args.live_seconds is not None:
+                with _live_window_origin(getattr(args, "window_origin", None)):
+                    _check_live(args.live_seconds, args.language, args.model, report)
+    finally:
+        report["personal_settings_unchanged"] = _fingerprint(personal) == before
+        if not report["personal_settings_unchanged"]:
+            raise RuntimeError("Personal settings changed during the runtime check")
 
 
 def _write_report(output: Path, report: dict) -> None:
@@ -252,13 +391,27 @@ def run_runtime_check(argv: list[str]) -> bool:
         parser = _Arguments(prog="--runtime-check", add_help=False)
         parser.add_argument("output", type=Path)
         parser.add_argument("--model", type=Path)
+        parser.add_argument("--vittrack-model", type=Path)
+        parser.add_argument("--neuflow-model", type=Path)
         parser.add_argument("--live-seconds", type=float)
+        parser.add_argument("--window-origin", nargs=2, type=int, metavar=("X", "Y"))
         parser.add_argument("--language", choices=("zh", "en"), default="en")
         args = parser.parse_args(argv[1:])
         if args.live_seconds is not None and not 2 <= args.live_seconds <= 30:
             raise ValueError("--live-seconds must be between 2 and 30")
+        if args.window_origin is not None:
+            if args.live_seconds is None:
+                raise ValueError("--window-origin requires --live-seconds")
+            args.window_origin = _validate_window_origin(args.window_origin)
         if args.model is not None:
             args.model = args.model.expanduser().resolve()
+        for name in ("vittrack_model", "neuflow_model"):
+            model = getattr(args, name)
+            if model is not None:
+                model = model.expanduser().resolve()
+                if model.suffix.lower() != ".onnx" or not model.is_file():
+                    raise ValueError("Optional v2 diagnostics require an existing ONNX file")
+                setattr(args, name, model)
         _perform_checks(args, report)
         report["status"] = "passed"
         exit_code = 0

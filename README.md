@@ -2,13 +2,19 @@
 
 ## English
 
-**2.0.1** fixes clipped controls on high-DPI displays. Drag the divider between controls and preview to adjust the saved width; narrow panes support horizontal scrolling and Shift+wheel. Start this source with [Start.cmd](Start.cmd), or use the matching [2.0.1 Windows package](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.0.1). Older 2.0.0 packages do not contain this fix; see the [change and validation record](docs/Validation_2.0.1.md).
+**2.0.2** adds two optional models to **Hybrid v2** and its **Full/Half Travel** mode: **ViTTrack subject tracking** and **NeuFlow v2 optical-flow assistance**. Both are **off by default**, independently selectable, and restored to off by Reset all defaults. The analysis preview, sidebar advanced settings and start-confirmation dialog share these choices. Start this source with [Start.cmd](Start.cmd), or use the matching [2.0.2 Windows package](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.0.2). See the [changes and validation](docs/Validation_2.0.2.md).
 
-**SR6/OSR6 Realtime Screen TCode 2.0.1** retains 2.0.0's analysis/output behavior and portable-packaging support. The application remains a visual-analysis and robot-arm simulation experiment with existing SR6/OSR6 TCode serial/BLE transport. **Robot-arm joint mapping, inverse kinematics, collision checking and physical feedback have not been implemented or verified.**
+ViTTrack supports CPU and proposes a persistent subject region after ordinary analysis identifies it. NeuFlow is an adaptive helper: ordinary sparse/DIS measurements are tried first, and neural flow is requested when that evidence is insufficient. **NeuFlow requires enabled NVIDIA CUDA; this exported model does not support DirectML.** Missing, incompatible or failed models retain the original analysis route. RTM Pose's existing DirectML support remains separate. Select **Download** or **Select model**, and use **GPU settings** when needed; checking a model never installs dependencies automatically. Models are optional downloads, excluded from the source and Windows ZIPs.
+
+These models are experiments, not a guaranteed improvement for every clip. Model box centers never become L0 measurements, and neural correspondences still need image support and independent camera validation. Hybrid 1, direct Pose, final output processing and the two-second estimate limit retain their existing roles. The application remains a visual-analysis and robot-arm simulation experiment with existing SR6/OSR6 TCode serial/BLE transport. **Robot-arm joint mapping, inverse kinematics, collision checking and physical feedback have not been implemented or verified.**
+
+The **2.0.1 high-DPI fix** is retained: drag the divider between controls and preview to adjust its saved width; narrow panes support horizontal scrolling and Shift+wheel.
+
+In Analysis Preview, use **+ Models** to expand optional model setup. This section starts collapsed and scrolls within a bounded area, preserving natural-size controls on narrow or high-DPI displays. The same settings remain available in the sidebar and start dialog.
 
 Other commercial-device adapters, discovery and custom bindings have been removed; legacy settings migrate to Log only. V2 includes persistent subject tracking and bounded brief-loss continuity, shared with confirmed quarter/half/full travel. RTM 2D base L0 output is multiplied by ten about center, before user travel and output constraints; this applies to live/record/export, not pose observations or v2.
 
-Download the **Windows.zip** asset from the [2.0.1 release](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.0.1), extract the entire folder and double-click its **Start.cmd** or exe. Keep `_internal` beside the exe; no separate Python installation is required. Its `Pose-Preview-Lab/Start.cmd` also uses the bundled runtime. For source development, the repository's **[Start.cmd](Start.cmd)** still requires Python 3.10+; [Start.md](Start.md) explains source startup. Begin with **Log only**. A legacy center command is not a validated safe robot-arm pose.
+Download the **Windows.zip** asset from the [2.0.2 release](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.0.2), extract the entire folder and double-click its **Start.cmd** or exe. Keep `_internal` beside the exe; no separate Python installation is required. Its `Pose-Preview-Lab/Start.cmd` also uses the bundled runtime. For source development, the repository's **[Start.cmd](Start.cmd)** still requires Python 3.10+; [Start.md](Start.md) explains source startup. Begin with **Log only**. A legacy center command is not a validated safe robot-arm pose.
 
 **Output Monitor** is the initial tab. **Show Preview** opens the bundled reference simulator, which receives final output after all host travel gains, coupling, inversion, limits and speed caps. **Analysis Preview** retains the paired sampled frames. Neither display is hardware feedback.
 
@@ -24,7 +30,15 @@ Thanks to **DK**, **机械纪元**, and **“电话机”** for guidance, volunt
 
 ## 中文
 
-**2.0.1** 修复高 DPI 屏幕控制栏显示不全：拖动控制区与预览之间的分隔栏可调整并保存宽度，较窄时支持底部横向滚动条和 Shift＋滚轮。通过源码目录 [Start.cmd](Start.cmd) 或配套的 [2.0.1 Windows 包](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.0.1) 启动；旧版 2.0.0 运行包不包含此修复，详见[更新与验证记录](docs/Validation_2.0.1.md)。
+**2.0.2** 为**混合分析 v2** 及共用其分析的**全／半行程模式**增加两个可选模型：**ViTTrack 主体跟踪**和 **NeuFlow v2 光流辅助**。两项均**默认关闭**，可分别开启，恢复默认会重新关闭。分析预览、侧栏高级设置和启动确认框同步保存这些选项。通过源码目录 [Start.cmd](Start.cmd) 或配套的 [2.0.2 Windows 包](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.0.2) 启动；详见[改动与验证记录](docs/Validation_2.0.2.md)。
+
+ViTTrack 可使用 CPU，在原分析确认主体后辅助保持主体区域。NeuFlow 先保留原有稀疏／DIS 光流，仅在证据不足时请求神经网络补充；**需启用 NVIDIA CUDA，本次导出的模型不支持 DirectML**。RTM Pose 原有 DirectML 支持保留。通过“下载／选择模型”准备文件，通过“GPU 设置”配置运行库；勾选模型不会自动安装依赖。模型缺失、不兼容或失败时使用原分析，模型不放入源码和 Windows 压缩包。
+
+这些模型为实验辅助，不能保证所有片段都更好。跟踪框中心不会直接成为 L0 测量，神经光流仍需真实像素和独立运镜验证；混合 v1、直接 Pose、最终输出处理和最多两秒估算保留原有职责。
+
+继续保留 **2.0.1 高 DPI 修复**：拖动控制区与预览之间的分隔栏调整并保存宽度，较窄时使用底部横向滚动条或 Shift＋滚轮。
+
+分析预览中点 **+ 模型** 展开可选模型设置。默认收起，展开后在高度受限的区域内滚动；窄窗口／高 DPI 下保留控件原有字号。侧栏和启动确认框仍可设置同样的选项。
 
 不带 RTM 的 v2 对 L1/L2/R0/R1/R2 只跟随确认后的明显变化与方向反转，过滤小幅高频噪声并平滑输出；L0 不受此过滤影响。
 

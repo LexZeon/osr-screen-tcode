@@ -2,9 +2,14 @@ SR6/OSR6 Realtime Screen TCode 版本日志
 
 版本号规则：
 - 每次发给别人使用前，都要更新这里。
-- 小修复递增最后一位，例如 0.9.1。
-- 功能明显变化递增中间位，例如 0.10.0。
-- 当前版本：2.0.1。
+- 按用户当前要求，后续每个实际程序更新递增最后一位，并在验证后上传 GitHub。
+- 当前版本：2.0.2。
+
+2.0.2 - 2026-10-04
+- English: add independent, default-off ViTTrack subject tracking and NeuFlow v2 optical-flow assistance for Hybrid v2 and Full/Half Travel. Original tracking is used first; neural flow supplements insufficient evidence. Pixel/camera validation and the two-second estimate limit remain in force.
+- English: add bilingual model selection/download/cancellation, checksum verification, saved options and reset defaults. ViTTrack uses CPU; this NeuFlow model requires NVIDIA CUDA. Models are separate downloads, excluded from source/Windows ZIPs. See docs/Validation_2.0.2.md for actual results and limitations.
+- 混合 v2 与全／半行程加入独立可选的 ViTTrack 主体跟踪、NeuFlow v2 光流辅助，默认全部关闭；原跟踪优先，证据不足时才补充神经光流。主体框不直接转换为行程，像素与运镜验证及最多两秒估算继续保留。
+- 中英文模型选择、下载、取消、校验、设置保存和恢复默认同步。ViTTrack 可用 CPU；当前 NeuFlow 模型需要 NVIDIA CUDA。模型独立下载，不放入源码／Windows ZIP；真实模型、完整回归及运行包验证边界见 docs/Validation_2.0.2.md。
 
 2.0.1 - 2026-10-02
 - English: fix clipped controls on high-DPI displays with natural content sizing and a draggable divider. Save its width in device-independent units; reset defaults restores automatic sizing. Overflow scrolling and Tab navigation keep controls reachable, and mouse-wheel scrolling no longer changes combobox selections accidentally.

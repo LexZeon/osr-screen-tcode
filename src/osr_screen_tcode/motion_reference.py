@@ -59,6 +59,8 @@ class MotionReference:
     estimate_elapsed: float = 0.
     estimate_basis: tuple = ()
     continuation_kind: str = ''  # rhythm / velocity / weak; output provenance
+    model_diagnostics: tuple = ()  # optional model status; never observations
+    model_box: tuple | None = None  # current ViTTrack proposal, not axis origin
 
 
 AXIS_COLORS = ((235, 220, 75), (255, 166, 214), (106, 200, 255))  # BGR
@@ -473,6 +475,24 @@ def reference_lines(reference, translate, *, compact=False):
                      if reference.direction_confirmed else t('目标远近待确认；保留稳定方向', 'Near/far unconfirmed; stable polarity retained'))
     if reference.support_groups:
         lines.append(t(f'多点采样：{len(reference.support_groups)} 组有效', f'Multi-point support: {len(reference.support_groups)} groups'))
+    model_states = {
+        'waiting': t('等待参考', 'waiting for reference'),
+        'candidate': t('候选区域', 'candidate region'),
+        'verified': t('像素验证通过', 'pixels verified'),
+        'rejected': t('本帧未采用', 'not used this frame'),
+        'missing': t('模型未就绪；使用原分析', 'model missing; original analysis'),
+        'failed': t('模型失败；使用原分析', 'model failed; original analysis'),
+        'gpu_required': t('需要可用 GPU；使用原分析', 'GPU required; original analysis'),
+        'standby': t('待命；原分析有效时不推理', 'Standby; original analysis first'),
+        'cuda_required': t('此模型需要 NVIDIA CUDA；使用原分析', 'NVIDIA CUDA required; original analysis'),
+    }
+    for diagnostic in reference.model_diagnostics:
+        name = 'ViTTrack' if diagnostic.name == 'vittrack' else 'NeuFlow v2'
+        status = model_states.get(diagnostic.state, model_states['failed'])
+        line = f'{name}: {status} · {diagnostic.milliseconds:.1f} ms'
+        if diagnostic.name == 'neuflow' and diagnostic.state == 'verified':
+            line += t(f' · {diagnostic.samples} 点', f' · {diagnostic.samples} points')
+        lines.append(line)
     brief[0] = lines[0]
     brief.extend(lines[summary_start:])
     return brief if compact else lines

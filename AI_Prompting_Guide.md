@@ -1,10 +1,20 @@
 # AI Prompting Guide
 
-## Current update: 2.0.1 / 当前更新
+## Current update: 2.0.2 / 当前更新
 
-High-DPI control-sidebar fix based on the published 2.0.0 source. Read `docs/Validation_2.0.1.md`. Main panes use `ui_layout.py`: natural content width, draggable divider, overflow scrolling, focus visibility and pane-specific wheel handling. Only an explicitly dragged width is saved in `extra.sidebar_width_dip`; factory reset removes it. Preserve physical capture coordinates and all analysis/output logic. The user explicitly requested upload after the fix, authorizing this 2.0.1 source/Windows release. Future releases need new authorization. Official 2.0.0 assets and version archives remain unchanged.
+Read `docs/Validation_2.0.2.md` and verify Git/release state before claiming publication. Version 2.0.2 adds independently selectable **ViTTrack** and **NeuFlow v2** observations to Hybrid v2 and Full/Half Travel, both **off by default**. `v2_model_assets.py` pins model provenance, byte size and SHA-256; `v2_models.py` handles lazy inference; `v2_model_assist.py` only proposes image evidence for the existing camera/subject validators. `camera_motion.py` tries ordinary sparse/DIS evidence first and requests neural flow adaptively when needed. A model box center is not a displacement sample, and model diagnostics are not observations. Direct Pose (including its L0 blend) and Hybrid 1 must not silently activate these options. Missing/failed models retain the original route, and estimates still expire within two seconds.
 
-基于正式 2.0.0 的高 DPI 控制栏修复，当前为 2.0.1 修复版。布局位于 `ui_layout.py`，按实际内容宽度显示，可拖动分隔、横向滚动及自动显示键盘焦点；滚轮不会误改栏内下拉框选项。手动栏宽以逻辑像素保存，恢复默认时清除。采集物理坐标、分析与输出算法保留；用户已要求“做完也上传”，授权本轮 2.0.1 配套源码／Windows 发布；不自动沿用到以后版本。
+Keep the four `extra.v2_*` enable/path settings synchronized across save/load/defaults, analysis preview, advanced sidebar and the start dialog. Workers receive a plain snapshot, including shared GPU preferences; never read Tk variables from new model workers. Download only after an explicit download action, use the non-dropping control queue for completion, and reject stale results after reset/cancel or a later file choice. ViTTrack can use CPU. NeuFlow requires explicitly enabled **NVIDIA CUDA**; its exported graph failed actual DirectML loading, so do not attempt it there or fall through to slow CPU inference. Existing RTM Pose DirectML remains supported. Models/GPU libraries remain outside source and Windows ZIPs; the separately downloadable ONNX model retains upstream notices and reproducible export provenance in `tools/export_neuflow_v2.py`.
+
+Analysis Preview's **+ Models** group defaults collapsed, on its own single-column row. It reuses `ControlSidebar` for natural-width controls and focus/scroll access within a height cap of 140 DIP or 22% of the preview, whichever is smaller. Do not put this viewport inside the legacy multi-column controls grid: its minimum columns can extend beyond the actual narrow preview. The sidebar/start dialog retain their existing scrolling surfaces. Export-only PyTorch CPU 2.6 and ONNX 1.17 dependencies were installed in fresh temporary environments; the formal shared Python was not modified, and normal application use needs neither export package.
+
+**Ongoing publication authorization (2026-10-04):** the user instructed that every completed program-update version increments the patch number and is uploaded to GitHub: 2.0.2, 2.0.3, etc. This overrides older per-release-approval statements below. Verify, commit and publish matching source/Windows assets and preserve paired local samples; public notes are English first, then Chinese. Preserve old refs/assets and the formal environment. Research-only and documentation-only work does not create an artificial program version. Do not rebuild historical tests merely to fill archive gaps. Check later user scope changes before publication.
+
+当前 2.0.2 为混合 v2／全半行程加入可分别选择的 ViTTrack、NeuFlow v2，均默认关闭。先读 `docs/Validation_2.0.2.md`，再核对 Git／实际发布状态。原稀疏／DIS 光流优先，证据不足时才请求神经光流；主体框中心不得直接成为 L0 位移，模型诊断不得当作观测，直接 Pose／混合 v1 不得隐式启用这些模型。GPU 设置与 RTM 共用，但 NeuFlow 本次仅允许 NVIDIA CUDA；DirectML 实际加载失败，不尝试该模型，也不能退回耗时 CPU 推理。RTM 原有 DirectML 保留。主界面／弹窗、保存／默认、中英文同步，下载完成用可靠事件队列，拒绝过期回调；源码／Windows 包不含模型或可下载运行库。真实深度、接触、硬件映射仍未验证，缺测估算最多两秒。
+
+分析预览的 **+ 模型** 默认收起，单独放在预览的单列布局；复用 `ControlSidebar` 保留原字号及横纵滚动／焦点可达性，高度上限为 140 DIP 与预览高度 22% 中较小者。不要重新放进旧多列控件网格，否则列最小宽度会使滚动视口本身超出窄预览。侧栏／启动框沿用现有滚动区域。导出专用 PyTorch CPU 2.6 和 ONNX 1.17 仅装入新的临时环境，正式共享 Python 未改；普通用户运行软件不需要这两个导出依赖。
+
+用户 2026-10-04 已持续授权：每次完成实际程序更新就递增最小版本号，并验证、提交、上传 GitHub，沿用源码／Windows 配套包及本地成对留样；此条覆盖下方旧的逐次授权限制。纯调研／说明不单独升版本，不补打包历史 test，旧标签、附件、正式环境与个人设置保留。2.0.1 的高 DPI 布局修复继续保留，物理采集坐标不变。
 
 Without RTM, v2 secondary axes follow confirmed significant motion/reversals and produce smooth output; this filter never changes L0.
 
@@ -65,7 +75,7 @@ Without RTM, v2 secondary axes follow confirmed significant motion/reversals and
 - `endpoint_slowdown.py` changes final arrival times ONLY, never target coordinates. Main and startup dialog default on with distance 10%, range 1–50%. `tcode.py` extends I times after gains/limits/coupling; the recorder extends final script timestamps with the same approach rule. Keep exact simulator sink-command forwarding, default/save/reset and both languages synchronized. Exported timing may drift from the original video; manual/emergency centering bypasses this layer.
 - V2 accepts sparse but spatially supported background features and moving subjects near edges. Keep camera-only rejection tests for both sparse and blurred backgrounds. `MotionReference.reason/counts` explain insufficient evidence; do not fabricate local motion on flat or inseparable images.
 
-- Current local source test: `2.0.0-test.24`; historical published BETA is `2.0.0-test.3`, formal release is `1.1.2`. Test.23 verified the v1.1.2 tag read-only; no remote release was updated. Current scope: visual analysis and robot-arm simulation experiments, not verified robot-arm control.
+- Current source version: `2.0.2`; verify the actual branch/tag/release before reporting publication. The test.24/test.3/1.1.2 version statements are historical. Current scope remains visual analysis and robot-arm simulation experiments, not verified robot-arm control.
 - Test.9 uses `camera_motion.py` for camera-relative local movement. Do not restore whole-frame motion as the v2 control input. Missing independent background/region evidence must not become camera-driven motion. `dominant_motion.py` enables confirmed-stroke calibration only on this compensated path; it does not change user presets or auxiliary observations.
 - `motion_reference.py` snapshots the actual ROI/selected vectors/background points for in-image rendering. V1 only adds diagnostics; preserve its recorded numerical regression. Recalibrate clears reference history in both hybrid versions. Keep notes readable without obscuring the right reference image.
 - `pose_output.rtm_l0_amplitude` applies dance L0 ×10 once, about center, for both axis modes and shared live/record/export routing. Apply only to tracker mode RTM Pose 2D, not v2 with pose rotation assistance. Keep pose observations and the final simulator sink-command path unchanged.
@@ -92,7 +102,7 @@ Use this guide when asking an AI coding assistant to continue work on **SR6/OSR6
 
 - Project name: SR6/OSR6 Realtime Screen TCode.
 - Platform: Windows desktop app.
-- Current formal version: v1.1.2.
+- Current source version: 2.0.2; verify Git and the release before claiming publication.
 - Main purpose: read a selected screen region in realtime, analyze visible motion with low latency, and output TCode to OSR/SR6/OSR6-compatible devices through USB serial or BLE.
 - Important stable feature: L0 output is the most important stable path. Do not rewrite the formal L0 core unless explicitly requested.
 - Experimental area: RTM Pose 2D dance analysis, optical-flow assist, Kalman fusion, and six-axis motion quality.
@@ -105,7 +115,7 @@ Do not rewrite the whole project. First read the existing source, then make the 
 Keep L0 stable unless I explicitly ask to change it.
 If UI text changes, update both English and Chinese.
 If settings change, update save/load/default behavior.
-For test versions, update source and Start.cmd behavior only; do not package unless I ask.
+For each completed program update, follow the standing patch-increment and GitHub publication authorization. Research-only work does not bump the program version.
 For formal releases, update changelog, README/manuals when needed, build the Windows portable folder and zip, and confirm the zip does not include .git, caches, local models, or private paths.
 After finishing, tell me what changed, which files changed, how it was verified, risks, and what to do next.
 ```
@@ -141,6 +151,7 @@ After finishing, tell me what changed, which files changed, how it was verified,
 
 ## Test Version Rules
 
+- These historical intermediate-test rules apply only when the user specifically requests an unpublished test; the standing patch-version publication instruction governs completed updates.
 - Test versions are for quick iteration.
 - Usually no portable zip is needed for test versions.
 - Keep a one-click source launcher such as `Start.cmd`.
@@ -151,8 +162,8 @@ After finishing, tell me what changed, which files changed, how it was verified,
 For a formal release, prepare:
 
 - Windows portable release folder with exe, `Start.cmd`, required dependencies, README, quick start, manuals, changelog, license, and acknowledgements.
-- Windows zip named with the approved version, for example `SR6-OSR6-Realtime-Screen-TCode-v2.0.0-Windows.zip` (future formal build).
-- Source zip named with the approved version, for example `SR6-OSR6-Realtime-Screen-TCode-v2.0.0-Source.zip` (future formal build).
+- Windows zip named with the current patch version, for example `SR6-OSR6-Realtime-Screen-TCode-v2.0.2-Windows.zip`.
+- Source zip named with the same patch version, for example `SR6-OSR6-Realtime-Screen-TCode-v2.0.2-Source.zip`.
 - No `.git`, cache folders, local privacy paths, model files, `.onnx` files, or development build leftovers in the zips.
 - Extract-and-run startup check for the Windows zip when packaging has changed.
 
@@ -182,7 +193,7 @@ For a formal release, prepare:
 
 - 项目名称：SR6/OSR6 Realtime Screen TCode。
 - 平台：Windows 桌面软件。
-- 当前正式版本：v1.1.2。
+- 当前源码版本：2.0.2；报告发布状态前核对实际 Git 和 Release。
 - 核心用途：实时读取用户框选的屏幕区域，低延迟分析画面运动，并通过 USB 串口或 BLE 向 OSR/SR6/OSR6 兼容设备输出 TCode。
 - 重要稳定功能：L0 输出是当前最重要、最稳定的路径。除非明确要求，不要重写正式版 L0 核心逻辑。
 - 实验方向：RTM Pose 2D 舞蹈分析、光流辅助、卡尔曼融合、六轴运动质量优化。
@@ -195,7 +206,7 @@ For a formal release, prepare:
 除非我明确要求，否则保持 L0 稳定。
 如果修改 UI 文字，记得同步中文和英文。
 如果修改设置项，记得同步保存、读取和恢复默认逻辑。
-测试版只需要源码和 Start.cmd 能运行，除非我要求，否则不要打包。
+每次完成实际程序更新，按持续授权递增最小版本号并验证、提交和上传 GitHub；纯调研不升程序版本。
 正式版需要更新版本日志、README/手册，重新生成 Windows 免安装文件夹和 zip，并确认 zip 里没有 .git、缓存、本地模型和隐私路径。
 完成后告诉我：改了什么、哪些文件变了、怎么验证、有什么风险、下次可以继续做什么。
 ```

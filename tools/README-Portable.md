@@ -10,11 +10,17 @@ Python and the basic dependencies are bundled. The separately downloadable Start
 spare launcher: it does not work without the extracted Windows package.
 
 For the independent visual preview, open **Pose-Preview-Lab/Start.cmd**. It uses the same bundled
-runtime and does not feed device output or script generation. Pose models and downloadable GPU
+runtime and does not feed device output or script generation. Models and downloadable GPU
 runtimes are excluded; download them through the application when needed. CPU hybrid analysis
 can run first. Use **Log only** for initial checks. Real hardware, robot joint mapping and feedback
 have not been validated for this release. The executable is not digitally signed; verify the
 repository and published SHA256 before running an unfamiliar download.
+
+In **Hybrid v2** or **Full/Half Travel**, open **+ Models** in Analysis Preview. **v2 optional models** provides independent
+ViTTrack and NeuFlow v2 switches, both off by default. Use the adjacent **Download** button
+before enabling a model. ViTTrack works on CPU; NeuFlow requires enabled NVIDIA CUDA through
+**GPU settings**. This NeuFlow graph does not support DirectML. Missing or failed models use
+the original analysis. Models assist image evidence; improvement is not guaranteed for every video.
 
 The matching **Source.zip** contains the application, independent preview, launchers, tests and
 build tools. Source startup needs Python 3.10+. The bundled `docs/Source_Start.md` describes that
@@ -35,9 +41,13 @@ Legal notices are in **LICENSE**, **THIRD_PARTY_NOTICES.md**, **OPEN_SOURCE_NOTI
 独立视觉预览：打开 **Pose-Preview-Lab** 文件夹，双击其中的 **Start.cmd**。
 它使用同一套内置运行时，不参与设备输出或脚本生成。
 
-RTM Pose 模型和可下载的 GPU 运行库没有打包，按软件提示另外下载；普通混合分析可先用
+模型和可下载的 GPU 运行库没有打包，按软件提示另外下载；普通混合分析可先用
 CPU 运行。首次测试请选择 **Log only**。真实硬件、机械臂映射与反馈未在本发布中验证。
 Windows 如提示未知发布者，请先核对下载仓库和 SHA256；此包尚未数字签名。
+
+选择**混合分析 v2**或**全／半行程**，点分析预览中的“**+ 模型**”，在“**v2 可选模型**”中分别开启 ViTTrack、NeuFlow v2；
+两项默认关闭，先点旁边的“下载”。ViTTrack 可用 CPU；NeuFlow 需在“GPU 设置”中启用 NVIDIA
+CUDA，当前模型不支持 DirectML。模型缺失或失败时使用原分析；它们辅助画面观测，不保证每段视频都更好。
 
 源码留样为同版本 **Source.zip**，包含主程序、独立预览、启动器、测试与构建工具。
 源码启动需要 Python 3.10+；源码包的 Start.md 说明与本免 Python 运行包不同。

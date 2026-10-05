@@ -8,6 +8,27 @@ This app includes the standalone 3D OSR simulator HTML from
 
 Additional acknowledgements:
 
+- Optional ViTTrack model: OpenCV Zoo, contributed by Pengyu Liu for GSoC 2023,
+  https://huggingface.co/opencv/object_tracking_vittrack . The model directory's
+  README licenses all its files under Apache-2.0, including the ONNX checkpoint.
+  The app pins revision `868e4c941984c6363594ec34ee1c3ba0b75378a3` and verifies
+  checkpoint SHA-256 before use. The model is a separate opt-in download; its
+  weights are not bundled in source or Windows ZIPs. License:
+  https://huggingface.co/opencv/object_tracking_vittrack/blob/868e4c941984c6363594ec34ee1c3ba0b75378a3/LICENSE .
+- Optional NeuFlow v2 model: Zhiyong Zhang, Aniket Gupta, Huaizu Jiang and
+  Hanumant Singh, https://github.com/neufieldrobotics/NeuFlow_v2 . Upstream code
+  revision `204b5e3744461d90303b9ff82caa7a1bb56a2ca2` is Apache-2.0. The official
+  Hugging Face integration points to https://huggingface.co/Study-is-happy/neuflow-v2
+  (revision `79ae2f4589456d4d369aaef4955c7db5918c3436`); that model card separately
+  declares Apache-2.0 for its weights. OSR's optional ONNX export is a converted
+  derivative for inference, not a newly trained model or upstream release.
+  Source checkpoint SHA-256:
+  `db63964dc403b3ddac1ed3283ab001e36232ac0c8b73b450be722bb398347e4c`.
+  Export provenance and Apache-2.0 license accompany the separate model release
+  asset. Neither source weights, exported weights nor training data are bundled
+  in the application ZIPs. Code license:
+  https://github.com/neufieldrobotics/NeuFlow_v2/blob/204b5e3744461d90303b9ff82caa7a1bb56a2ca2/LICENSE .
+
 - OpenCV DIS optical flow and pyramidal Lucas–Kanade tracking: https://docs.opencv.org/4.x/de/d4f/classcv_1_1DISOpticalFlow.html and https://github.com/opencv/opencv/blob/4.x/samples/python/lk_track.py . Test.23 uses APIs from the existing `opencv-python>=4.9` dependency (OpenCV 4.5+ is Apache-2.0; https://github.com/opencv/opencv/blob/4.x/LICENSE). The new `regional_flow.py` is independently written, inspired by the project's released v1 ROI flow and distributed tracking/forward-backward validation; no upstream tracker implementation or example source is bundled.
 - Zdenek Kalal, Krystian Mikolajczyk and Jiri Matas, "Forward-Backward Error: Automatic Detection of Tracking Failures", ICPR 2010: https://dspace.cvut.cz/bitstream/handle/10467/9553/2010-forward-backward-error-automatic-detection-of-tracking-failures.pdf . Conceptual reference for multi-point tracking and failure validation, not copied source code or bundled data.
 
