@@ -9,6 +9,10 @@
 Python and the basic dependencies are bundled. The separately downloadable Start.cmd is only a
 spare launcher: it does not work without the extracted Windows package.
 
+Version **2.1.0** reorganizes source responsibilities while retaining 2.0.2 behavior. The complete
+[feature explanations](docs/FEATURES.md) and [code architecture](docs/ARCHITECTURE.md) are included
+in this folder and provided as separate release attachments. No setting migration is required.
+
 For the independent visual preview, open **Pose-Preview-Lab/Start.cmd**. It uses the same bundled
 runtime and does not feed device output or script generation. Models and downloadable GPU
 runtimes are excluded; download them through the application when needed. CPU hybrid analysis
@@ -37,6 +41,9 @@ Legal notices are in **LICENSE**, **THIRD_PARTY_NOTICES.md**, **OPEN_SOURCE_NOTI
 本运行包自带 Python 运行时与基础依赖，不要求安装 Python。`_internal` 是程序必须的
 运行文件，请与 EXE 保持在一起。Release 单独提供的 Start.cmd 只是同一启动器的备用下载，
 单独下载它不能代替 Windows ZIP。
+
+**2.1.0** 只整理源码职责，保留 2.0.2 行为，不要求迁移设置。本目录包含
+[逐项功能说明](docs/FEATURES.md)和[源码结构说明](docs/ARCHITECTURE.md)，发布页也单独提供这两个附件。
 
 独立视觉预览：打开 **Pose-Preview-Lab** 文件夹，双击其中的 **Start.cmd**。
 它使用同一套内置运行时，不参与设备输出或脚本生成。
