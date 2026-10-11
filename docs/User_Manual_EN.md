@@ -409,7 +409,7 @@ Try in order:
 
 ## Contact
 
-For infringement concerns, license corrections, suggestions, or collaboration: aivnailedeng@gmail.com
+For infringement concerns, license corrections, suggestions, or collaboration: lexzeonstudio@gmail.com
 
 Discord community: https://discord.gg/E7RY3rdKw
 

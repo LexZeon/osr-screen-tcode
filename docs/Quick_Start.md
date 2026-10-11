@@ -85,7 +85,7 @@ For a full explanation of every panel and parameter, read `User_Manual_EN.md`.
 
 ## Contact
 
-For infringement concerns, license corrections, suggestions, or collaboration: aivnailedeng@gmail.com
+For infringement concerns, license corrections, suggestions, or collaboration: lexzeonstudio@gmail.com
 
 Discord community: https://discord.gg/E7RY3rdKw
 

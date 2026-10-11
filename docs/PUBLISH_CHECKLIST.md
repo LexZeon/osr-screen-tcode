@@ -43,7 +43,7 @@ Use the text in `GitHub发布页文案.md`. It is English first, then Chinese.
 
 ## Contact Line
 
-For infringement concerns, license corrections, suggestions, or collaboration: aivnailedeng@gmail.com
+For infringement concerns, license corrections, suggestions, or collaboration: lexzeonstudio@gmail.com
 Discord community: https://discord.gg/E7RY3rdKw
 
 

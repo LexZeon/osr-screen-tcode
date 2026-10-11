@@ -38,7 +38,7 @@
 
 ## 联系
 
-侵权、许可证修正、建议、合作反馈请联系：aivnailedeng@gmail.com
+侵权、许可证修正、建议、合作反馈请联系：lexzeonstudio@gmail.com
 Discord 交流： https://discord.gg/E7RY3rdKw
 
 

@@ -12,3 +12,7 @@ This is the shortest path to usable output for OSR6 Realtime Screen TCode.
 
 Limits and settings are stored locally. If the app works normally next time, do not restore defaults again unless you intentionally want to reset everything.
 
+
+## Contact
+
+Email: [lexzeonstudio@gmail.com](mailto:lexzeonstudio@gmail.com)

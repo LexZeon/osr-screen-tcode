@@ -16,7 +16,7 @@ Use this when tuning latency, stability, six-axis behavior and release settings.
 The release package is meant to be honest and direct: a realtime OSR6 screen-reading TCode output tool, built by vibe coding and tested iteratively on real hardware.
 
 
-Contact: aivnailedeng@gmail.com
+Contact: lexzeonstudio@gmail.com
 Discord community: https://discord.gg/E7RY3rdKw
 
 

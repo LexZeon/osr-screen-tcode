@@ -31,5 +31,5 @@ Adults only. This community discusses OSR6 / OSR-compatible realtime TCode outpu
 
 成年人使用，未成年禁止入内。本社区讨论 OSR6 / OSR 兼容实时 TCode 输出软件及相关硬件。继续浏览即表示你确认自己已达到所在地区允许浏览和讨论此类内容的年龄。
 
-Contact: aivnailedeng@gmail.com
+Contact: lexzeonstudio@gmail.com
 Invite link: https://discord.gg/E7RY3rdKw

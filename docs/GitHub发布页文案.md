@@ -27,7 +27,7 @@ Quick guides:
 
 Statement: this project was built through vibe coding. A human did the real testing, product judgment, tuning and direction; AI helped write and reshape the code. It is a practical tool, not magic. Issues, PRs and real hardware feedback are welcome.
 
-Contact: infringement concerns, license corrections, suggestions and collaboration: aivnailedeng@gmail.com
+Contact: infringement concerns, license corrections, suggestions and collaboration: lexzeonstudio@gmail.com
 Discord community: https://discord.gg/E7RY3rdKw
 Discord note: if you join the community, follow the adults-only restriction. The server/relevant channels should be configured as age-restricted so minors cannot access adult content.
 
@@ -55,7 +55,7 @@ OSR6 实时屏幕读取 TCode 输出工具 v1.0.0。
 
 声明：这个项目是 vibe code 做出来的。我负责真实测试、体验判断、功能取舍和调参，AI 辅助写代码。它不是神秘黑盒，也不假装完美；欢迎 issue、PR 和实测反馈。
 
-联系：侵权、许可证修正、建议、合作反馈请发 aivnailedeng@gmail.com
+联系：侵权、许可证修正、建议、合作反馈请发 lexzeonstudio@gmail.com
 
 
 Discord 提醒：如果进入交流群，请遵守成年人限制。服务器/相关频道建议设置为年龄受限，未成年禁止进入或查看相关内容。

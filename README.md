@@ -46,7 +46,7 @@ RTM Pose 2D can also run without GPU acceleration. This mode keeps inference on 
 
 ![RTM Pose 2D CPU demo](screenshots/rtm_pose_2d_cpu_intel_ultra_9_no_gpu_204419.gif)
 
-<sub>Dance source used in the RTM Pose demos: [Bilibili BV1UvtE6uEkD](https://www.bilibili.com/video/BV1UvtE6uEkD/). For infringement concerns, contact aivnailedeng@gmail.com for removal.</sub>
+<sub>Dance source used in the RTM Pose demos: [Bilibili BV1UvtE6uEkD](https://www.bilibili.com/video/BV1UvtE6uEkD/). For infringement concerns, contact lexzeonstudio@gmail.com for removal.</sub>
 
 ## Download
 
@@ -105,7 +105,7 @@ Special thanks to **DK** and **机械纪元** for technical guidance.
 
 ## Contact
 
-For infringement concerns, license corrections, suggestions, or collaboration: aivnailedeng@gmail.com
+For infringement concerns, license corrections, suggestions, or collaboration: lexzeonstudio@gmail.com
 
 ---
 
@@ -157,7 +157,7 @@ RTM Pose 2D 也可以不启用 GPU 加速，推理会运行在 Intel Ultra 9 CPU
 
 ![RTM Pose 2D CPU 演示](screenshots/rtm_pose_2d_cpu_intel_ultra_9_no_gpu_204419.gif)
 
-<sub>RTM Pose 演示中的舞蹈素材来源：[Bilibili BV1UvtE6uEkD](https://www.bilibili.com/video/BV1UvtE6uEkD/)。如有侵权请联系 aivnailedeng@gmail.com 删除。</sub>
+<sub>RTM Pose 演示中的舞蹈素材来源：[Bilibili BV1UvtE6uEkD](https://www.bilibili.com/video/BV1UvtE6uEkD/)。如有侵权请联系 lexzeonstudio@gmail.com 删除。</sub>
 
 ## 下载
 
@@ -216,4 +216,4 @@ RTM Pose 2D 也可以不启用 GPU 加速，推理会运行在 Intel Ultra 9 CPU
 
 ## 联系
 
-侵权、许可证修正、建议或合作请联系：aivnailedeng@gmail.com
+侵权、许可证修正、建议或合作请联系：lexzeonstudio@gmail.com
