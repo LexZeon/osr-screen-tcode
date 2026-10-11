@@ -11,3 +11,7 @@ SR6/OSR6 是沿用的设备/接口名称，不意味着任意机械臂可以直�
 Current 2.0.0 retains existing SR6/OSR6 TCode serial/BLE transport and Log only. Other commercial-device integrations have been removed. Robot-arm kinematics, collision handling and feedback are not verified. A legacy center position is not a validated robot-arm safe pose.
 
 See the [release validation](Validation_2.0.0.md), [retained analysis behavior](Test_2.0.0_test25.md) and [README](../README.md).
+
+## Contact / 联系
+
+Email / 邮箱：[lexzeonstudio@gmail.com](mailto:lexzeonstudio@gmail.com)。

@@ -7,3 +7,7 @@
 See the [current startup/preview guide](../Start.md) and [retained test.25 analysis limitations](Test_2.0.0_test25.md). Compare the same source clip and resolution when measuring latency. Processing time is not end-to-end delay; image scale is not physical depth. The [test.10 report](Test_2.0.0_test10.md) remains a historical feature record.
 
 Do not infer robot-arm compatibility from the retained SR6/OSR6 transport. Existing limits are not a substitute for validated mechanical limits, feedback and independent emergency stopping.
+
+## Contact / 联系
+
+Email / 邮箱：[lexzeonstudio@gmail.com](mailto:lexzeonstudio@gmail.com)。

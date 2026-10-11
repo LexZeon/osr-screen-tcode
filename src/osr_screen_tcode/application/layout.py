@@ -24,7 +24,7 @@ class LayoutMixin:
         product_label = ttk.Label(header, text=f"{APP_NAME}  v{__version__}", wraplength=900)
         product_label.grid(row=0, column=0, sticky="ew")
         header.bind("<Configure>", lambda event: product_label.configure(wraplength=max(240, event.width - 24)))
-        ttk.Label(header, text=self._dt("合作与侵权联系：aivnailedeng@gmail.com", "Cooperation / copyright: aivnailedeng@gmail.com")).grid(row=1, column=0, sticky="w")
+        ttk.Label(header, text=self._dt("合作与侵权联系：lexzeonstudio@gmail.com", "Cooperation / copyright: lexzeonstudio@gmail.com")).grid(row=1, column=0, sticky="w")
         ttk.Label(header, text=self._dt("机械臂模拟测试；实际硬件映射尚未验证。",
                                        "Robot-arm simulation test; physical hardware mapping is unverified.")).grid(row=2, column=0, sticky="w")
 

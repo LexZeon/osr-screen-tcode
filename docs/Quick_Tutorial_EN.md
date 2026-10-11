@@ -52,3 +52,7 @@ The five intensity presets affect final realtime/recorded/exported output, not a
 Start with Log only. Existing SR6/OSR6 serial/BLE TCode interfaces remain, but robot-arm joint mapping, inverse kinematics, collision handling and physical feedback are not implemented or verified. A simulator or centering command does not establish hardware safety or compatibility. Blur, occlusion, similar-looking cuts and long loss can still cause tracking to stop.
 
 See the [2.0.0 packaging and validation report](Validation_2.0.0.md), [test.25 analysis limitations](Test_2.0.0_test25.md), [README](../README.md), [license](../LICENSE) and [third-party notices](../THIRD_PARTY_NOTICES.md). 2.0.0 retains test.25's analysis/output behavior. The application is unsigned; bundling the CPU runtime does not verify every GPU configuration or physical hardware. The standalone [Pose Preview Lab](../Pose-Preview-Lab/Start.md) remains available for comparison and never sends device commands.
+
+## Contact / 联系
+
+Email / 邮箱：[lexzeonstudio@gmail.com](mailto:lexzeonstudio@gmail.com)。

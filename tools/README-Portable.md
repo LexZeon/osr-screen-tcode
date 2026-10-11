@@ -62,3 +62,7 @@ CUDA，当前模型不支持 DirectML。模型缺失或失败时使用原分析�
 `FILES_SHA256SUMS.txt` 可核对解压文件；发布目录 `SHA256SUMS.txt` 可核对下载的 ZIP。
 许可证与借鉴说明见 **LICENSE**、**THIRD_PARTY_NOTICES.md**、**OPEN_SOURCE_NOTICE.md**
 以及 **licenses** 目录。
+
+## Contact / 联系
+
+Email / 邮箱：[lexzeonstudio@gmail.com](mailto:lexzeonstudio@gmail.com)。

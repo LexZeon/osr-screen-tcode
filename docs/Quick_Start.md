@@ -11,3 +11,7 @@ Use Analysis Preview for paired raw/processed comparison. Start with Log only; t
 Output Monitor opens by default. Show Preview opens the 3D reference model using final output after all gains and constraints. Full/Half Travel is first in the analysis list, followed by RTM 2D, with Hybrid v2 still selected by default. Dance settings are saved separately.
 
 See the [startup instructions](../Start.md); the [test.18 guide](Test_2.0.0_test18.md) records earlier feature changes. Older screenshots and device guides do not describe this version.
+
+## Contact / 联系
+
+Email / 邮箱：[lexzeonstudio@gmail.com](mailto:lexzeonstudio@gmail.com)。

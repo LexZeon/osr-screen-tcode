@@ -11,5 +11,5 @@ This repository is prepared for honest open-source publication.
 
 Before publishing publicly, manually re-check dependency licenses and any repository you borrowed code from. The current intended position is that `nbnb9527/nb-3d-simulator` is included/used according to its upstream MIT notice, while PoseFunscripter and FunGen-style tools were conceptual references rather than direct code copies.
 
-For infringement concerns, license corrections, suggestions, or collaboration: aivnailedeng@gmail.com
+For infringement concerns, license corrections, suggestions, or collaboration: lexzeonstudio@gmail.com
 Discord community: https://discord.gg/E7RY3rdKw

@@ -83,3 +83,7 @@ No device connection, axis mapping, script output or main application configurat
 - Optional fusion: OpenCV constant-velocity Kalman filter; bounded-displacement exponential micro smoothing.
 - Image motion: OpenCV feature tracking and RANSAC partial affine estimation.
 - This standalone experiment follows the parent repository license. Dependencies retain their respective licenses; see the parent THIRD_PARTY_NOTICES.md.
+
+## Contact / 联系
+
+Email / 邮箱：[lexzeonstudio@gmail.com](mailto:lexzeonstudio@gmail.com)。

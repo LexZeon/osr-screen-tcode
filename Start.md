@@ -47,3 +47,7 @@ Real hardware and robot-arm mapping remain unverified. The simulator is a final-
 [FEATURES](docs/FEATURES.md)解释每项功能及影响；[ARCHITECTURE](docs/ARCHITECTURE.md)说明修改入口，[AI_Prompting_Guide](AI_Prompting_Guide.md)提供精简接手说明。用 `python tools/code_index.py _save_config` 或 `python tools/code_index.py realtime` 查询方法，无需启动软件。主程序隔离测试入口为 `python tests/run_tests.py -v`；历史详细启动说明保留在[原样保存的 2.0.2 快照](docs/history/Start_2.0.2.md)。
 
 真实硬件与机械臂映射仍未验证；模拟器显示最终指令，不是硬件反馈。
+
+## Contact / 联系
+
+Email / 邮箱：[lexzeonstudio@gmail.com](mailto:lexzeonstudio@gmail.com)。

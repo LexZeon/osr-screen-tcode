@@ -26,7 +26,7 @@ Direct RTM Pose 2D L1/L2 output coupling passes through four points: **0.5× at 
 
 2.0.0 provides matching Windows/source archives with a commit manifest and SHA-256 checksums. GitHub's automatic source archives require Python; use the Windows asset for a bundled runtime. Previous releases retain their original assets. Models and optional GPU runtimes are not bundled. See the [2.0.0 guide](docs/Validation_2.0.0.md), [preview guide](Pose-Preview-Lab/Start.md), [third-party notices](THIRD_PARTY_NOTICES.md) and [license](LICENSE).
 
-Thanks to **DK**, **机械纪元**, and **“电话机”** for guidance, volunteer testing and suggestions. Contact: **aivnailedeng@gmail.com**.
+Thanks to **DK**, **机械纪元**, and **“电话机”** for guidance, volunteer testing and suggestions. Contact: **lexzeonstudio@gmail.com**.
 
 ## 中文
 
@@ -179,4 +179,4 @@ Test.9 adds Full/Half Travel on the shared v2 pipeline, with automatic half/full
 
 感谢 **DK**、**机械纪元** 的技术指导，以及 **“电话机”** 的志愿测试与建议。保留所用开源组件的原始署名，详见第三方声明。
 
-合作、版权和反馈：**aivnailedeng@gmail.com**
+合作、版权和反馈：**lexzeonstudio@gmail.com**

@@ -427,3 +427,7 @@ Lab 共用选区／物理采集坐标，设置独立；四项骨架处理默认*
 | 便携构建／启动与运行检查 | 根目录 `Start.cmd`；根目录 `tools/`；`runtime_check.py`；根目录 `SR6-OSR6-Realtime-Screen-TCode.spec` |
 
 `docs/` 中既有验证记录保留实际检查和早期失败。本指南解释行为与边界，不是新模型跑分，也不代表真实深度、接触或机械臂运动已验证。
+
+## Contact / 联系
+
+Email / 邮箱：[lexzeonstudio@gmail.com](mailto:lexzeonstudio@gmail.com)。

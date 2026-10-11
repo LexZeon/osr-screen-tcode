@@ -13,3 +13,7 @@ Current 2.0.0 documentation:
 - [Interface scope](Device_Compatibility_2.0.md)
 
 Obsolete commercial-device setup and use-specific tuning instructions have been withdrawn. The original Hybrid 1 L0 core and output limits are retained; this documentation does not establish robot-arm compatibility.
+
+## Contact / 联系
+
+Email / 邮箱：[lexzeonstudio@gmail.com](mailto:lexzeonstudio@gmail.com)。

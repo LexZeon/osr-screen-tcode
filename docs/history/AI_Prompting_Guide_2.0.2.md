@@ -88,7 +88,7 @@ Without RTM, v2 secondary axes follow confirmed significant motion/reversals and
 - Commercial-device adapters have been removed. `device_controls.py` contains native SR6/OSR6 TCode UI only. Do not restore removed device profiles from saved settings.
 - Preserve the original analysis files and TCode mapper. Keep device I/O asynchronous and test stopping, stale output and reconnect identity.
 - Test settings are isolated in `.osr_screen_tcode_2_0_test`. Do not package tests or include models.
-- Display the device name as `SR6/OSR6`. Cooperation/copyright contact: `aivnailedeng@gmail.com`.
+- Display the device name as `SR6/OSR6`. Cooperation/copyright contact: `lexzeonstudio@gmail.com`.
 - 不要宣称已支持机械臂；关节映射、碰撞检查和实际反馈均未验证。
 - `visual_pipeline.py` ports Lab 0.2.1 processing into the host; `integrated_preview.py` displays paired frames from that worker. The standalone lab remains a separate reference. Read `docs/Test_2.0.0_test11.md` before touching this route. Hybrid 1 keeps its original L0 core (Recommended - Large Planar Motion). Hybrid v2 (Recommended Non-Dance) uses adaptive dominant image motion for L0 and residual L1/L2, with optional RTM 2D rotation assistance or experimental image rotation estimates. Only the optional blend into RTM remains L0-only. The five presets affect final script/live travel, never analysis settings or state. First use and Reset default to Hybrid v2 without RTM assistance; preserve existing saved choices. RTM 3D is removed; do not restore its backend or model selection.
 - Measurement/axis limits default open on first use and reset; preserve a later saved collapse choice.

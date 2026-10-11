@@ -562,7 +562,7 @@ class DeviceUiTests(unittest.TestCase):
             return values
         labels = texts(self.app)
         self.assertEqual(self.app.title(), f"{APP_NAME} v{__version__}")
-        self.assertTrue(any("合作与侵权" in t and "aivnailedeng@gmail.com" in t for t in labels))
+        self.assertTrue(any("合作与侵权" in t and "lexzeonstudio@gmail.com" in t for t in labels))
         self.assertTrue(any(APP_NAME in t and __version__ in t for t in labels))
 
     def test_capture_and_curve_preferences_save_and_restore_defaults(self):

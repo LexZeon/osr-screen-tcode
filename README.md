@@ -18,7 +18,7 @@ Hybrid v2 remains the default analysis; Full/Half Travel is listed first, follow
 
 Historical release documentation, acknowledgements and validation are retained. The previous [README](docs/history/README_2.0.2.md), [startup guide](docs/history/Start_2.0.2.md) and [AI guide](docs/history/AI_Prompting_Guide_2.0.2.md) are unchanged historical snapshots; their original relative links refer to the repository root. Earlier tags and release assets remain available.
 
-Thanks to **DK**, **机械纪元**, and **“电话机”** for guidance, volunteer testing and suggestions. Contact: **aivnailedeng@gmail.com**.
+Thanks to **DK**, **机械纪元**, and **“电话机”** for guidance, volunteer testing and suggestions. Contact: **lexzeonstudio@gmail.com**.
 
 ## 中文
 
@@ -38,4 +38,4 @@ Thanks to **DK**, **机械纪元**, and **“电话机”** for guidance, volunt
 
 历史说明、署名与验证记录保留。前版 [README](docs/history/README_2.0.2.md)、[启动指南](docs/history/Start_2.0.2.md)、[AI 指南](docs/history/AI_Prompting_Guide_2.0.2.md)逐字保留为历史快照，原相对链接仍以仓库根目录为基准；旧标签和发布附件不覆盖。
 
-感谢 **DK**、**机械纪元**和**“电话机”**提供建议、志愿测试与协助。联系：**aivnailedeng@gmail.com**。
+感谢 **DK**、**机械纪元**和**“电话机”**提供建议、志愿测试与协助。联系：**lexzeonstudio@gmail.com**。

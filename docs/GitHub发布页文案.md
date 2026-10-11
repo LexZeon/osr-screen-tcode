@@ -63,3 +63,7 @@ Blur, occlusion, similar-looking cuts and long slow cycles remain limitations. I
 ## License and acknowledgements / 许可与署名
 
 See [LICENSE](https://github.com/LexZeon/osr-screen-tcode/blob/v2.0.0-test.25/LICENSE) and [THIRD_PARTY_NOTICES.md](https://github.com/LexZeon/osr-screen-tcode/blob/v2.0.0-test.25/THIRD_PARTY_NOTICES.md). Required upstream notices and the credit for [nb-3d-simulator](https://github.com/nbnb9527/nb-3d-simulator) are retained. Models, downloadable GPU runtimes, personal settings, logs and private media are excluded from this source release.
+
+## Contact / 联系
+
+Email / 邮箱：[lexzeonstudio@gmail.com](mailto:lexzeonstudio@gmail.com)。
