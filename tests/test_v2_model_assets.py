@@ -1,6 +1,7 @@
 from dataclasses import replace
 import hashlib
 import io
+import os
 from pathlib import Path
 import tempfile
 import threading
@@ -196,6 +197,106 @@ class OptionalModelAssetsTests(unittest.TestCase):
         good = handler.redirect_request(request, None, 302, "Found", {},
                                         "https://cas-bridge.xethub.hf.co/file?signature=value")
         self.assertEqual(good.type, "https")
+
+    def test_detect_finds_default_before_supplied_directory_without_network(self):
+        target = self.put(self.data)
+        with patch.object(assets, "_open_download") as network, \
+                patch.object(assets, "validate_model_path", wraps=assets.validate_model_path) as validate:
+            self.assertEqual(assets.detect_model("vittrack", model_dirs=(Path(self.folder.name),)),
+                             (str(target), "Model verified."))
+        self.assertEqual(validate.call_count, 1)
+        network.assert_not_called()
+
+    def test_detect_only_checks_registered_filename_in_direct_directories(self):
+        supplied = Path(self.folder.name) / "supplied"
+        nested = supplied / "nested" / self.asset.filename
+        nested.parent.mkdir(parents=True)
+        nested.write_bytes(self.data)
+        (supplied / "arbitrary.onnx").write_bytes(self.data)
+        with patch.object(assets, "validate_model_path", wraps=assets.validate_model_path) as validate:
+            result = assets.detect_model("vittrack", model_dirs=(supplied, supplied / "."))
+        self.assertEqual(result, ("", "Model file is missing."))
+        self.assertEqual([call.args[1] for call in validate.call_args_list],
+                         [assets.default_path("vittrack"), supplied / self.asset.filename])
+        direct = supplied / self.asset.filename
+        direct.write_bytes(self.data)
+        self.assertEqual(assets.detect_model("vittrack", model_dirs=(supplied,)),
+                         (str(direct), "Model verified."))
+
+    def test_detect_deduplicates_default_and_supplied_candidates(self):
+        target = assets.default_path("vittrack")
+        with patch.object(assets, "validate_model_path", wraps=assets.validate_model_path) as validate:
+            self.assertEqual(assets.detect_model("vittrack", model_dirs=(target.parent, target.parent / ".")),
+                             ("", "Model file is missing."))
+        self.assertEqual(validate.call_count, 1)
+        self.assertEqual(self.files(), [])
+
+    def test_detect_explicit_path_never_falls_back_to_verified_default(self):
+        target = self.put(self.data)
+        explicit = Path(self.folder.name) / "chosen.onnx"
+        explicit.write_bytes(b"incorrect model")
+        with patch.object(assets, "validate_model_path", wraps=assets.validate_model_path) as validate:
+            result = assets.detect_model("vittrack", explicit, model_dirs=(target.parent,))
+        self.assertEqual(result, ("", "Model file size does not match. Download the supported model."))
+        self.assertEqual(validate.call_count, 1)
+        self.assertEqual(validate.call_args.args[1], explicit)
+        self.assertEqual(assets.detect_model("vittrack", target), (str(target), "Model verified."))
+
+    def test_detect_revalidates_modified_cached_file(self):
+        target = self.put(self.data)
+        self.assertEqual(assets.detect_model("vittrack"), (str(target), "Model verified."))
+        stamp = target.stat()
+        target.write_bytes(b"x" + self.data[1:])
+        os.utime(target, ns=(stamp.st_atime_ns, stamp.st_mtime_ns + 1_000_000_000))
+        self.assertEqual(assets.detect_model("vittrack"),
+                         ("", "Model checksum does not match. Download the supported model."))
+
+    def test_detect_cancelled_before_start_never_validates_or_writes(self):
+        cancel = threading.Event()
+        cancel.set()
+        with patch.object(assets, "validate_model_path") as validate:
+            with self.assertRaises(assets.ModelDownloadCancelled):
+                assets.detect_model("vittrack", cancel=cancel)
+        validate.assert_not_called()
+        self.assertEqual(self.files(), [])
+
+    def test_detect_cancelled_between_candidates_stops_before_next_validation(self):
+        cancel = threading.Event()
+        def missing(*_args, **_kwargs):
+            cancel.set()
+            return False, "Model file is missing."
+        with patch.object(assets, "validate_model_path", side_effect=missing) as validate:
+            with self.assertRaises(assets.ModelDownloadCancelled):
+                assets.detect_model("vittrack", model_dirs=(Path(self.folder.name),), cancel=cancel)
+        self.assertEqual(validate.call_count, 1)
+
+    def test_validation_can_cancel_between_hash_chunks_without_caching_success(self):
+        target = self.put(self.data)
+        cancel = threading.Event()
+        counts = []
+        original_open = Path.open
+        class CancelDuringRead(io.BytesIO):
+            def read(self, count=-1):
+                counts.append(count)
+                data = super().read(count)
+                cancel.set()
+                return data
+        def opening(path, *args, **kwargs):
+            return CancelDuringRead(self.data) if path == target else original_open(path, *args, **kwargs)
+        with patch.object(Path, "open", opening):
+            with self.assertRaises(assets.ModelDownloadCancelled):
+                assets.validate_model_path("vittrack", target, cancel=cancel)
+        self.assertEqual(counts, [assets._CHUNK])
+        self.assertNotIn(assets._file_key(target, self.asset), assets._CACHE)
+        self.assertTrue(assets.validate_model_path("vittrack", target)[0])
+
+    def test_validation_cancelled_cached_file_still_honors_cancellation(self):
+        target = self.put(self.data)
+        self.assertTrue(assets.validate_model_path("vittrack", target)[0])
+        cancel = threading.Event()
+        cancel.set()
+        with self.assertRaises(assets.ModelDownloadCancelled):
+            assets.validate_model_path("vittrack", target, cancel=cancel)
 
 
 if __name__ == "__main__":

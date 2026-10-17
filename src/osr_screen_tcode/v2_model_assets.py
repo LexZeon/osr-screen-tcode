@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+from itertools import chain
 import os
 from pathlib import Path
 import tempfile
@@ -99,8 +100,10 @@ def _file_key(path: Path, asset: ModelAsset) -> tuple:
             stat.st_ino, asset.sha256)
 
 
-def validate_model_path(model_id: str, path: str | Path) -> tuple[bool, str]:
+def validate_model_path(model_id: str, path: str | Path,
+                        cancel: threading.Event | None = None) -> tuple[bool, str]:
     """Accept only the exact tested ONNX, including for manually selected files."""
+    _check_cancel(cancel)
     asset = model_info(model_id)
     if not asset.ready:
         return False, "Model artifact is not available."
@@ -118,19 +121,58 @@ def validate_model_path(model_id: str, path: str | Path) -> tuple[bool, str]:
         if cached is None:
             digest = hashlib.sha256()
             with candidate.open("rb") as source:
-                for chunk in iter(lambda: source.read(_CHUNK), b""):
+                while True:
+                    _check_cancel(cancel)
+                    chunk = source.read(_CHUNK)
+                    if not chunk:
+                        break
                     digest.update(chunk)
+            _check_cancel(cancel)
             # Reject a file replaced or changed during validation.
             cached = digest.hexdigest() == asset.sha256 and _file_key(candidate, asset) == key
             with _CACHE_LOCK:
                 if len(_CACHE) >= 64:
                     _CACHE.clear()
                 _CACHE[key] = cached
+        _check_cancel(cancel)
         if not cached:
             return False, "Model checksum does not match. Download the supported model."
         return True, "Model verified."
     except (OSError, ValueError, TypeError):
         return False, "Model file cannot be read."
+
+
+def detect_model(model_id: str, path: str | Path = "", *,
+                 model_dirs=(), cancel: threading.Event | None = None) -> tuple[str, str]:
+    """Verify an explicit choice or a bounded list of known local filenames.
+
+    An explicit path is never silently replaced. Automatic discovery checks the
+    private default first, followed only by the registered filename directly in
+    each supplied directory; it never walks directories or downloads anything.
+    Call on a worker thread because checksum verification reads model bytes.
+    """
+    _check_cancel(cancel)
+    if path != "":
+        valid, reason = validate_model_path(model_id, path, cancel=cancel)
+        return (str(path) if valid else "", reason)
+    asset = model_info(model_id)
+    candidates = chain((default_path(model_id),),
+                       (Path(folder) / asset.filename for folder in model_dirs))
+    seen = set()
+    reason = "Model file is missing."
+    for candidate in candidates:
+        _check_cancel(cancel)
+        key = os.path.normcase(os.path.abspath(candidate))
+        if key in seen:
+            continue
+        seen.add(key)
+        valid, candidate_reason = validate_model_path(model_id, candidate, cancel=cancel)
+        if valid:
+            return str(candidate), candidate_reason
+        if reason == "Model file is missing." or candidate_reason != "Model file is missing.":
+            reason = candidate_reason
+    _check_cancel(cancel)
+    return "", reason
 
 
 def find_existing_model(model_id: str) -> Path | None:

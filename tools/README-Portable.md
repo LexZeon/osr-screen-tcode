@@ -9,7 +9,7 @@
 Python and the basic dependencies are bundled. The separately downloadable Start.cmd is only a
 spare launcher: it does not work without the extracted Windows package.
 
-Version **2.1.0** reorganizes source responsibilities while retaining 2.0.2 behavior. The complete
+Version **2.1.1** improves optional-model setup and start-dialog responsiveness, preserving analysis and output mathematics. The complete
 [feature explanations](docs/FEATURES.md) and [code architecture](docs/ARCHITECTURE.md) are included
 in this folder and provided as separate release attachments. No setting migration is required.
 
@@ -25,6 +25,8 @@ ViTTrack and NeuFlow v2 switches, both off by default. Use the adjacent **Downlo
 before enabling a model. ViTTrack works on CPU; NeuFlow requires enabled NVIDIA CUDA through
 **GPU settings**. This NeuFlow graph does not support DirectML. Missing or failed models use
 the original analysis. Models assist image evidence; improvement is not guaranteed for every video.
+
+**Detect models** checks the selected file or known downloaded filename in the background. Checked models also trigger this check; no model/runtime is downloaded automatically. **Enable CUDA** selects shared CUDA and opens GPU setup, with the existing explicit one-click installer when libraries are missing. Model switches remain off until you enable them. Start confirmation has horizontal/vertical scrolling with reachable action buttons.
 
 The matching **Source.zip** contains the application, independent preview, launchers, tests and
 build tools. Source startup needs Python 3.10+. The bundled `docs/Source_Start.md` describes that
@@ -42,7 +44,7 @@ Legal notices are in **LICENSE**, **THIRD_PARTY_NOTICES.md**, **OPEN_SOURCE_NOTI
 运行文件，请与 EXE 保持在一起。Release 单独提供的 Start.cmd 只是同一启动器的备用下载，
 单独下载它不能代替 Windows ZIP。
 
-**2.1.0** 只整理源码职责，保留 2.0.2 行为，不要求迁移设置。本目录包含
+**2.1.1** 改善可选模型配置及开始窗口响应，保留原分析／输出数学，不要求迁移设置。本目录包含
 [逐项功能说明](docs/FEATURES.md)和[源码结构说明](docs/ARCHITECTURE.md)，发布页也单独提供这两个附件。
 
 独立视觉预览：打开 **Pose-Preview-Lab** 文件夹，双击其中的 **Start.cmd**。
@@ -55,6 +57,8 @@ Windows 如提示未知发布者，请先核对下载仓库和 SHA256；此包�
 选择**混合分析 v2**或**全／半行程**，点分析预览中的“**+ 模型**”，在“**v2 可选模型**”中分别开启 ViTTrack、NeuFlow v2；
 两项默认关闭，先点旁边的“下载”。ViTTrack 可用 CPU；NeuFlow 需在“GPU 设置”中启用 NVIDIA
 CUDA，当前模型不支持 DirectML。模型缺失或失败时使用原分析；它们辅助画面观测，不保证每段视频都更好。
+
+“自动检测模型”在后台检查所选文件或固定下载文件名，勾选模型也会触发；不自动下载模型／运行库。“启用 CUDA”选择共享 CUDA 并打开 GPU 配置，缺库时再明确点击原一键安装；不自动勾选模型。开始确认支持横向／纵向滚动，操作按钮保留在可见页脚。
 
 源码留样为同版本 **Source.zip**，包含主程序、独立预览、启动器、测试与构建工具。
 源码启动需要 Python 3.10+；源码包的 Start.md 说明与本免 Python 运行包不同。

@@ -172,6 +172,8 @@ class GpuControls:
             else:
                 bar.stop()
                 bar.grid_remove()
+        if hasattr(self, '_v2_model_revision'):
+            self._v2_model_revision.set(self._v2_model_revision.get() + 1)
 
     def _recheck_gpu(self) -> None:
         if self._gpu_check_running or self._gpu_installing or self._gpu_restart_required:

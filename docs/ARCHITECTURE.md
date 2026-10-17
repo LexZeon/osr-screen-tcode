@@ -1,10 +1,10 @@
-# 2.1.0 Architecture and Reading Guide
+# 2.1.1 Architecture and Reading Guide
 
 ## English
 
 ### Scope and public entry points
 
-**2.1.0 moves existing methods into modules grouped by responsibility.** It does not add analysis algorithms, alter output mathematics, extend the two-second estimate limit, change saved defaults or implement robot-arm mapping. Read the user-facing [Feature Guide](FEATURES.md) for controls, effects and limitations; release validation records describe the checks actually completed.
+**2.1.0 moved existing methods into modules grouped by responsibility.** Version **2.1.1** retains that organization and adds asynchronous optional-model checks, explicit CUDA setup access and start-dialog responsiveness safeguards. It does not add analysis algorithms, alter output mathematics, extend the two-second estimate limit, change saved defaults or implement robot-arm mapping. Read the user-facing [Feature Guide](FEATURES.md) for controls, effects and limitations; release validation records describe the checks actually completed.
 
 Paths in the module tables are relative to `src/osr_screen_tcode/`. Root paths are explicitly marked. `app.py` remains the public `OsrScreenApp`/`main()` entry. It owns initialization, startup scheduling, frame/control queues, worker-result dispatch, preview refresh, close/shutdown and explicit factory hooks. Its imports still configure Windows DPI awareness and activate the private GPU runtime before importing the GUI/model-dependent stack.
 
@@ -12,7 +12,7 @@ Paths in the module tables are relative to `src/osr_screen_tcode/`. Root paths a
 
 ### Application responsibilities
 
-The application composes **19 responsibility mixins**, alongside the existing `DeviceControls`, `GpuControls` and `tk.Tk` bases. These 19 mixins define no initializer and share the same `self`: Tk variables, configuration, queues, worker state and output objects are still owned by the public app. Dependencies between methods remain ordinary explicit method calls. Inheritance is organization of the existing object, not an independently injected service system.
+The 2.1.0 application refactor introduced **19 responsibility mixins**, alongside the existing `DeviceControls`, `GpuControls` and `tk.Tk` bases. Version 2.1.1 retains those bases and makes `ModelOptionsMixin` inherit the new `ModelChecksMixin`. These mixins define no initializer and share the same `self`: Tk variables, configuration, queues, worker state and output objects are still owned by the public app. Dependencies between methods remain ordinary explicit method calls. Inheritance is organization of the existing object, not an independently injected service system.
 
 | Module | Responsibility |
 | --- | --- |
@@ -24,14 +24,15 @@ The application composes **19 responsibility mixins**, alongside the existing `D
 | `application/analysis_controls.py` | Analysis/filter/FPS/curve controls and their explanations. |
 | `application/sources.py` | Screen/video/audio input controls, physical region checks and region selection. |
 | `application/models.py` | Existing RTM model discovery, validation, selection and download. |
-| `application/model_options.py` | Independent optional-v2 model controls, download events and cancellation. |
+| `application/model_options.py` | Independent optional-v2 model controls, idle-coalesced status refresh, download events and shared CUDA setup access. |
+| `application/model_checks.py` | Background optional-model discovery/verification, cancellation, current-result guards and Tk-thread completion. |
 | `application/travel_controls.py` | Shared/individual travel sliders and displayed multiplier synchronization. |
 | `application/device_panel.py` | Device connection panel, measurement and axis-limit UI. |
 | `application/connection.py` | Device discovery, asynchronous connection/disconnection and error completion. |
 | `application/manual_output.py` | Actual command emission, center, measurement and synthetic tests. |
 | `application/presets.py` | Named presets, five play levels and hybrid sensitivity actions. |
 | `application/realtime.py` | Live start/stop, worker loop, screen/video/audio capture and per-frame processing. |
-| `application/start_dialog.py` | Start-confirmation view and application of reviewed settings. |
+| `application/start_dialog.py` | Staged start-confirmation settings, coalesced scrolling layout, reachable footer and nested-modal input guards. |
 | `application/output.py` | Analysis-to-position interpretation, final travel/inversion/limits and output construction. |
 | `application/video_export.py` | Offline video export, recording and script saving. |
 | `application/monitor.py` | Final command parsing/history, axis indicators and output curves. |
@@ -62,6 +63,16 @@ Three factory methods remain on `OsrScreenApp` in `app.py`: `_create_analyzer()`
 Six extracted analyzer methods use **local imports of the public `RealtimeAnalyzer`** before making their existing static helper calls: three sites in `analysis/pose_motion.py`, one in `analysis/rtm_geometry.py` and two in `analysis/preview.py`. Keeping these calls on the facade preserves public-class static-helper patch/lookup semantics; importing inside the method avoids the facade/mixin import cycle. These are explicit compatibility decisions, not new model execution paths.
 
 Keep normal imports, declared classes and method calls. Do not replace this structure with reflective method installation, dynamically generated mixins, `exec()` or an implicit dependency-rewriting mechanism. Follow references and the method-resolution order when changing shared `self` dependencies.
+
+### Optional-model setup and modal responsiveness in 2.1.1
+
+`ModelOptionsMixin` schedules automatic checks for enabled visible v2 controls and offers explicit **Detect models** and file-selection checks. `ModelChecksMixin` snapshots plain paths on the Tk thread; worker threads call `v2_model_assets.detect_model()` for file size/hash verification. An explicit path is validated without silently choosing a different file. Without a path, the GUI checks only the known private download filename; it does not walk directories, download a model or run inference.
+
+Checks are keyed by their Tk variable names, use monotonically increasing tokens and selection snapshots, and share two background execution slots. Worker completion enters the control-event queue; only the Tk thread may apply it after checking the current token, owner lifetime, cancellation and original selection. Selection changes, owner destruction, reset and application shutdown cancel/discard obsolete work. Preserve this boundary: workers must not read/write Tk variables, and a late result must not overwrite a new selection. Model-label refresh and scroll layout are coalesced through idle callbacks, with pending callbacks removed when their controls are destroyed.
+
+**Enable CUDA** selects the shared CUDA backend and current-context GPU enable variable, then opens the existing GPU settings dialog. Running analysis, installation or connection work blocks this shortcut. It does not enable either optional model, download dependencies or install a runtime automatically. The shared CUDA self-check is a small runtime check; actual NeuFlow graph compatibility is checked separately during analysis startup. GPU backend selection remains shared even where the start dialog stages its model choices.
+
+`start_dialog.py` uses a private `ControlSidebar` subclass to preserve natural control widths, horizontal/vertical scrolling, safe wheel routing and Tab visibility. Its layout requests are coalesced rather than recursively running geometry updates from variable traces. A separate footer and monitor-capped minimum size keep action buttons reachable. Confirmation/cancellation checks modal ownership and visibility, preventing parent Return/Escape or queued button actions from acting through a nested GPU/file modal or a hidden region-selection parent. The original intermittent complete freeze was not reproduced exactly; known synchronous verification and modal-navigation paths were addressed, with user retesting still required.
 
 ### Two flows and their boundaries
 
@@ -101,7 +112,7 @@ Start with the relevant row above or a method-name query. Read the indexed metho
 
 ### 范围与公开入口
 
-**2.1.0 只把既有方法按职责搬进模块。** 不新增分析算法、不修改输出数学、不延长最多两秒估算、不改变保存默认，也不实现机械臂映射。控件用途与边界见[功能指南](FEATURES.md)，实际完成哪些验证以发布验证记录为准。
+**2.1.0 把既有方法按职责搬进模块。** **2.1.1** 保留这一组织，新增可选模型后台检查、明确的 CUDA 设置入口和启动框响应保护。不新增分析算法、不修改输出数学、不延长最多两秒估算、不改变保存默认，也不实现机械臂映射。控件用途与边界见[功能指南](FEATURES.md)，实际完成哪些验证以发布验证记录为准。
 
 模块表路径相对 `src/osr_screen_tcode/`，根目录路径会注明。`app.py` 仍公开 `OsrScreenApp`／`main()`，保留初始化、启动调度、帧／控制队列、工作线程结果分派、预览刷新、关闭和显式工厂入口。其导入仍先设置 Windows DPI 感知、激活私有 GPU 运行库，再导入 GUI／模型相关层。
 
@@ -109,7 +120,7 @@ Start with the relevant row above or a method-name query. Read the indexed metho
 
 ### 主程序职责
 
-主程序显式组合 **19 个职责 mixin**，另保留 `DeviceControls`、`GpuControls`、`tk.Tk`。这 19 个 mixin 没有初始化方法，共用同一 `self`：Tk 变量、配置、队列、线程状态、输出对象仍由公开主程序持有。跨方法依赖仍是普通显式调用；这是同一对象的代码整理，不是独立注入服务系统。
+2.1.0 主程序重构引入 **19 个职责 mixin**，另保留 `DeviceControls`、`GpuControls`、`tk.Tk`。2.1.1 保留这些基类，并让 `ModelOptionsMixin` 继承新增的 `ModelChecksMixin`。这些 mixin 没有初始化方法，共用同一 `self`：Tk 变量、配置、队列、线程状态、输出对象仍由公开主程序持有。跨方法依赖仍是普通显式调用；这是同一对象的代码整理，不是独立注入服务系统。
 
 | 模块 | 职责 |
 | --- | --- |
@@ -121,14 +132,15 @@ Start with the relevant row above or a method-name query. Read the indexed metho
 | `application/analysis_controls.py` | 分析／滤波／FPS／曲线控件及说明。 |
 | `application/sources.py` | 屏幕／视频／声音控件、物理区域验证和框选。 |
 | `application/models.py` | 既有 RTM 模型发现、验证、选择、下载。 |
-| `application/model_options.py` | v2 可选模型独立控件、下载事件和取消。 |
+| `application/model_options.py` | v2 可选模型独立控件、idle 合并状态刷新、下载事件和共享 CUDA 设置入口。 |
+| `application/model_checks.py` | 可选模型后台发现／校验、取消、当前结果保护及 Tk 线程完成处理。 |
 | `application/travel_controls.py` | 总／逐轴行程滑块及倍率显示同步。 |
 | `application/device_panel.py` | 连接面板、测量与轴限位 UI。 |
 | `application/connection.py` | 发现、异步连接／断开和错误完成处理。 |
 | `application/manual_output.py` | 实际发送、回中、测量、合成测试。 |
 | `application/presets.py` | 具名预设、五档与混合敏感度操作。 |
 | `application/realtime.py` | 实时启停、线程、屏幕／视频／声音采集及逐帧处理。 |
-| `application/start_dialog.py` | 启动确认显示和应用检查后的设置。 |
+| `application/start_dialog.py` | 启动框暂存设置、合并滚动重排、可达底部按钮及嵌套模态输入保护。 |
 | `application/output.py` | 分析位置解释、最终倍率／反向／限位和输出构造。 |
 | `application/video_export.py` | 离线视频导出、录制和脚本保存。 |
 | `application/monitor.py` | 最终指令解析／历史、轴状态和输出曲线。 |
@@ -159,6 +171,16 @@ Start with the relevant row above or a method-name query. Read the indexed metho
 六个搬迁分析方法在使用原静态辅助前，**局部导入公开 `RealtimeAnalyzer`**：`analysis/pose_motion.py` 三处，`analysis/rtm_geometry.py` 一处，`analysis/preview.py` 两处。调用仍经公开类，保留静态方法查找／替换语义；方法内导入避开公开类／mixin 循环。这是兼容处理，不是新模型路线。
 
 继续使用普通导入、声明类与显式调用；不建议改成反射安装方法、动态生成 mixin、`exec()` 或隐式改写依赖。修改共享 `self` 依赖时跟踪实际引用和方法解析顺序。
+
+### 2.1.1 可选模型设置与模态响应
+
+`ModelOptionsMixin` 在可见 v2 控件启用后调度自动检查，并提供“**自动检测模型**”和手选文件检查。`ModelChecksMixin` 在 Tk 线程拍下普通路径快照；后台线程通过 `v2_model_assets.detect_model()` 验证尺寸／哈希。明确指定路径时只验证该文件，不静默换成其他文件；没有路径时，GUI 只检查已知私有下载位置的固定文件名，不遍历目录、不下载、不推理。
+
+检查以 Tk 变量名为键，使用递增 token 和选择快照，共享两个后台执行名额。线程完成结果进入控制事件队列；仅 Tk 线程在核对当前 token、所属控件存活、取消状态和原选择后应用。换选、所属控件销毁、恢复默认和关闭软件会取消／丢弃过期工作。保持此边界：线程不读写 Tk 变量，迟到结果不能覆盖新选择。模型状态与滚动重排通过 idle 回调合并，控件销毁时移除待执行回调。
+
+“**启用 CUDA**”选择共享 CUDA 后端和当前上下文 GPU 启用变量，再打开原 GPU 设置。运行分析、安装或连接时阻止此快捷操作；它不打开任一模型开关，不自动下载依赖或安装运行库。共享 CUDA 自检仅是小型运行库检查，实际 NeuFlow 图兼容性在开始分析时另行检查。启动框暂存模型选择时，GPU 后端本身仍为共享设置。
+
+`start_dialog.py` 使用私有 `ControlSidebar` 子类，保留控件自然宽度、横纵滚动、安全滚轮和 Tab 可见性。重排请求合并，不从变量 trace 递归执行几何更新。独立底部按钮和受显示器工作区约束的最小尺寸保证操作可达。确认／取消先检查模态所属和可见性，避免父级 Return／Escape 或排队按钮动作穿透嵌套 GPU／文件窗口，或作用于框选期间隐藏的父启动框。原间歇性完全卡死尚未精确复现；已处理明确的同步校验和模态导航路径，仍需用户复测。
 
 ### 两条流程与边界
 

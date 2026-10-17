@@ -1,18 +1,99 @@
-"""Realtime-start confirmation and its original geometry lifecycle.
-
-Moved without changing behavior for 2.1.0; application state remains on self.
-"""
+"""Realtime-start confirmation with staged options and reachable controls."""
 from __future__ import annotations
 from ..screen_geometry import move_physical_window
+from types import SimpleNamespace
 import tkinter as tk
 from tkinter import messagebox, ttk
 from ..analyzer import SIX_AXES
 from ..capture import capture_fps
 from ..config import HYBRID_V2_MODE
 from ..analysis_preferences import AnalysisPreferences
+from ..ui_layout import ControlSidebar, display_scale
 from ..ui_widgets import WideCombobox, monitor_workarea
 from .translations import TRACKER_MODE_CHOICES
 from .tooltips import Tooltip
+
+
+class _StartDialogSidebar(ControlSidebar):
+    """Keep resize/text changes in one idle layout, outside variable traces."""
+
+    def __init__(self, master):
+        self._layout_after = None
+        self._focus_after = None
+        self._focus_target = None
+        self._layout_owner = master._root()
+        super().__init__(master)
+        self.vertical.configure(command=self._manual_yview)
+        self.horizontal.configure(command=self._manual_xview)
+        for bar in (self.vertical, self.horizontal):
+            bar.bind("<ButtonPress-1>", self._clear_focus_target, add="+")
+
+    def _layout(self, _event=None):
+        if self._layout_after is None:
+            self._layout_after = self._layout_owner.after_idle(self._layout_when_idle)
+
+    def _layout_when_idle(self):
+        self._layout_after = None
+        if self.winfo_exists():
+            super()._layout()
+            # Mapping the horizontal bar can resize the viewport once more.
+            # Its Configure schedules another layout/reveal using final pixels.
+            self._request_focus_reveal()
+
+    def _clear_focus_target(self, _event=None):
+        self._focus_target = None
+        if self._focus_after is not None:
+            self._layout_owner.after_cancel(self._focus_after)
+            self._focus_after = None
+
+    def _focus(self, event):
+        widget = event.widget
+        if (not self._contains(widget)
+                or widget in (self, self.canvas, self.vertical, self.horizontal)):
+            self._clear_focus_target()
+            return
+        self._focus_target = widget
+        self._request_focus_reveal()
+
+    def _request_focus_reveal(self):
+        if self._focus_target is not None and self._focus_after is None:
+            self._focus_after = self._layout_owner.after_idle(self._reveal_focus_when_idle)
+
+    def _reveal_focus_when_idle(self):
+        self._focus_after = None
+        widget = self._focus_target
+        if widget is None or not widget.winfo_exists():
+            self._clear_focus_target()
+            return
+        if self._layout_after is not None:
+            self._request_focus_reveal()
+            return
+        grab = str(self.tk.call("grab", "current", self._w))
+        if grab and grab != str(self.winfo_toplevel()):
+            self._clear_focus_target()
+            return
+        super()._focus(SimpleNamespace(widget=widget))
+
+    def _wheel(self, event):
+        if self._contains(event.widget):
+            self._clear_focus_target()
+        return super()._wheel(event)
+
+    def _manual_xview(self, *args):
+        self._clear_focus_target()
+        self.canvas.xview(*args)
+
+    def _manual_yview(self, *args):
+        self._clear_focus_target()
+        self.canvas.yview(*args)
+
+    def _dispose(self, event):
+        if event.widget is self:
+            self._clear_focus_target()
+            if self._layout_after is not None:
+                self._layout_owner.after_cancel(self._layout_after)
+                self._layout_after = None
+        super()._dispose(event)
 
 
 class StartDialogMixin:
@@ -180,17 +261,12 @@ class StartDialogMixin:
 
         dialog.columnconfigure(0, weight=1)
         dialog.rowconfigure(0, weight=1)
-        scroll = tk.Canvas(dialog, highlightthickness=0)
+        scroll = _StartDialogSidebar(dialog)
         scroll.grid(row=0, column=0, sticky="nsew")
-        scrollbar = ttk.Scrollbar(dialog, orient="vertical", command=scroll.yview)
-        scrollbar.grid(row=0, column=1, sticky="ns")
-        scroll.configure(yscrollcommand=scrollbar.set)
-        body = ttk.Frame(scroll, padding=14)
-        body_window = scroll.create_window(0, 0, window=body, anchor="nw")
-        body.bind("<Configure>", lambda _event: scroll.configure(scrollregion=scroll.bbox("all")))
-        scroll.bind("<Configure>", lambda event: scroll.itemconfigure(body_window, width=event.width))
-        dialog.bind("<MouseWheel>", lambda event: scroll.yview_scroll(-int(event.delta / 120), "units"))
+        body = scroll.content
+        body.configure(padding=14)
         body.columnconfigure(0, weight=1)
+        body.columnconfigure(1, weight=0)
 
         ttk.Label(body, text="开始实时输出前确认", font=("", 11, "bold")).grid(row=0, column=0, sticky="w")
         ttk.Label(
@@ -359,13 +435,26 @@ class StartDialogMixin:
         ttk.Label(body, textvariable=limits_text, wraplength=420, foreground="#333").grid(row=5, column=0, sticky="ew", pady=(10, 0))
 
         buttons = ttk.Frame(dialog, padding=14)
-        buttons.grid(row=1, column=0, columnspan=2, sticky="ew")
+        buttons.grid(row=1, column=0, sticky="ew")
         buttons.columnconfigure((0, 1), weight=1)
 
+        def owns_input(event=None) -> bool:
+            # A nested GPU/file modal owns its own confirmation keys. Also
+            # reject already queued events while the region picker hides us.
+            try:
+                return (bool(dialog.winfo_viewable())
+                        and str(dialog.tk.call('grab', 'current', dialog._w)) in ('', str(dialog))
+                        and (event is None or event.widget.winfo_toplevel() is dialog))
+            except (tk.TclError, AttributeError, KeyError):
+                return False
+
         def cancel() -> None:
-            dialog.destroy()
+            if owns_input():
+                dialog.destroy()
 
         def confirm() -> None:
+            if not owns_input():
+                return
             if self._gpu_installing or (self._gpu_restart_required and rtm_pose_gpu_enabled.get()):
                 messagebox.showwarning(self._dt("GPU 运行库", "GPU Runtime"), self._dt(
                     "请等待安装结束后重启软件；或关闭 GPU 使用 CPU。", "Wait for installation and restart the app, or disable GPU to use CPU."), parent=dialog)
@@ -418,15 +507,25 @@ class StartDialogMixin:
         ttk.Button(buttons, text="取消", command=cancel).grid(row=0, column=0, sticky="ew", padx=(0, 6))
         ttk.Button(buttons, text="确认开始", command=confirm, style="Primary.TButton").grid(row=0, column=1, sticky="ew", padx=(6, 0))
 
-        dialog.bind("<Escape>", lambda _event: cancel())
-        dialog.bind("<Return>", lambda _event: confirm())
+        def keyboard_action(event, action):
+            if owns_input(event):
+                action()
+            return "break"
+
+        dialog.bind("<Escape>", lambda event: keyboard_action(event, cancel))
+        dialog.bind("<Return>", lambda event: keyboard_action(event, confirm))
         dialog.protocol("WM_DELETE_WINDOW", cancel)
         self._install_tooltips(dialog)
         self._localize_widget_tree(dialog)
         dialog.update_idletasks()
         left, top, right, bottom = monitor_workarea(self)
-        width = min(max(560, body.winfo_reqwidth() + 24), right - left - 40)
-        height = min(body.winfo_reqheight() + buttons.winfo_reqheight(), bottom - top - 80)
+        available_width = max(1, right - left - 40)
+        available_height = max(1, bottom - top - 80)
+        width = min(max(560, body.winfo_reqwidth() + scroll.vertical.winfo_reqwidth()), available_width)
+        height = min(body.winfo_reqheight() + buttons.winfo_reqheight(), available_height)
+        # Keep the footer outside the viewport, including after manual shrink.
+        dialog.minsize(min(max(420, buttons.winfo_reqwidth()), available_width),
+                       min(buttons.winfo_reqheight() + round(120 * display_scale(dialog)), available_height))
         x = max(left, min(self.winfo_rootx() + (self.winfo_width() - width) // 2, right - width))
         y = max(top, min(self.winfo_rooty() + (self.winfo_height() - height) // 2, bottom - height - 40))
         dialog.geometry(f"{width}x{height}")

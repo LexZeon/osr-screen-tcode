@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "osr-screen-tcode"
-version = "2.1.0"
+version = "2.1.1"
 description = "SR6/OSR6 Realtime Screen TCode"
 requires-python = ">=3.10"
 dependencies = [

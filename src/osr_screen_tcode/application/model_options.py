@@ -8,12 +8,14 @@ import time
 from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, ttk
+from tkinter import messagebox
 from ..config import HYBRID_V2_MODE, STROKE_CYCLE_MODE
 from ..ui_layout import ControlSidebar, display_scale
 from .tooltips import Tooltip
+from .model_checks import ModelChecksMixin
 
 
-class ModelOptionsMixin:
+class ModelOptionsMixin(ModelChecksMixin):
     def _v2_model_variables(self):
         return {name: getattr(self, f"v2_{name}") for name in
                 ("vittrack_enabled", "neuflow_enabled", "vittrack_model_path", "neuflow_model_path")}
@@ -123,11 +125,25 @@ class ModelOptionsMixin:
                 "可单独或同时开启。需要单独下载模型；只辅助混合 v2 与全／半行程的画面观测。缺失或失败时回退原分析，缺测估算仍最多 2 秒。改变模型选项会停止当前分析，再次开始生效。",
                 "Enable separately or together. Model files require a separate download. Assists observations in Hybrid v2 and Full/Half Travel only. Missing or failed models fall back to existing analysis; missing-observation estimates remain limited to 2 s. Changing model options stops analysis; restart to apply."))
         gpu_row = 6 if compact else 4
-        ttk.Button(box, text=self._dt("GPU 设置", "GPU settings"), command=lambda: self._show_v2_gpu_settings(box, gpu_enabled)).grid(
-            row=gpu_row, column=1, columnspan=2, sticky="e", pady=(2, 0))
-        ttk.Label(box, text=self._dt("ViTTrack 可用 CPU。NeuFlow 需启用 NVIDIA CUDA，不支持 DirectML；未就绪时使用原光流。",
+        tools = ttk.Frame(box)
+        tools.grid(row=gpu_row, column=0, columnspan=3, sticky='ew', pady=(2, 0))
+        tools.columnconfigure(0, weight=1)
+        box.detect_button = ttk.Button(tools, text=self._dt('自动检测模型', 'Detect models'),
+            command=lambda: [self._start_v2_model_check(model, variables[f'{model}_model_path'], box)
+                             for model in ('vittrack', 'neuflow')])
+        box.detect_button.grid(row=0, column=0, sticky='w')
+        box.gpu_button = ttk.Button(tools, text=self._dt('GPU 设置', 'GPU settings'),
+            command=lambda: self._show_v2_gpu_settings(box, gpu_enabled))
+        box.gpu_button.grid(row=0, column=1, sticky='e', padx=3)
+        box.cuda_button = ttk.Button(tools, text=self._dt('启用 CUDA', 'Enable CUDA'),
+            command=lambda: self._enable_v2_cuda(box, gpu_enabled))
+        box.cuda_button.grid(row=1 if compact else 0, column=0 if compact else 2, sticky='e', pady=2)
+        gpu_hint = ttk.Label(box, text=self._dt("ViTTrack 可用 CPU。NeuFlow 需启用 NVIDIA CUDA，不支持 DirectML；未就绪时使用原光流。",
             "ViTTrack supports CPU. NeuFlow requires enabled NVIDIA CUDA; DirectML is unsupported. Otherwise original flow is used."),
-            foreground="#555", wraplength=285 if compact else 410).grid(row=gpu_row + 1, column=0, columnspan=3, sticky="ew")
+            foreground="#555", wraplength=285 if compact else 410)
+        gpu_hint.grid(row=gpu_row + 1, column=0, columnspan=3, sticky="ew")
+        gpu_status = ttk.Label(box, foreground='#555', wraplength=285 if compact else 410)
+        gpu_status.grid(row=gpu_row + 2, column=0, columnspan=3, sticky='ew')
         box.model_controls = controls
 
         def refresh(*_args):
@@ -135,13 +151,18 @@ class ModelOptionsMixin:
                 return
             visible = self._tracker_internal(tracker.get()) in (HYBRID_V2_MODE, STROKE_CYCLE_MODE)
             box.grid() if visible else box.grid_remove()
+            gpu_status.configure(text=self._v2_gpu_status(gpu_enabled))
             for model, (_check, choose, download, label) in controls.items():
+                if visible:
+                    self._schedule_v2_model_check(model, variables[f'{model}_model_path'], box, variables[f'{model}_enabled'])
                 pending = model in self._v2_model_downloads
                 download.configure(text=self._dt("取消下载", "Cancel download") if pending else self._dt("下载", "Download"))
                 choose.configure(state="disabled" if pending else "normal")
                 notice = self._v2_model_notices.get(model, "")
                 if pending or notice:
                     label.configure(text=notice)
+                elif self._v2_model_check_text(variables[f'{model}_model_path']):
+                    label.configure(text=self._v2_model_check_text(variables[f'{model}_model_path']))
                 elif not variables[f"{model}_enabled"].get():
                     label.configure(text=self._dt("未开启；使用原分析。", "Off; using existing analysis."))
                 elif variables[f"{model}_model_path"].get():
@@ -151,10 +172,36 @@ class ModelOptionsMixin:
                     label.configure(text=self._dt("启动时检测已下载模型；未下载请点下载／选择。",
                         "Checks downloaded model at startup; download/select if needed."))
 
-        callbacks = [(variable, variable.trace_add("write", refresh)) for variable in
-                     (*variables.values(), tracker, self._v2_model_revision)]
+        refresh_after = None
+        def request_refresh(*_args):
+            nonlocal refresh_after
+            if not box.winfo_exists():
+                return
+            visible = self._tracker_internal(tracker.get()) in (HYBRID_V2_MODE, STROKE_CYCLE_MODE)
+            if visible and box.winfo_manager() != 'grid':
+                box.grid()
+            elif not visible:
+                box.grid_remove()
+                self._cancel_v2_model_checks(box)
+            if refresh_after is None:
+                refresh_after = self.after_idle(refresh_when_idle)
+
+        def refresh_when_idle():
+            nonlocal refresh_after
+            refresh_after = None
+            refresh()
+
+        # Native checkbutton traces must finish before text/layout work. A
+        # revision burst produces one idle refresh, not recursive re-layout.
+        callbacks = [(variable, variable.trace_add("write", request_refresh)) for variable in
+                     (*variables.values(), tracker, gpu_enabled, self.rtm_pose_gpu_backend, self._v2_model_revision)]
         def dispose(event):
+            nonlocal refresh_after
             if event.widget is box:
+                if refresh_after is not None:
+                    self.after_cancel(refresh_after)
+                    refresh_after = None
+                self._cancel_v2_model_checks(box)
                 for variable, token in callbacks:
                     variable.trace_remove("write", token)
                 for model, record in tuple(self._v2_model_downloads.items()):
@@ -164,6 +211,30 @@ class ModelOptionsMixin:
         refresh()
         return box
 
+    def _enable_v2_cuda(self, owner, enabled):
+        if self._gpu_installing or self._connecting or (self.worker and self.worker.is_alive()) or self._video_analysis_active():
+            messagebox.showwarning(self._dt('请先停止输出', 'Stop Output First'), self._dt(
+                '请先停止分析并等待当前安装或连接结束。', 'Stop analysis and wait for installation or connection to finish.'), parent=owner)
+            return
+        self.rtm_pose_gpu_backend.set('cuda')
+        enabled.set(True)
+        self._show_v2_gpu_settings(owner, enabled)
+
+    def _v2_gpu_status(self, enabled):
+        if self._gpu_installing:
+            return self._dt('GPU 运行库配置中；进度见 GPU 设置。', 'Setting up GPU runtime; see GPU settings for progress.')
+        if not enabled.get():
+            return self._dt('NeuFlow GPU 未启用；可点“启用 CUDA”。', 'NeuFlow GPU is off; select Enable CUDA.')
+        if self.rtm_pose_gpu_backend.get() != 'cuda':
+            return self._dt('当前为 DirectML，NeuFlow 不支持；可点“启用 CUDA”。', 'DirectML is selected; NeuFlow requires Enable CUDA.')
+        if self._gpu_restart_required:
+            return self._dt('CUDA 运行库需重启软件后生效。', 'Restart the app to activate the CUDA runtime.')
+        if self._gpu_check_running or self._gpu_result is None:
+            return self._dt('CUDA 后台检测中；不会自动下载。', 'Checking CUDA in background; no automatic download.')
+        if self._gpu_result.get('ready', self._gpu_result.get('cuda')):
+            return self._dt('CUDA 推理自检通过；NeuFlow 模型启动后单独验证。', 'CUDA self-check passed; NeuFlow is checked separately when analysis starts.')
+        return self._dt('CUDA 尚未就绪；在 GPU 设置中一键安装／重新检测。', 'CUDA is not ready; install or recheck in GPU settings.')
+
     def _show_v2_gpu_settings(self, owner=None, enabled=None):
         existing = getattr(self, "_v2_gpu_dialog", None)
         if existing is not None and existing.winfo_exists():
@@ -171,15 +242,35 @@ class ModelOptionsMixin:
             return
         parent = self if owner is None else owner.winfo_toplevel()
         enabled = self.rtm_pose_gpu_enabled if enabled is None else enabled
-        previous_grab = self.grab_current()
+        grab_path = str(self.tk.call('grab', 'current', self._w))
+        if grab_path and grab_path != str(parent):
+            return  # A different/native modal must keep its input ownership.
+        previous_grab = parent if grab_path == str(parent) else None
         dialog = self._v2_gpu_dialog = tk.Toplevel(parent)
         dialog.title(self._dt("共享 GPU 设置", "Shared GPU settings"))
         dialog.transient(parent)
         dialog.grab_set()
+        restored_grab = False
+        def restore_grab():
+            nonlocal restored_grab
+            if restored_grab:
+                return
+            restored_grab = True
+            try:
+                current = str(self.tk.call('grab', 'current', self._w))
+                if current == str(dialog):
+                    dialog.grab_release()
+                    current = ''
+                if (previous_grab is not None and previous_grab.winfo_exists()
+                        and not current):
+                    previous_grab.grab_set()
+                    previous_grab.focus_set()
+            except (tk.TclError, KeyError):
+                pass
+
         def close():
             dialog.destroy()
-            if previous_grab is not None and previous_grab.winfo_exists():
-                previous_grab.grab_set()
+            restore_grab()
         body = ttk.Frame(dialog, padding=12)
         body.pack(fill="both", expand=True)
         body.columnconfigure(0, weight=1)
@@ -193,24 +284,18 @@ class ModelOptionsMixin:
         def dispose(event):
             if event.widget is dialog:
                 enabled.trace_remove("write", token)
+                restore_grab()
         dialog.bind("<Destroy>", dispose, add="+")
         ttk.Button(body, text=self._dt("关闭", "Close"), command=close).grid(row=3, column=0, columnspan=3, sticky="ew", pady=(8, 0))
         dialog.protocol("WM_DELETE_WINDOW", close)
         dialog.bind("<Escape>", lambda _event: close())
 
     def _pick_v2_model(self, model, variable, owner):
-        from ..v2_model_assets import validate_model_path
         path = filedialog.askopenfilename(parent=owner, title=self._dt("选择模型", "Select model"),
             filetypes=(("ONNX", "*.onnx"), (self._dt("所有文件", "All files"), "*.*")))
         if not path:
             return
-        valid, reason = validate_model_path(model, path)
-        if valid:
-            self._v2_model_notices.pop(model, None)
-            variable.set(path)
-        else:
-            self._v2_model_notices[model] = self._dt("选择被拒绝，保留原模型：", "Selection rejected; previous model unchanged: ") + self._v2_model_error_text(reason)
-        self._v2_model_revision.set(self._v2_model_revision.get() + 1)
+        self._start_v2_model_check(model, variable, owner, path=path)
 
     def _download_v2_model(self, model, variable, owner):
         from ..v2_model_assets import download_model
@@ -244,6 +329,9 @@ class ModelOptionsMixin:
         threading.Thread(target=worker, daemon=True, name=f"v2-model-{model}").start()
 
     def _finish_v2_model_event(self, event):
+        if event['kind'] == 'checked':
+            self._finish_v2_model_check(event)
+            return
         model = event["model"]
         record = self._v2_model_downloads.get(model)
         if record is None or record["token"] != event["token"]:
@@ -264,6 +352,7 @@ class ModelOptionsMixin:
         self._v2_model_revision.set(self._v2_model_revision.get() + 1)
 
     def _cancel_v2_model_downloads(self):
+        self._cancel_v2_model_checks()
         for record in self._v2_model_downloads.values():
             record["cancel"].set()
         self._v2_model_downloads.clear()

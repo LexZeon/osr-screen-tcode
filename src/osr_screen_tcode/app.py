@@ -313,6 +313,7 @@ class OsrScreenApp(
         self.integrated_preview.render()
 
     def on_close(self) -> None:
+        self._v2_model_checks_closed = True
         self._cancel_v2_model_downloads()
         self._cancel_gpu_tasks()
         if self._config_save_after_id is not None:

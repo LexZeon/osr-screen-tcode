@@ -2,7 +2,7 @@
 
 ## English
 
-This guide describes the user functions retained in **2.1.0**. The release reorganizes existing program responsibilities; it does not introduce a new analysis model, a longer prediction window, or new hardware mapping. Defaults below describe a fresh configuration or **Reset all defaults**. Previously saved choices can differ.
+This guide describes the user functions in **2.1.1**. Version 2.1.0 organized existing program responsibilities; 2.1.1 improves optional-model setup and start-dialog responsiveness. Neither update introduces a new analysis model, a longer prediction window, or new hardware mapping. Defaults below describe a fresh configuration or **Reset all defaults**. Previously saved choices can differ.
 
 ### 1. Start and understand the three kinds of results
 
@@ -107,9 +107,13 @@ Direct Pose's measured **L0 base amplitude is ×10 about center** before user tr
 | **Analysis Preview → + Models** | Expands the initially collapsed, bounded scrolling v2 model controls. The sidebar and start dialog show the same saved choices. Only v2 and Full/Half Travel use these options. |
 | **ViTTrack subject tracking** | Optional CPU-capable assistance for retaining a subject region after ordinary analysis identifies it. |
 | **NeuFlow v2 optical-flow assist** | Optional dense flow assistance requested adaptively when ordinary sparse/DIS evidence is insufficient. Requires enabled **NVIDIA CUDA**. This exported graph does **not** support DirectML; RTM DirectML support is separate. |
-| **Select / Download / Cancel** for either v2 model | Selects a supported pinned artifact or downloads and verifies its size/hash. Each model has an independent switch and file. Checking a switch does not install dependencies. Changing a currently used model option stops analysis so the next run applies a consistent selection. |
+| **Detect models** / automatic check on enabling | Checks each selected path or the application's known private download filename when no path is selected. Verification runs in the background and reports checking, verified or missing/invalid status; it does not search drives, download models or enable either model. An explicitly selected invalid file is not silently replaced. |
+| **Select / Download / Cancel** for either v2 model | Selects a supported pinned artifact or downloads and verifies its size/hash. A manually selected file is checked in the background before replacing the previous path. Each model has an independent switch and file. Checking a switch does not install dependencies. Changing a currently used model option stops analysis so the next run applies a consistent selection. |
+| **Enable CUDA** | Selects the shared CUDA backend, enables the GPU option in the current settings context and opens GPU settings. It leaves both model switches unchanged and does not automatically download/install a runtime. Stop analysis and wait for an active installation or connection to finish before using it; use the existing install/recheck controls and restart when prompted. |
 
 **Both v2 models default off**, can be selected independently and are turned off by Reset all defaults. Downloaded files remain on disk after reset. Missing, incompatible or failed optional models retain ordinary v2 analysis. Direct Pose, its optional L0 blend and v1 do not silently inherit these models. A tracked bounding-box center is not a direct L0 measurement; neural correspondences still require image support and camera validation. Optional assistance can cost time and does not guarantee better output on every clip. Model weights and optional CUDA/DirectML libraries are excluded from source/Windows ZIPs.
+
+Background checks leave the controls available. Closing the owning dialog, destroying its controls or changing the selection cancels/discards obsolete checks; late results cannot overwrite a newer choice. Start-dialog model switches and paths remain staged until **Confirm Start**; cancelling does not apply those staged choices. The GPU backend itself is shared. A passed shared CUDA self-check verifies a small runtime test, not the NeuFlow model graph, its performance or its output quality; NeuFlow is checked separately when analysis starts. The originally reported intermittent complete freeze was not reproduced exactly; these changes address known blocking file-verification and modal-navigation paths, and user retesting is still needed.
 
 ### 7. Filters, travel settings and final live output
 
@@ -179,6 +183,8 @@ Choose English or Chinese at startup; the choice is saved. Changing documentatio
 
 Drag the divider between controls and preview to set sidebar width. The saved width uses device-independent units; the initial window fits the display work area. Narrow panels have vertical/horizontal scrolling, Shift+wheel scrolls horizontally, ordinary wheel scrolling does not silently change a combobox choice, and Tab-focused controls scroll into view. Optional model controls start collapsed and scroll within their bounded panel. Reset defaults also resets sidebar width. These are presentation changes; they do not rescale capture coordinates or analysis output.
 
+The start-confirmation dialog also supports horizontal/vertical scrolling and focus visibility while keeping **Cancel / Confirm Start** outside the scrollable content. Its minimum size preserves the footer within the available monitor work area. Model-status drawing and resize requests are coalesced instead of relaying every variable change into immediate layout. Return/Escape and parent action buttons do not confirm/cancel the start dialog while a nested GPU/file dialog owns input.
+
 ### 11. Source entry points for maintainers
 
 Unless marked as root paths, files below are under `src/osr_screen_tcode/`. They identify current responsibilities; modify a feature's implementation together with its UI/configuration and appropriate checks. The table is not an invitation to expose internal class names in the user interface. `app.py` and `analyzer.py` retain the public class entry points; the corresponding `application/` and `analysis/` modules now own their extracted responsibilities.
@@ -198,7 +204,7 @@ Unless marked as root paths, files below are under `src/osr_screen_tcode/`. They
 | V2 reference, targets and bounded continuity | `point_l0.py`; `fused_l0.py`; `reach_target.py`; `interaction_point.py`; `target_baseline.py`; `target_regions.py`; `motion_rhythm.py`; `subject_continuity.py` |
 | Quarter/half/full cycle | `stroke_cycle.py`; `visual_pipeline.py` (`StrokeCycleAnalyzer`) |
 | Pose backend, gains, generated L0 and handoff | `pose_backends.py`; `directml_pose.py`; `analysis/rtm_runtime.py`; `analysis/rtm_geometry.py`; `analysis/pose_motion.py`; `pose_output.py`; `pose_l0_fallback.py`; `pose_pattern.py`; `pose_fast_fallback.py` |
-| Model selection/download UI and source constants | `application/models.py`; `application/model_options.py`; `application/model_sources.py` |
+| Model selection/download UI and source constants | `application/models.py`; `application/model_options.py`; `application/model_checks.py`; `application/model_sources.py` |
 | V2 model registry/assets/assistance | `v2_models.py`; `v2_model_assets.py`; `v2_model_assist.py` |
 | GPU detection/download/install UI | `gpu_controls.py`; `gpu_runtime.py`; `gpu_downloads.py` |
 | Audio input and level/accent/pulse analysis | `audio.py` |
@@ -218,7 +224,7 @@ Existing release validation records in `docs/` document what was actually tested
 
 ## 中文
 
-本指南介绍 **2.1.0** 保留的用户功能。本版整理既有程序职责，没有新增分析模型、延长估算时限或新增硬件映射。下文默认值指首次配置或“恢复所有默认设置”；原先保存的个人选择可能不同。
+本指南介绍 **2.1.1** 的用户功能。2.1.0 按职责整理既有程序，2.1.1 改善可选模型设置和启动确认框的响应。两次更新均未新增分析模型、延长估算时限或新增硬件映射。下文默认值指首次配置或“恢复所有默认设置”；原先保存的个人选择可能不同。
 
 ### 1. 启动与三类结果
 
@@ -321,9 +327,13 @@ v2／全半模式中，在“**分析预览 → v2 L0 参考**”（启动框亦
 | **分析预览 → + 模型** | 展开默认收起、高度受限且可滚动的 v2 模型区，与侧栏／启动框共用保存值。仅 v2／全半模式使用。 |
 | **ViTTrack 主体跟踪** | 原分析先确认主体，再辅助保持区域；可用 CPU。 |
 | **NeuFlow v2 光流辅助** | 原稀疏／DIS 证据不足时，自适应补充密集光流。要求明确开启 **NVIDIA CUDA**；本导出图**不支持 DirectML**，RTM DirectML 是另一功能。 |
-| 两项各自的**选择／下载／取消** | 选择受支持固定版本文件或下载并验证尺寸／哈希；各自开关与路径独立。勾选不会安装依赖，改变正在使用的选项会停止分析，下次统一生效。 |
+| **自动检测模型**／勾选后的自动检查 | 检查各自已选路径；未选路径时，仅检查程序已知私有下载位置的固定文件名。校验在后台进行，显示检查中、已校验或缺失／无效状态；不搜索磁盘、不下载、不自动打开模型开关。明确选择的无效文件不会被静默换成另一个文件。 |
+| 两项各自的**选择／下载／取消** | 选择受支持固定版本文件或下载并验证尺寸／哈希；手选文件先在后台校验，通过后才替换原路径。各自开关与路径独立。勾选不会安装依赖，改变正在使用的选项会停止分析，下次统一生效。 |
+| **启用 CUDA** | 选择共享 CUDA 后端，在当前设置上下文打开 GPU 选项并显示 GPU 设置；不改两项模型开关，也不自动下载／安装运行库。需先停分析，等待正在安装或连接的操作结束；继续使用原安装／重新检测控件，按提示重启。 |
 
 两模型**均默认关**，可独立开启；恢复默认关闭开关，但保留下载文件。缺失、不兼容或失败时使用普通 v2 分析。直接 Pose、其 L0 混合及 v1 不会静默继承。跟踪框中心不能直接成为 L0 测量；神经匹配仍需像素和独立运镜验证。辅助可能增加耗时，不保证每片段都更好。模型和可选 CUDA／DirectML 库均不包含在源码／Windows ZIP 中。
+
+后台检查时仍可操作控件。关闭所属对话框、销毁控件或改变选择会取消／丢弃过期检查，迟到结果不能覆盖后来选择。启动框的模型开关和路径暂存到“**确认开始**”后应用，取消不会应用这些暂存选择；GPU 后端本身为共享设置。共享 CUDA 自检通过只说明小型运行库测试通过，不代表 NeuFlow 模型图、速度或输出质量已经通过；NeuFlow 在开始分析时另行检查。用户报告的间歇性完全卡死尚未精确复现；本轮处理已知文件校验阻塞和模态导航路径，仍需用户复测。
 
 ### 7. 滤波、行程与最终实时输出
 
@@ -393,6 +403,8 @@ Lab 共用选区／物理采集坐标，设置独立；四项骨架处理默认*
 
 拖动控制区和预览之间的分隔栏调整侧栏宽，按逻辑单位保存，初始窗口适配显示器工作区。窄栏支持横纵滚动，Shift＋滚轮横滚；普通滚轮不误改下拉选项，Tab 焦点滚入可见区。可选模型初始收起，在受限区域内滚动；恢复默认同时复位栏宽。布局只改呈现，不重缩采集坐标或分析输出。
 
+启动确认框同样支持横纵滚动和焦点可见；“**取消／确认开始**”固定在滚动内容外，最小尺寸尽量在显示器工作区内保留底部按钮。模型状态绘制与尺寸变化请求合并处理，不把每次变量变化都立即变成重排。嵌套 GPU／文件对话框持有输入时，Return／Escape 及父窗口按钮不会确认或取消启动框。
+
 ### 11. 维护者源码入口
 
 除标注根目录外，下列文件均位于 `src/osr_screen_tcode/`。修改功能时同时检查 UI／配置与相应验证；不应把内部类名搬进普通用户流程。`app.py` 与 `analyzer.py` 保留公开类入口，拆出的职责分别由 `application/` 和 `analysis/` 模块承接。
@@ -412,7 +424,7 @@ Lab 共用选区／物理采集坐标，设置独立；四项骨架处理默认*
 | v2 参考、目标与限时接续 | `point_l0.py`；`fused_l0.py`；`reach_target.py`；`interaction_point.py`；`target_baseline.py`；`target_regions.py`；`motion_rhythm.py`；`subject_continuity.py` |
 | 1/4／半／全周期 | `stroke_cycle.py`；`visual_pipeline.py`（`StrokeCycleAnalyzer`） |
 | Pose 后端、倍率、自动 L0、接管 | `pose_backends.py`；`directml_pose.py`；`analysis/rtm_runtime.py`；`analysis/rtm_geometry.py`；`analysis/pose_motion.py`；`pose_output.py`；`pose_l0_fallback.py`；`pose_pattern.py`；`pose_fast_fallback.py` |
-| 模型选择／下载 UI 与来源常量 | `application/models.py`；`application/model_options.py`；`application/model_sources.py` |
+| 模型选择／下载 UI 与来源常量 | `application/models.py`；`application/model_options.py`；`application/model_checks.py`；`application/model_sources.py` |
 | v2 模型登记、文件与辅助 | `v2_models.py`；`v2_model_assets.py`；`v2_model_assist.py` |
 | GPU 检测／下载／安装 UI | `gpu_controls.py`；`gpu_runtime.py`；`gpu_downloads.py` |
 | 声音输入／音量／强调／脉冲 | `audio.py` |

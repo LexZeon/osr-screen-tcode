@@ -123,6 +123,7 @@ class StateMixin:
         self._v2_model_notices = {}
         self._v2_model_downloads = {}
         self._v2_model_download_token = 0
+        self._build_v2_model_check_state()
         self.v2_l0_reference = tk.StringVar(value=cfg.extra['v2_l0_reference'])
         self.rtm_pose_reject_enabled = tk.BooleanVar(value=cfg.extra["rtm_pose_reject_enabled"])
         self.rtm_pose_micro_smooth_enabled = tk.BooleanVar(value=cfg.extra["rtm_pose_micro_smooth_enabled"])
