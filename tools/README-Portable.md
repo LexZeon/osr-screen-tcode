@@ -16,8 +16,10 @@ in this folder and provided as separate release attachments. No setting migratio
 For the independent visual preview, open **Pose-Preview-Lab/Start.cmd**. It uses the same bundled
 runtime and does not feed device output or script generation. Models and downloadable GPU
 runtimes are excluded; download them through the application when needed. CPU hybrid analysis
-can run first. Use **Log only** for initial checks. Real hardware, robot joint mapping and feedback
-have not been validated for this release. The executable is not digitally signed; verify the
+can run first. Use **Log only** for initial checks. Later maintainer feedback records useful real-device results;
+see the [2026-11-12 hardware-use report](https://github.com/LexZeon/osr-screen-tcode/blob/main/docs/HARDWARE_TESTING.md)
+for its scope. Robot joint mapping and physical feedback remain unverified.
+The executable is not digitally signed; verify the
 repository and published SHA256 before running an unfamiliar download.
 
 In **Hybrid v2** or **Full/Half Travel**, open **+ Models** in Analysis Preview. **v2 optional models** provides independent
@@ -51,7 +53,8 @@ Legal notices are in **LICENSE**, **THIRD_PARTY_NOTICES.md**, **OPEN_SOURCE_NOTI
 它使用同一套内置运行时，不参与设备输出或脚本生成。
 
 模型和可下载的 GPU 运行库没有打包，按软件提示另外下载；普通混合分析可先用
-CPU 运行。首次测试请选择 **Log only**。真实硬件、机械臂映射与反馈未在本发布中验证。
+CPU 运行。首次测试请选择 **Log only**。维护者后续反馈已报告实机上的可应用效果，范围见
+[2026-11-12 实机使用反馈](https://github.com/LexZeon/osr-screen-tcode/blob/main/docs/HARDWARE_TESTING.md)；机械臂映射与真实反馈仍未验证。
 Windows 如提示未知发布者，请先核对下载仓库和 SHA256；此包尚未数字签名。
 
 选择**混合分析 v2**或**全／半行程**，点分析预览中的“**+ 模型**”，在“**v2 可选模型**”中分别开启 ViTTrack、NeuFlow v2；

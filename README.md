@@ -2,40 +2,134 @@
 
 ## English
 
-**2.1.1 improves model setup and start-confirmation responsiveness.** Optional model discovery and file checks run in the background; the start dialog keeps settings scrollable and its action buttons reachable. **Detect models**, **Enable CUDA** and the shared GPU installer simplify setup. The existing modular organization, analysis/output mathematics, default-off model switches and two-second estimate limit remain unchanged. The reported intermittent complete freeze was not precisely reproduced; see the validation record and retest your original operation.
+An open-source Windows tool that reads a selected screen region, converts visible motion into realtime TCode, and sends it to a device over USB or BLE. Preview the output without hardware, or record/export `.funscript` positions.
 
-Download the complete **Windows.zip** from the [2.1.1 release](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.1.1), extract it and double-click **Start.cmd** or the exe. Keep `_internal` beside the executable; Python is bundled. The matching **Source.zip** needs Python 3.10+ and the root [Start.cmd](Start.cmd). [Start.md](Start.md) explains both editions.
+**Practical results on real hardware:** on 2026-11-12, the maintainer reported USB (USB-C) and BLE use, with useful results from dance analysis in L0/Six Axis and Hybrid Analysis in L0. See the [dated hardware-use report](docs/HARDWARE_TESTING.md) for the reported scope.
 
-- [Every user feature explained](docs/FEATURES.md): inputs, analysis modes, options, output, devices, recording and previews.
-- [Code architecture and modification map](docs/ARCHITECTURE.md): find the responsibility before opening a large file.
-- [Short AI/developer handoff](AI_Prompting_Guide.md): constraints, focused reading and validation.
-- [2.1.1 validation](docs/Validation_2.1.1.md) and [release notes](docs/Release_2.1.1.md).
-- [Contributing](CONTRIBUTING.md), [license](LICENSE), [third-party notices](THIRD_PARTY_NOTICES.md) and [open-source notice](OPEN_SOURCE_NOTICE.md).
+> **Adults only. This project is intended for adults. Minors are prohibited.**
 
-Hybrid v2 remains the default analysis; Full/Half Travel is listed first, followed by RTM Pose 2D. ViTTrack and NeuFlow v2 remain optional and **off by default**, with software downloads. ViTTrack can use CPU; NeuFlow requires NVIDIA CUDA and does not support DirectML. RTM's existing DirectML option remains. Models and optional GPU runtimes are not in either application ZIP.
+### Download and source versions
 
-**Output Monitor** remains the first tab. **Show Preview** opens the simulator, which receives final TCode commands. **Analysis Preview** shows image evidence and overlays; the independent **Pose-Preview-Lab** remains 0.2.2-test without device output. Use **Log only** for initial checks. Real depth, semantic contact, robot joint mapping, inverse kinematics, collision detection and feedback remain unverified.
+**Latest release: [2.1.1](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.1.1).**
 
-Historical release documentation, acknowledgements and validation are retained. The previous [README](docs/history/README_2.0.2.md), [startup guide](docs/history/Start_2.0.2.md) and [AI guide](docs/history/AI_Prompting_Guide_2.0.2.md) retain the earlier instructions, with contact fields refreshed in the October 11 email update; their original relative links refer to the repository root. Earlier tags and release assets remain available.
+- **[Windows portable ZIP](https://github.com/LexZeon/osr-screen-tcode/releases/download/v2.1.1/SR6-OSR6-Realtime-Screen-TCode-v2.1.1-Windows.zip):** extract the complete folder, then double-click **Start.cmd** or **SR6-OSR6-Realtime-Screen-TCode.exe**. Python is bundled; keep `_internal` beside the exe.
+- **[Matching Source ZIP](https://github.com/LexZeon/osr-screen-tcode/releases/download/v2.1.1/SR6-OSR6-Realtime-Screen-TCode-v2.1.1-Source.zip)** or **[v2.1.1 source tag](https://github.com/LexZeon/osr-screen-tcode/tree/v2.1.1):** use Python 3.10+ and the source Start.cmd. [Startup guide](https://github.com/LexZeon/osr-screen-tcode/blob/2.0.0-beta/Start.md).
 
-Thanks to **DK**, **机械纪元**, and **“电话机”** for guidance, volunteer testing and suggestions. Contact: **lexzeonstudio@gmail.com**.
+**Source version note:** the default `main` branch retains the older **1.1.2** program source. Use the **v2.1.1 tag/Source ZIP** for the latest release's matching source. Current documentation and ongoing source work are on [2.0.0-beta](https://github.com/LexZeon/osr-screen-tcode/tree/2.0.0-beta). Extract the complete Windows package before running it; the separate Start.cmd attachment requires that folder.
+
+### Start in three steps
+
+1. Open **Start.cmd**, select **Log only**, and inspect Output Monitor without sending device commands.
+2. Choose an analysis mode and screen region. Use RTM Pose 2D for dance-oriented pose analysis or Hybrid Analysis for image motion; inspect Analysis Preview and the resulting curve.
+3. Check saved travel limits, axis directions and a modest output range, then choose the intended USB serial/BLE connection and start device output. Use clear, well-lit material for Six Axis; otherwise begin with L0 Only.
+
+### Main functions
+
+- **RTM Pose 2D:** dance-oriented L0/Six Axis analysis, in-app model download, optional GPU acceleration and CPU fallback.
+- **Hybrid Analysis:** image-motion analysis; **v2 is the default**.
+- **Full/Half Travel:** uses confirmed image reciprocation to select full, half or quarter L0 travel, with limited rhythm adaptation.
+- **Output Monitor and Show Preview:** display final live TCode after output travel, inversion, coupling, limits and speed handling. Recording/export to `.funscript` is also available; normalized script positions and final live TCode are distinct.
+- **Output controls:** per-axis limits, travel scaling, presets, smoothing and saved preferences. **Analysis Preview** shows image evidence; the separate **Pose Preview Lab** is visual-only and does not drive a device.
+- **Optional v2 models, off by default:** download/select ViTTrack or NeuFlow in the application. ViTTrack supports CPU; NeuFlow needs NVIDIA CUDA and does not support DirectML. Models and optional GPU runtimes are not bundled.
+- Screen capture and analysis run locally; the application does not upload screen frames. [Every feature and its scope](https://github.com/LexZeon/osr-screen-tcode/blob/2.0.0-beta/docs/FEATURES.md).
+
+### Scope
+
+Practical results are reported for the scenarios above, not every device, firmware or video. Image scale/contact candidates do not measure true depth or establish physical contact. Robot joint mapping, inverse kinematics, collision detection and physical feedback remain unverified; the simulator displays commands rather than hardware feedback. The [hardware-use report](docs/HARDWARE_TESTING.md) is later user feedback, separate from the original automated release checks.
+
+### Historical analysis demos
+
+These retained **1.0/1.1.2-era demos are not new 2.1.1 benchmarks** or evidence of the current real-device test scope.
+
+**Hybrid L0 / Six Axis — available since v1.0.0.** Recorded test hardware: Intel Ultra 9 CPU; GPU disabled/not used for this analysis.
+
+![Historical Hybrid L0 demo 1](screenshots/hybrid_analysis_l0_193515.gif)
+
+![Historical Hybrid L0 demo 2](screenshots/hybrid_analysis_l0_193812.gif)
+
+![Historical Hybrid L0 demo 3](screenshots/hybrid_analysis_l0_194652.gif)
+
+![Historical Hybrid Six Axis demo](screenshots/hybrid_analysis_six_axis_195200.gif)
+
+**RTM Pose 2D — v1.1.2 demos.** Recorded hardware: Intel Ultra 9 CPU; the GPU demo enables NVIDIA GeForce RTX 4090 Laptop GPU acceleration, while the CPU demo has GPU acceleration off.
+
+![Historical RTM Pose 2D GPU demo](screenshots/rtm_pose_2d_gpu_4090_laptop_204036.gif)
+
+![Historical RTM Pose 2D CPU demo](screenshots/rtm_pose_2d_cpu_intel_ultra_9_no_gpu_204419.gif)
+
+Dance footage in the RTM Pose demos: [Bilibili BV1UvtE6uEkD](https://www.bilibili.com/video/BV1UvtE6uEkD/). For infringement concerns, contact **lexzeonstudio@gmail.com** for removal.
+
+### Documentation and contribution
+
+[Startup](https://github.com/LexZeon/osr-screen-tcode/blob/2.0.0-beta/Start.md) · [Feature guide](https://github.com/LexZeon/osr-screen-tcode/blob/2.0.0-beta/docs/FEATURES.md) · [Architecture](https://github.com/LexZeon/osr-screen-tcode/blob/2.0.0-beta/docs/ARCHITECTURE.md) · [AI/developer handoff](https://github.com/LexZeon/osr-screen-tcode/blob/2.0.0-beta/AI_Prompting_Guide.md) · [2.1.1 release changes](https://github.com/LexZeon/osr-screen-tcode/blob/v2.1.1/docs/Release_2.1.1.md) · [Validation and recorded UI issue](https://github.com/LexZeon/osr-screen-tcode/blob/v2.1.1/docs/Validation_2.1.1.md).
+
+Developed with AI assistance and iterated through real-device use, regression testing and community feedback. The independent Lab remains a developer preview. Historical validation records, tags and release packages are retained.
+
+Use [usb-screen-stream](https://github.com/LexZeon/usb-screen-stream) to mirror a USB-connected phone/device screen to the PC, then select that window here for screen analysis.
+
+Thanks to **DK**, **机械纪元**, and **“电话机”** for guidance, volunteer testing and suggestions. The project learned from public work including **FunGen**, **PoseFunscripter** and **nb-3d-simulator**. See [Contributing](CONTRIBUTING.md), [LICENSE](LICENSE), [third-party notices](https://github.com/LexZeon/osr-screen-tcode/blob/v2.1.1/THIRD_PARTY_NOTICES.md) and [open-source notice](https://github.com/LexZeon/osr-screen-tcode/blob/v2.1.1/OPEN_SOURCE_NOTICE.md).
+
+Contact for suggestions, collaboration or corrections: **[lexzeonstudio@gmail.com](mailto:lexzeonstudio@gmail.com)**.
 
 ## 中文
 
-**2.1.1 改善模型配置与开始确认窗口的响应。** 模型自动检测和文件校验移到后台；确认窗口支持滚动并保留可见操作按钮，新增“自动检测模型”和“启用 CUDA”入口，沿用共享 GPU 安装器。原模块结构、分析／输出数学、模型默认关闭及最多两秒估算保持不变。原反馈的间歇性完全卡死尚未精确复现，详见验证记录，仍需复测原操作。
+这是一个开源 Windows 实时读屏输出工具：读取框选的屏幕区域，将画面运动转换为 TCode，通过 USB 或 BLE 发送给设备。也可以先不连接硬件预览，或者录制／导出 `.funscript` 位置脚本。
 
-在 [2.1.1 发布页](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.1.1) 下载完整 **Windows.zip**，全部解压后双击 **Start.cmd** 或 exe。保留旁边的 `_internal`，运行包自带 Python。配套 **Source.zip** 使用 Python 3.10+ 和根目录 [Start.cmd](Start.cmd)，两种启动方式见 [Start.md](Start.md)。
+**实机已获得可应用效果：**维护者于 2026-11-12 反馈，使用过 USB（USB-C）与 BLE 连接，舞蹈识别的 L0／六轴、混合分析的 L0 均有可应用效果。具体范围见[实机使用记录](docs/HARDWARE_TESTING.md)。
 
-- [逐项功能说明](docs/FEATURES.md)：输入、分析模式、选项、输出、设备、录制与预览。
-- [程序结构与修改入口](docs/ARCHITECTURE.md)：先按职责找模块，再阅读需要修改的代码。
-- [精简 AI／开发者接手说明](AI_Prompting_Guide.md)：约束、定向阅读及验证方法。
-- [2.1.1 验证记录](docs/Validation_2.1.1.md)和[发布说明](docs/Release_2.1.1.md)。
-- [贡献说明](CONTRIBUTING.md)、[许可证](LICENSE)、[第三方声明](THIRD_PARTY_NOTICES.md)及[开源说明](OPEN_SOURCE_NOTICE.md)。
+> **成年人使用提示：本项目面向成年人使用，未成年禁止入内。**
 
-默认分析仍为混合 v2；全／半行程排列第一，RTM Pose 2D 随后。ViTTrack、NeuFlow v2 仍为软件内下载的可选模型，**默认关闭**；ViTTrack 可用 CPU，NeuFlow 要求 NVIDIA CUDA、不支持 DirectML，RTM 原有 DirectML 保留。模型和可下载 GPU 运行库均不放入源码／Windows ZIP。
+### 下载与源码版本
 
-启动默认显示**输出监视**；**显示预览**打开接收最终 TCode 的模拟器；**分析预览**显示图像观测与标注。独立 **Pose-Preview-Lab** 仍为 0.2.2-test，不参与设备输出。首次检查用 **Log only**；真实深度、语义接触、机械臂关节映射、逆运动学、碰撞检测及反馈仍未验证。
+**最新发布版：[2.1.1](https://github.com/LexZeon/osr-screen-tcode/releases/tag/v2.1.1)。**
 
-历史说明、署名与验证记录保留。前版 [README](docs/history/README_2.0.2.md)、[启动指南](docs/history/Start_2.0.2.md)、[AI 指南](docs/history/AI_Prompting_Guide_2.0.2.md)保留此前说明，其中联系字段沿用 10 月 11 日的邮箱更新，原相对链接仍以仓库根目录为基准；旧标签和发布附件不覆盖。
+- **[Windows 便携 ZIP](https://github.com/LexZeon/osr-screen-tcode/releases/download/v2.1.1/SR6-OSR6-Realtime-Screen-TCode-v2.1.1-Windows.zip)**：完整解压后，双击 **Start.cmd** 或 **SR6-OSR6-Realtime-Screen-TCode.exe**。自带 Python，保留 exe 旁边的 `_internal`。
+- **[配套 Source ZIP](https://github.com/LexZeon/osr-screen-tcode/releases/download/v2.1.1/SR6-OSR6-Realtime-Screen-TCode-v2.1.1-Source.zip)** 或 **[v2.1.1 源码标签](https://github.com/LexZeon/osr-screen-tcode/tree/v2.1.1)**：准备 Python 3.10+，使用源码内的 Start.cmd；见[启动说明](https://github.com/LexZeon/osr-screen-tcode/blob/2.0.0-beta/Start.md)。
 
-感谢 **DK**、**机械纪元**和**“电话机”**提供建议、志愿测试与协助。联系：**lexzeonstudio@gmail.com**。
+**源码版本说明：**默认 `main` 保留旧版 **1.1.2** 程序源码；获取最新发布版的配套源码，请用 **v2.1.1 标签／Source ZIP**。当前文档与后续源码工作位于 [2.0.0-beta](https://github.com/LexZeon/osr-screen-tcode/tree/2.0.0-beta)。运行前请完整解压 Windows 包，单独的 Start.cmd 附件需要配合完整目录。
+
+### 三步上手
+
+1. 打开 **Start.cmd**，先选择 **Log only**，在输出监视中检查结果，不发送设备指令。
+2. 选择分析方式和屏幕区域。舞蹈姿态可选 RTM Pose 2D，画面运动可选混合分析；结合分析预览和输出曲线查看效果。
+3. 核对保存的行程上下限、轴向与较小输出范围，再选择目标 USB 串口／BLE 连接并开始设备输出。六轴优先使用光线好、主体清晰的素材，否则先用 L0 Only。
+
+### 主要功能
+
+- **RTM Pose 2D**：面向舞蹈姿态的 L0／六轴分析，支持软件内下载模型、可选 GPU 加速及 CPU 回退。
+- **混合分析**：分析画面运动，**默认使用 v2**。
+- **全／半行程**：根据已确认的画面往复，选择全、半或 1/4 的 L0 行程，并有限度地适应节奏。
+- **输出监视与显示预览**：展示经过行程、反向、联动、上下限和限速处理后的最终实时 TCode；也支持录制／导出 `.funscript`，归一化脚本位置与最终实时 TCode 有区别。
+- **输出调节**：独立轴上下限、行程倍率、预设、平滑与设置保存。**分析预览**显示画面证据，独立 **Pose Preview Lab** 只做视觉预览，不驱动设备。
+- **可选 v2 模型默认关闭**：软件内下载／选择 ViTTrack 或 NeuFlow。ViTTrack 可用 CPU；NeuFlow 要求 NVIDIA CUDA，不支持 DirectML。模型与可选 GPU 库不随包分发。
+- 屏幕采集和分析在本机完成，软件不会上传画面。全部用途与边界见[逐项功能说明](https://github.com/LexZeon/osr-screen-tcode/blob/2.0.0-beta/docs/FEATURES.md)。
+
+### 适用范围
+
+实用效果对应上方已反馈场景，不代表每种设备、固件或视频都适用。画面尺度／接触候选不等于真实深度或实际接触；机械臂关节映射、逆运动学、碰撞检测和真实位置反馈仍未验证，模拟器显示指令而非硬件反馈。[实机使用记录](docs/HARDWARE_TESTING.md)属于后续使用反馈，与原自动化发布检查分开记录。
+
+### 历史分析演示
+
+以下保留的 **1.0／1.1.2 时期演示不是 2.1.1 新跑分**，也不代表本次实机测试范围。
+
+**混合分析 L0／六轴——v1.0.0 起支持。** 原演示测试硬件：Intel Ultra 9 CPU，GPU 关闭／此分析未使用 GPU。
+
+[L0 示例 1](screenshots/hybrid_analysis_l0_193515.gif) · [L0 示例 2](screenshots/hybrid_analysis_l0_193812.gif) · [L0 示例 3](screenshots/hybrid_analysis_l0_194652.gif) · [六轴示例](screenshots/hybrid_analysis_six_axis_195200.gif)
+
+**RTM Pose 2D——v1.1.2 演示。** 原测试硬件：Intel Ultra 9 CPU；GPU 演示开启 NVIDIA GeForce RTX 4090 Laptop GPU 加速，CPU 演示关闭 GPU 加速。
+
+[RTM Pose GPU 演示](screenshots/rtm_pose_2d_gpu_4090_laptop_204036.gif) · [RTM Pose CPU 演示](screenshots/rtm_pose_2d_cpu_intel_ultra_9_no_gpu_204419.gif)
+
+RTM Pose 演示舞蹈素材来源：[Bilibili BV1UvtE6uEkD](https://www.bilibili.com/video/BV1UvtE6uEkD/)。如有侵权请联系 **lexzeonstudio@gmail.com** 删除。
+
+### 文档与参与
+
+[启动说明](https://github.com/LexZeon/osr-screen-tcode/blob/2.0.0-beta/Start.md) · [功能指南](https://github.com/LexZeon/osr-screen-tcode/blob/2.0.0-beta/docs/FEATURES.md) · [程序结构](https://github.com/LexZeon/osr-screen-tcode/blob/2.0.0-beta/docs/ARCHITECTURE.md) · [AI／开发者接手指南](https://github.com/LexZeon/osr-screen-tcode/blob/2.0.0-beta/AI_Prompting_Guide.md) · [2.1.1 发布改动](https://github.com/LexZeon/osr-screen-tcode/blob/v2.1.1/docs/Release_2.1.1.md) · [验证与已有界面问题记录](https://github.com/LexZeon/osr-screen-tcode/blob/v2.1.1/docs/Validation_2.1.1.md)。
+
+本项目采用 AI 辅助开发，结合实机使用、回归测试和社区反馈持续改进。独立 Lab 仍是开发预览；历史验证记录、标签和发布包保留。
+
+可使用 [usb-screen-stream](https://github.com/LexZeon/usb-screen-stream) 将 USB 连接的手机／设备画面投到电脑，再在本工具中框选该窗口分析。
+
+感谢 **DK**、**机械纪元**和**“电话机”**提供指导、志愿测试与建议；本项目参考和学习了 **FunGen**、**PoseFunscripter**、**nb-3d-simulator** 等公开项目。见[贡献说明](CONTRIBUTING.md)、[许可证](LICENSE)、[第三方声明](https://github.com/LexZeon/osr-screen-tcode/blob/v2.1.1/THIRD_PARTY_NOTICES.md)和[开源说明](https://github.com/LexZeon/osr-screen-tcode/blob/v2.1.1/OPEN_SOURCE_NOTICE.md)。
+
+建议、合作或纠正请联系：**[lexzeonstudio@gmail.com](mailto:lexzeonstudio@gmail.com)**。

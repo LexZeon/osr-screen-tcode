@@ -5,6 +5,12 @@ SR6/OSR6 Realtime Screen TCode 版本日志
 - 按用户当前要求，后续每个实际程序更新递增最后一位，并在验证后上传 GitHub。
 - 当前版本：2.1.1。
 
+Documentation only / 仅文档 - 2026-11-12（application version / 程序版本：2.1.1）
+- English: add docs/HARDWARE_TESTING.md for the maintainer's later first-hand use report: USB-C and BLE connections, useful dance-analysis L0/Six Axis output and Hybrid Analysis L0 output. Do not infer device/firmware identity, a complete connection-by-mode matrix, or Hybrid v1/v2 coverage.
+- English: refresh the homepage and startup wording to distinguish reported practical hardware use from unverified robot mapping/physical feedback; retain the six historical GIF demos with their original-era hardware/source notes and identify main source versus the latest release. This is separate from the October 17 automated release checks; no program/configuration/version, historical validation/release records, tags or published ZIPs changed.
+- 新增 docs/HARDWARE_TESTING.md，记录维护者后续本人反馈：使用 USB-C 与 BLE 连接，舞蹈识别 L0／六轴及混合分析 L0 在实机上有可应用效果；不推断设备／固件、连接与模式的完整矩阵或混合 v1／v2 范围。
+- 更新首页与启动说明，区分实机使用反馈与仍未验证的机械臂映射／真实反馈；保留六个历史 GIF 及其当时硬件／素材说明，明确 main 源码与最新发布版的区别。独立于 10 月 17 日自动化发布检查，仅更新文档，不改程序／配置／版本、历史验证／发布记录、标签及已发布 ZIP。
+
 2.1.1 - 2026-10-17
 - English: coalesce optional-model checkbox redraws outside variable traces; protect start-confirmation input while a child modal owns it, and keep scrolling/focus/footer reachable. Run local model discovery and manual-file verification on cancellable background workers with current-choice/owner guards.
 - English: add Detect models and Enable CUDA setup shortcuts, sharing the existing explicit GPU installer. Neither shortcut silently enables model switches or downloads/installs libraries. Model pins/defaults, capture/analysis/output mathematics and the two-second estimate limit are unchanged. The original intermittent full freeze was not precisely reproduced; the defensive fixes still require the user's original-operation retest.

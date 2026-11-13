@@ -24,7 +24,7 @@ Begin with **Log only**. Output Monitor is the initial page. Choose the analysis
 
 When a model is enabled, its selected file or the known download location is checked in the background. **Detect models** can check without enabling either model. **Enable CUDA** selects shared CUDA acceleration and opens GPU setup; it does not install automatically or enable the model switches. If libraries are missing, explicitly use the existing one-click installer and restart when prompted. RTM DirectML remains available; NeuFlow requires CUDA. Canceling a pending check or closing its dialog cannot replace a later choice.
 
-Real hardware and robot-arm mapping remain unverified. The simulator is a final-command display, not hardware feedback.
+Maintainer testing has shown useful real-device results in the scenarios recorded in the [2026-11-12 hardware-use report](docs/HARDWARE_TESTING.md). Robot-arm mapping and physical feedback remain unverified; the simulator displays final commands, not hardware feedback.
 
 ## 中文
 
@@ -50,7 +50,7 @@ Real hardware and robot-arm mapping remain unverified. The simulator is a final-
 
 勾选模型后，所选文件或固定下载目录会在后台检测；“自动检测模型”也可在不启用模型时检查。“启用 CUDA”选择共享 CUDA 加速并打开 GPU 配置，不会自动安装或勾选模型。缺运行库时再明确点击原有一键安装，按提示重启。RTM 的 DirectML 保留，NeuFlow 要求 CUDA；取消检测或关闭所属窗口后，不会用过期结果覆盖后来的选择。
 
-真实硬件与机械臂映射仍未验证；模拟器显示最终指令，不是硬件反馈。
+维护者实机使用已在部分场景中取得可应用效果，具体范围见 [2026-11-12 实机使用反馈](docs/HARDWARE_TESTING.md)。机械臂映射与真实反馈仍未验证；模拟器显示最终指令，不是硬件反馈。
 
 ## Contact / 联系
 
