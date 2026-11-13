@@ -1,5 +1,11 @@
 OSR6 Realtime Screen TCode 版本日志
 
+Documentation only / 首页文档 - 2026-11-12
+- English: refresh the homepage for the latest published application 2.1.1 and add the maintainer's later real-device use report: USB-C/BLE connections, useful dance-analysis L0/Six Axis output and Hybrid Analysis L0 output.
+- English: main retains its legacy 1.1.2 program source; current release source is linked through v2.1.1/Source ZIP. No application source, configuration, historical validation, tags or release packages changed. Historical demos, attribution and license references are retained.
+- 更新首页及后续实机使用反馈：USB-C／BLE 连接，舞蹈识别 L0／六轴及混合分析 L0 在实机上有可应用效果；最新发布程序为 2.1.1。
+- main 保留原 1.1.2 程序源码，当前正式版源码明确链接到 v2.1.1 标签／Source ZIP；不修改程序、配置、历史验证、标签及发布包，保留历史演示、素材来源、鸣谢和许可证链接。
+
 版本号规则：
 - 每次发给别人使用前，都要更新这里。
 - 小修复递增最后一位，例如 0.9.1。
