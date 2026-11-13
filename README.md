@@ -75,7 +75,7 @@ Contact for suggestions, collaboration or corrections: **[lexzeonstudio@gmail.co
 
 这是一个开源 Windows 实时读屏输出工具：读取框选的屏幕区域，将画面运动转换为 TCode，通过 USB 或 BLE 发送给设备。也可以先不连接硬件预览，或者录制／导出 `.funscript` 位置脚本。
 
-**实机已获得可应用效果：**维护者于 2026-11-12 反馈，使用过 USB（USB-C）与 BLE 连接，舞蹈识别的 L0／六轴、混合分析的 L0 均有可应用效果。具体范围见[实机使用记录](docs/HARDWARE_TESTING.md)。
+**实机已获得可应用效果**：维护者于 2026-11-12 反馈，使用过 USB（USB-C）与 BLE 连接，舞蹈识别的 L0／六轴、混合分析的 L0 均有可应用效果。具体范围见[实机使用记录](docs/HARDWARE_TESTING.md)。
 
 > **成年人使用提示：本项目面向成年人使用，未成年禁止入内。**
 
@@ -86,7 +86,7 @@ Contact for suggestions, collaboration or corrections: **[lexzeonstudio@gmail.co
 - **[Windows 便携 ZIP](https://github.com/LexZeon/osr-screen-tcode/releases/download/v2.1.1/SR6-OSR6-Realtime-Screen-TCode-v2.1.1-Windows.zip)**：完整解压后，双击 **Start.cmd** 或 **SR6-OSR6-Realtime-Screen-TCode.exe**。自带 Python，保留 exe 旁边的 `_internal`。
 - **[配套 Source ZIP](https://github.com/LexZeon/osr-screen-tcode/releases/download/v2.1.1/SR6-OSR6-Realtime-Screen-TCode-v2.1.1-Source.zip)** 或 **[v2.1.1 源码标签](https://github.com/LexZeon/osr-screen-tcode/tree/v2.1.1)**：准备 Python 3.10+，使用源码内的 Start.cmd；见[启动说明](https://github.com/LexZeon/osr-screen-tcode/blob/2.0.0-beta/Start.md)。
 
-**源码版本说明：**默认 `main` 保留旧版 **1.1.2** 程序源码；获取最新发布版的配套源码，请用 **v2.1.1 标签／Source ZIP**。当前文档与后续源码工作位于 [2.0.0-beta](https://github.com/LexZeon/osr-screen-tcode/tree/2.0.0-beta)。运行前请完整解压 Windows 包，单独的 Start.cmd 附件需要配合完整目录。
+**源码版本说明**：默认 `main` 保留旧版 **1.1.2** 程序源码；获取最新发布版的配套源码，请用 **v2.1.1 标签／Source ZIP**。当前文档与后续源码工作位于 [2.0.0-beta](https://github.com/LexZeon/osr-screen-tcode/tree/2.0.0-beta)。运行前请完整解压 Windows 包，单独的 Start.cmd 附件需要配合完整目录。
 
 ### 三步上手
 
